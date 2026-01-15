@@ -7,7 +7,7 @@
       "id": "f1",
       "lane": 6,
       "severity": "MEDIUM",
-      "claim": "example: the retry path swallowed errors and reported success",
+      "claim": "example (synthetic): a retry path that swallowed errors and reported success",
       "status": "RESOLVED",
       "evidence": ["src/cache.ts"],
       "recordedAt": "2026-01-15T11:05:00.000Z",
@@ -17,9 +17,9 @@
       "id": "f2",
       "lane": 1,
       "severity": "LOW",
-      "claim": "example: purge token accepted from the request body",
+      "claim": "example (synthetic): an internal token accepted straight from a request body",
       "status": "WONT-FIX",
-      "justification": "endpoint is listener-bound to localhost; documented boundary",
+      "justification": "synthetic example: endpoint is bound to a loopback listener; accepted and documented",
       "recordedAt": "2026-01-15T11:06:00.000Z",
       "resolvedAt": "2026-01-15T11:25:00.000Z"
     }

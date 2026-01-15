@@ -9,7 +9,7 @@
  * scaffolding around fresh-context reviewers, with the law enforced by refusal.
  *
  * What it does NOT do: spawn agents. It prepares one refute-prompt bundle per escape-class lane of
- * docs/harness/ADVERSARIAL-AUDIT-CHECKLIST.md, records findings into the shared register
+ * docs/ADVERSARIAL-CHECKLIST.md, records findings into the shared register
  * (task-findings.mjs — the same parser task-state gates `done` on), and aggregates fail-closed:
  * any UNRESOLVED finding, or a missing register, fails the verdict.
  */

@@ -5,8 +5,8 @@
  * A single working copy means one task at a time; jj workspaces give each task its own
  * working-copy commit in the same repo. But colocated jujutsu has a trap this tool exists to make
  * impossible to forget: **jj-native commits (jj commit / jj describe + new) do NOT run the git
- * pre-commit hooks** — and the hooks are where graph regeneration, protected-path markers, and the
- * eight-gate pre-push live. So the law this tool encodes:
+ * pre-commit hooks** — and the hooks are where your gates live: lint, tests, generated
+ * artifacts, push controls. So the law this tool encodes:
  *
  *   A workspace DRAFTS. The PRIMARY working copy LANDS.
  *   Never move master from a workspace. Landing protocol: in the workspace, export the diff

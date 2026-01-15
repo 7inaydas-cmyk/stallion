@@ -2,7 +2,7 @@
 
 The decisions register: dated, append-only entries recording the human acts that authorize work
 the lifecycle treats as sensitive (protected and migration risk classes). An approval recorded
-with `task-state approve --ratification <ref>` must cite a FULL entry heading from this file,
+with `task-state approve --decision <ref>` must cite a FULL entry heading from this file,
 verbatim. A substring is not a decision.
 
 Format: one `## <date> — <TITLE>` heading per decision, prose below it stating what was

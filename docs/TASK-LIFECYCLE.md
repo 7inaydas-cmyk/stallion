@@ -44,7 +44,7 @@ remembered.
 ```bash
 node tools/task-state.mjs new fix-the-thing --risk-class runtime-code
 node tools/task-state.mjs advance fix-the-thing planned
-node tools/task-state.mjs approve fix-the-thing --ratification "<full DECISIONS.md heading>"
+node tools/task-state.mjs approve fix-the-thing --decision "<full DECISIONS.md heading>"
 node tools/task-state.mjs advance fix-the-thing executing
 # ...work...
 node tools/task-state.mjs red-check fix-the-thing --evidence test/the-pin.test.ts

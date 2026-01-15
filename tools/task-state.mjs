@@ -3,10 +3,9 @@
  * Task state — the TASK-LIFECYCLE as an executable state machine .
  *
  * The lifecycle's 13 phases are prose followed by reading; every rule in it was learned from a
- * dated escape — and prose rules escape: a canonical list once contradicted its own count inside
- * the very document that defined the count, and a session copied the list and believed it. The
- * cure that worked there was making the declaration executable. This tool is that same cure for
- * the lifecycle itself.
+ * dated escape, and prose rules escape: a written list drifts from what it counts, and readers
+ * copy the list instead of checking the machine. The cure is making the declaration executable.
+ * This tool is that cure for the lifecycle itself.
  *
  * Phase model (mapping to TASK-LIFECYCLE.md sections):
  *   intake      — steps 1-2  (restate, state verification)
@@ -36,7 +35,7 @@ import { aggregateFindings, atomicWriteJson, loadFindings, withLock } from "./ta
 
 const ROOT = new URL("../", import.meta.url).pathname;
 const STATE_DIR = `${ROOT}tasks`;
-const RATIFICATIONS = `${ROOT}docs/decisions/DECISIONS.md`;
+const DECISIONS = `${ROOT}docs/decisions/DECISIONS.md`;
 
 export const TASK_SCHEMA = "stallion/task-state@1";
 export const RISK_CLASSES = ["planning-only", "harness-docs-only", "runtime-code", "protected", "migration", "product-protocol"];
@@ -71,7 +70,7 @@ function executionGuard(record) {
     return `risk class '${record.riskClass}' is implementation-forbidden by TASK-LIFECYCLE — a separate, explicitly authorized task must be opened`;
   }
   if (APPROVAL_REQUIRED.has(record.riskClass) && !hasApproval(record)) {
-    return `risk class '${record.riskClass}' requires a recorded owner approval (approve --ratification <ref>) before executing`;
+    return `risk class '${record.riskClass}' requires a recorded owner approval (approve --decision <ref>) before executing`;
   }
   return null;
 }
@@ -177,16 +176,16 @@ function cmdNew(args) {
 
 function cmdApprove(args) {
   const id = args._[0];
-  if (!id) die("usage: approve <id> --ratification <ref>");
-  const ref = args.ratification;
-  if (!ref || ref === true) die("approve requires --ratification <ref> — the dated entry in docs/decisions/DECISIONS.md");
-  if (!existsSync(RATIFICATIONS)) die("docs/decisions/DECISIONS.md is missing — cannot cross-reference an approval");
-  const heading = readFileSync(RATIFICATIONS, "utf8").split("\n").find((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
+  if (!id) die("usage: approve <id> --decision <ref>");
+  const ref = args.decision;
+  if (!ref || ref === true) die("approve requires --decision <ref> — the dated entry in docs/decisions/DECISIONS.md");
+  if (!existsSync(DECISIONS)) die("docs/decisions/DECISIONS.md is missing — cannot cross-reference an approval");
+  const heading = readFileSync(DECISIONS, "utf8").split("\n").find((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
   if (!heading) {
-    die(`no ratification entry heading equals: ${ref}\n  an approval must cite a FULL entry heading from docs/decisions/DECISIONS.md, verbatim — a substring is not an act (an adversarial pass forged one with a four-character ref)`);
+    die(`no decisions-register entry heading equals: ${ref}\n  an approval must cite a FULL entry heading from docs/decisions/DECISIONS.md, verbatim — a substring is not an act: short refs match by accident`);
   }
-  appendEvent(loadTask(id), { type: "approval", ratification: ref });
-  console.log(`task ${id}: owner approval recorded (ratification: ${ref})`);
+  appendEvent(loadTask(id), { type: "approval", decision: ref });
+  console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
 }
 
 function cmdRedCheck(args) {
@@ -282,7 +281,7 @@ export function selfTest() {
     ["planning-only cannot execute", !evaluateTransition({ ...base, riskClass: "planning-only" }, null, "executing", true).ok],
     ["product-protocol cannot execute", !evaluateTransition({ ...base, riskClass: "product-protocol" }, null, "executing", true).ok],
     ["protected without approval refused", !evaluateTransition({ ...at(base, "planned"), riskClass: "protected" }, null, "executing", true).ok],
-    ["protected with approval allowed", evaluateTransition({ ...at(base, "planned"), riskClass: "protected", events: [...at(base, "planned").events, { type: "approval", ratification: "r" }] }, null, "executing", true).ok],
+    ["protected with approval allowed", evaluateTransition({ ...at(base, "planned"), riskClass: "protected", events: [...at(base, "planned").events, { type: "approval", decision: "d" }] }, null, "executing", true).ok],
     ["migration without approval refused", !evaluateTransition({ ...at(base, "planned"), riskClass: "migration" }, null, "executing", true).ok],
     ["verified without red-check refused", !evaluateTransition(at(executing, "executing"), null, "verified", true).ok],
     ["verified with red-check allowed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }] }, null, "verified", true).ok],

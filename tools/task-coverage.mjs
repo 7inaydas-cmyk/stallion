@@ -73,14 +73,14 @@ function classRefusal(record) {
   if (APPROVAL_REQUIRED.has(record.riskClass)) {
     const approval = record.events?.find((e) => e.type === "approval");
     if (!approval) return `risk class '${record.riskClass}' carries no owner approval event`;
-    if (!ratificationHeadingExists(approval.ratification)) {
-      return `approval cites no decisions-register entry heading: ${String(approval.ratification)}`;
+    if (!decisionHeadingExists(approval.decision)) {
+      return `approval cites no decisions-register entry heading: ${String(approval.decision)}`;
     }
   }
   return null;
 }
 
-function ratificationHeadingExists(ref) {
+function decisionHeadingExists(ref) {
   if (typeof ref !== "string" || ref.length === 0) return false;
   const path = `${ROOT}docs/decisions/DECISIONS.md`;
   if (!existsSync(path)) return false;
@@ -164,14 +164,14 @@ export function selfTest() {
     ["apps source is code", isCodePath("apps/api/src/main.ts")],
     ["packages source is code", isCodePath("packages/db/src/schema.ts")],
     ["harness tools are code", isCodePath("tools/harness/task-state.mjs")],
-    ["deploy scripts are code", isCodePath("deploy/jj-push.sh")],
+    ["deploy scripts are code", isCodePath("deploy/push.sh")],
     ["web tsx is code", isCodePath("apps/web/src/routes/page.tsx")],
     ["docs are not code", !isCodePath("docs/README.md")],
     ["markdown under apps is not code", !isCodePath("apps/web/README.md")],
     ["json state is not code", !isCodePath("tasks/x.json")],
     ["root package.json is not code", !isCodePath("package.json")],
-    ["graphify output is not code", !isCodePath("graphify-out/graph.json")],
-    [".mts is code", isCodePath("tools/dev/house-tracer.constants.d.mts")],
+    ["generated artifacts are not code", !isCodePath("artifacts/graph.json")],
+    [".mts is code", isCodePath("tools/dev/constants.d.mts")],
     [".css is code", isCodePath("apps/web/src/style.css")],
     ["Dockerfile is code", isCodePath("apps/api/Dockerfile")],
     ["deploy Caddyfile is code", isCodePath("deploy/Caddyfile")],
@@ -197,8 +197,8 @@ export function selfTest() {
     ["planned does not authorize", recordRefusal(record("runtime-code", ["planned"])) !== null],
     ["protected without approval refused", recordRefusal(record("protected", ["planned", "executing"])) !== null],
     // A REAL decisions-register heading: the cross-check reads the live register, so the fixture cites it.
-    ["protected with a real decision authorizes", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", ratification: "2026-01-15 — ADOPTION: this repository runs its code through the task lifecycle" }])) === null],
-    ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", ratification: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
+    ["protected with a real decision authorizes", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-15 — ADOPTION: this repository runs its code through the task lifecycle" }])) === null],
+    ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
     ["unknown risk class refused (hand-forged record)", recordRefusal(record("totally-made-up-class", ["planned", "executing"])) !== null],
     ["malformed record refused", recordRefusal(null) !== null],
     ["wrong schema refused", recordRefusal({ schema: "nope" }) !== null],
