@@ -1,0 +1,15 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "fix-cache-invalidation",
+  "title": "example: a runtime task that traveled the full lifecycle",
+  "riskClass": "runtime-code",
+  "events": [
+    { "at": "2026-01-15T09:00:00.000Z", "type": "created", "riskClass": "runtime-code" },
+    { "at": "2026-01-15T09:05:00.000Z", "type": "transition", "to": "planned" },
+    { "at": "2026-01-15T09:20:00.000Z", "type": "transition", "to": "executing" },
+    { "at": "2026-01-15T10:40:00.000Z", "type": "red-check", "evidence": ["test/cache.test.ts"] },
+    { "at": "2026-01-15T10:41:00.000Z", "type": "transition", "to": "verified" },
+    { "at": "2026-01-15T11:00:00.000Z", "type": "transition", "to": "adversarial" },
+    { "at": "2026-01-15T11:30:00.000Z", "type": "transition", "to": "done" }
+  ]
+}

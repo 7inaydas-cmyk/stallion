@@ -1,0 +1,23 @@
+name: selftest
+on:
+  push:
+  pull_request:
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Five tool self-tests (refusals included)
+        run: npm run selftest
+      - name: Lifecycle smoke (a task can travel intake to done, and the refusals fire)
+        run: |
+          set -e
+          node tools/task-state.mjs new smoke --risk-class planning-only
+          node tools/task-state.mjs advance smoke planned
+          if node tools/task-state.mjs advance smoke executing; then
+            echo "planning-only reached executing: the gate is decoration"; exit 1
+          fi
+          echo "refusal fired: planning-only cannot execute"

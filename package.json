@@ -1,0 +1,16 @@
+{
+  "name": "stallion",
+  "version": "0.1.0",
+  "description": "A refusal-based task lifecycle for repos where AI agents write code",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "task-state": "node tools/task-state.mjs",
+    "adversarial": "node tools/adversarial-runner.mjs",
+    "workspace": "node tools/task-workspace.mjs",
+    "task-coverage": "node tools/task-coverage.mjs",
+    "selftest": "node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,4 @@
+tasks/*.lock
+tasks/*.tmp
+adversarial/**/*.lock
+node_modules/
