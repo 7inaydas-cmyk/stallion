@@ -215,7 +215,13 @@ if (isEntry) {
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
   const baseIdx = argv.indexOf("--base");
   if (baseIdx === -1 || !argv[baseIdx + 1]) die("usage: task-coverage.mjs --base <rev> (--self-test to self-test)");
-  const errors = checkRange(argv[baseIdx + 1]);
+  const base = argv[baseIdx + 1];
+  try {
+    execFileSync("git", ["rev-parse", "--verify", base], { cwd: ROOT, stdio: "ignore" });
+  } catch {
+    die(`base revision does not resolve: ${base} (a fresh repo with one commit has no parent to diff against; pass an explicit base)`);
+  }
+  const errors = checkRange(base);
   if (errors.length > 0) {
     for (const e of errors) console.error(`task-coverage: ✖ ${e}`);
     die("CODE LANDED OUTSIDE THE LIFECYCLE — nothing was pushed. Record the task (task-state new), advance it, and carry 'task: <id>' in the commit message.");
