@@ -54,6 +54,7 @@ jobs:
         run: |
           BASE="${{ github.event.before }}"
           if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            BASE="origin/${{ github.event.repository.default_branch }}"
+            node tools/task-coverage.mjs
+          else
+            node tools/task-coverage.mjs --base "$BASE"
           fi
-          node tools/task-coverage.mjs --base "$BASE"

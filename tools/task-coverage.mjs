@@ -71,13 +71,15 @@ export function stagedRefusal(stagedFiles, records) {
 }
 
 /**
- * Pure: base resolution order — explicit argument, then the configured adoption base, then the
- * remote-tracking ref of the current branch. null means unresolvable, and the caller REFUSES:
- * the fence must never fail open on a first push.
+ * Pure: base resolution order — explicit argument, then local config, then the COMMITTED
+ * adoption base (`.stallion-base`, the one thing a CI clone can read, which is what makes the
+ * first push of a branch auditable), then the current branch's remote-tracking ref. null means
+ * unresolvable, and the caller REFUSES: the fence must never fail open on a first push.
  */
-export function pickBase(explicit, config, originCurrent) {
+export function pickBase(explicit, config, committed, originCurrent) {
   if (explicit) return explicit;
   if (config) return config;
+  if (committed) return committed;
   return originCurrent ?? null;
 }
 
@@ -218,6 +220,16 @@ function committedText(path) {
   }
 }
 
+/** The committed adoption base — travels with the clone, so CI (which cannot read a developer's
+ *  local git config) still resolves a real range on the very first push of a branch. */
+function committedBase() {
+  try {
+    return committedText(".stallion-base")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function loadRecord(id) {
   const path = `${STATE_DIR}/${id}.json`;
   if (!existsSync(path)) return { error: `no task record for '${id}' (expected ${path})` };
@@ -351,9 +363,9 @@ function cmdDoctor() {
 
   const branch = currentBranch();
   const originCurrent = branch && revParseOk(`origin/${branch}`) ? `origin/${branch}` : null;
-  const doctorBase = pickBase(null, gitConfig("stallion.push-base"), originCurrent);
+  const doctorBase = pickBase(null, gitConfig("stallion.push-base"), committedBase(), originCurrent);
   const baseSane = doctorBase !== null && revParseOk(doctorBase) && rangeCount(doctorBase) > 0;
-  check("push base resolves and fences a non-empty range", baseSane, "git config stallion.push-base <rev-at-adoption>   (an ancestor before HEAD; a base at HEAD audits nothing)");
+  check("push base resolves and fences a non-empty range", baseSane, "git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit   (an ancestor before HEAD; a base at HEAD audits nothing)");
 
   const register = committedText("docs/decisions/DECISIONS.md") ?? "";
   check("decisions register exists with entry headings", registerHeadingCount(register) > 0, "create docs/decisions/DECISIONS.md with at least one '## ' entry heading");
@@ -382,9 +394,9 @@ function cmdDoctor() {
 function resolvePushBase(explicit) {
   const branch = currentBranch();
   const originCurrent = branch && revParseOk(`origin/${branch}`) ? `origin/${branch}` : null;
-  const base = pickBase(explicit, gitConfig("stallion.push-base"), originCurrent);
+  const base = pickBase(explicit, gitConfig("stallion.push-base"), committedBase(), originCurrent);
   if (!base) {
-    die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git config stallion.push-base <rev-at-adoption>   (once, at adoption; see docs/WIRING.md)\n       or run with an explicit --base <rev>`);
+    die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git rev-parse HEAD > .stallion-base && git add .stallion-base   (committed — CI resolves from it)\n       or: git config stallion.push-base <rev>   (local override)\n       or run with an explicit --base <rev>`);
   }
   return base;
 }
@@ -489,14 +501,15 @@ export function selfTest() {
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
 
   const baseCases = [
-    ["explicit base wins over everything", pickBase("HEAD~1", "cfg-ref", "origin/x") === "HEAD~1"],
-    ["config beats origin tracking", pickBase(null, "cfg-ref", "origin/x") === "cfg-ref"],
-    ["origin tracking is the last fallback", pickBase(null, null, "origin/main") === "origin/main"],
-    ["nothing resolvable is null (fail closed, never skip)", pickBase(null, null, null) === null],
+    ["explicit base wins over everything", pickBase("HEAD~1", "cfg", "sha-c", "origin/x") === "HEAD~1"],
+    ["local config overrides the committed adoption base", pickBase(null, "cfg", "sha-c", "origin/x") === "cfg"],
+    ["the committed adoption base beats origin tracking", pickBase(null, null, "sha-c", "origin/x") === "sha-c"],
+    ["origin tracking is the last fallback", pickBase(null, null, null, "origin/main") === "origin/main"],
+    ["nothing resolvable is null (fail closed, never skip)", pickBase(null, null, null, null) === null],
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (15 path + 6 footer + 11 authorization + 5 staged + 7 doctor + 4 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (15 path + 6 footer + 11 authorization + 5 staged + 7 doctor + 5 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

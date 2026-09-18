@@ -90,13 +90,16 @@ node tools/task-coverage.mjs || exit 1
 ```
 
 The base is resolved inside the tool, in order: an explicit `--base <rev>`, then
-`git config stallion.push-base <rev>`, then the current branch's remote-tracking ref. If none
-resolve — the first push of a new branch — the check REFUSES rather than skipping. Set the
-adoption base once, when you wire up:
+`git config stallion.push-base <rev>` (local override), then the COMMITTED `.stallion-base`
+file (the one a CI clone can read — this is what keeps the first push of a branch auditable),
+then the current branch's remote-tracking ref. If nothing resolves, the check REFUSES rather
+than skipping. Pin the adoption base once, when you wire up:
 
 ```bash
-git config stallion.push-base <rev-at-adoption>   # grandfathers all history before it
+git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit -m "chore: pin the stallion adoption base"
 ```
+
+Everything before that revision is grandfathered; every code commit after it needs a task.
 
 **CI**:
 
@@ -106,13 +109,15 @@ git config stallion.push-base <rev-at-adoption>   # grandfathers all history bef
   run: |
     BASE="${{ github.event.before }}"
     if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-      BASE="origin/${{ github.event.repository.default_branch }}"
+      node tools/task-coverage.mjs
+    else
+      node tools/task-coverage.mjs --base "$BASE"
     fi
-    node tools/task-coverage.mjs --base "$BASE"
 ```
 
-(The zero-SHA guard matters: `github.event.before` is all zeros on a new branch, and an
-unhandled one kills the job with an unresolvable base.)
+(The zero-SHA of a new branch means no prior tip; with no `--base` the tool resolves the
+committed `.stallion-base` — a fallback to `origin/<default>` would equal HEAD and fence
+nothing.)
 
 Pull requests are not re-fenced, on purpose: every commit reaches the default branch through a
 push, and every push is fenced.
