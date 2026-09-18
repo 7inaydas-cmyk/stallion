@@ -1,0 +1,5 @@
+#!/bin/sh
+# The binding gate: the 'task:' footer must name an IN-FLIGHT task whose DECLARED
+# scope covers the staged code. Refused here — within one action of the mistake —
+# and re-judged by the push fence, which no clone can opt out of.
+node tools/task-coverage.mjs --commit-msg "$1" || exit 1

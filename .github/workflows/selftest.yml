@@ -46,6 +46,36 @@ jobs:
           COUNT=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('tasks/smoke-finding.findings.json','utf8')).findings.length)")
           echo "findings survived: $COUNT/6"
           test "$COUNT" = "6"
+      - name: Commit-msg binding smoke (footer must name an in-flight, scoped task)
+        run: |
+          set -e
+          echo "export {}" > tools/scratch-probe.mjs
+          git add tools/scratch-probe.mjs
+          printf 'feat: probe\ntask: no-such-task\n' > /tmp/probe-msg
+          if node tools/task-coverage.mjs --commit-msg /tmp/probe-msg; then
+            echo "commit-msg gate accepted an unknown task: the gate is decoration"; exit 1
+          fi
+          echo "refusal fired: unknown task refused at commit time"
+          node tools/task-state.mjs new smoke-bind --risk-class runtime-code
+          node tools/task-state.mjs advance smoke-bind planned
+          node tools/task-state.mjs advance smoke-bind executing
+          printf 'feat: probe\ntask: smoke-bind\n' > /tmp/probe-msg
+          if node tools/task-coverage.mjs --commit-msg /tmp/probe-msg; then
+            echo "commit-msg gate accepted an unscoped post-cutover task: the gate is decoration"; exit 1
+          fi
+          echo "refusal fired: post-cutover task with no declared scope"
+          node tools/task-state.mjs scope smoke-bind --add "tools/scratch-*.mjs"
+          node tools/task-coverage.mjs --commit-msg /tmp/probe-msg
+          echo "pass fired: scoped in-flight task accepted"
+          printf '\n' >> tools/task-coverage.mjs
+          git add tools/task-coverage.mjs
+          if node tools/task-coverage.mjs --commit-msg /tmp/probe-msg; then
+            echo "commit-msg gate accepted code outside the declared scope: the gate is decoration"; exit 1
+          fi
+          echo "refusal fired: code outside the declared scope"
+          git reset -q -- tools/scratch-probe.mjs tools/task-coverage.mjs
+          git checkout -q -- tools/task-coverage.mjs
+          rm -f tools/scratch-probe.mjs /tmp/probe-msg tasks/smoke-bind.json
       - name: Committed adoption base resolves with no --base and no local config
         run: node tools/task-coverage.mjs
       - name: Wiring doctor (the fence checks itself)

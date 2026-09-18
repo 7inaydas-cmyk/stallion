@@ -45,6 +45,11 @@ export const TASK_SCHEMA = "stallion/task-state@1";
  *  carry path-only evidence by design (documented in TASK-LIFECYCLE.md); the push fence
  *  exempts them from pin parity so a deliberate old-base audit stays executable. */
 export const PIN_LAW_CUTOVER = "2026-09-18T20:00:00.000Z";
+/** The moment the scope law took effect. Tasks CREATED after this must declare their code blast
+ *  radius (scope globs) before their first code commit — the commit-msg gate refuses unscoped
+ *  code and the push fence re-judges it. Records created earlier are grandfathered so already-
+ *  settled history keeps judging under the law it was written under (same pattern as the pin law). */
+export const SCOPE_LAW_CUTOVER = "2026-09-18T20:50:00.000Z";
 export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
 /** The taxonomy is defined HERE and imported by every other tool (issue #1): one law, no drift. */
@@ -56,6 +61,45 @@ export function derivePhase(events) {
   let phase = "intake";
   for (const e of events) if (e.type === "transition" && PHASES.includes(e.to)) phase = e.to;
   return phase;
+}
+
+/** The task's declared code blast radius: the ordered union of every scope event's patterns.
+ *  Empty array = no scope declared — pre-cutover tasks by design; post-cutover that state
+ *  refuses at the commit-msg gate and the push fence (task-coverage owns that law). */
+export function scopeOf(record) {
+  const patterns = [];
+  for (const e of record.events ?? []) {
+    if (e.type === "scope" && Array.isArray(e.patterns)) {
+      for (const p of e.patterns) if (typeof p === "string" && !patterns.includes(p)) patterns.push(p);
+    }
+  }
+  return patterns;
+}
+
+/** First timestamped event = the task's creation moment. The cutover comparison fact; empty for
+ *  an undated (hand-forged) record, which then compares as pre-cutover — the plain-JSON trust
+ *  boundary whose tamper trail is the record's git history. */
+export function recordCreatedAt(record) {
+  return (record.events ?? []).find((e) => typeof e.at === "string")?.at ?? "";
+}
+
+/**
+ * Pure: the scope glob dialect's admission rules. Repo-relative forward-slash globs (`*` and `?`
+ * stay inside a segment, `**` as a whole segment crosses segments — task-coverage matches them);
+ * this guards WRITES, and a hand-edited record that smuggles garbage patterns simply matches
+ * nothing and refuses code — fail closed at the gates.
+ */
+export function globRefusal(pattern) {
+  if (typeof pattern !== "string" || pattern.length === 0) return "a scope pattern must be a non-empty string";
+  if (pattern.includes("\\")) return "backslash is not in this glob dialect — use forward slashes";
+  if (pattern.startsWith("/")) return "scope patterns are repo-relative — no leading slash";
+  if (pattern.endsWith("/")) return "a trailing slash names a directory — write the glob for files (e.g. 'tools/**')";
+  for (const segment of pattern.split("/")) {
+    if (segment.length === 0) return "empty path segment ('//' inside the pattern)";
+    if (segment === "." || segment === "..") return `'${segment}' segment — scope stays inside the repo, relative to its root`;
+  }
+  if (pattern === "**") return "a scope of everything is no scope — name at least one top-level tree (e.g. 'tools/**')";
+  return null;
 }
 
 function hasApproval(record) {
@@ -291,6 +335,35 @@ function cmdApprove(args) {
   console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
 }
 
+/**
+ * Declare or widen a task's scope — the append-only blast-radius amendment. The initial
+ * declaration belongs at `planned` (the plan is what names the blast radius); amendments stay
+ * legal while the task is in flight because plans learn, and every amendment is a recorded
+ * event an adversarial pass and a reviewer can see. Done closes the scope for good.
+ */
+function cmdScope(args) {
+  const id = args._[0];
+  if (!id) die("usage: scope <id> --add <glob>[,<glob>...]");
+  const adds = typeof args.add === "string" ? args.add.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  if (adds.length === 0) die(`scope requires --add <glob>[,<glob>...] — the code blast radius this task may touch (e.g. 'tools/**,docs/*')`);
+  for (const p of adds) {
+    const refusal = globRefusal(p);
+    if (refusal) die(`scope pattern refused: ${JSON.stringify(p)}\n  rule: ${refusal}\n  fix: node tools/task-state.mjs scope ${id} --add "<corrected glob>[,<glob>...]"`);
+  }
+  mutateTask(id, (record) => {
+    const phase = derivePhase(record.events);
+    if (phase === "done") die("done is terminal — a finished task's scope is closed; new blast radius opens a new task");
+    if (PHASES.indexOf(phase) < PHASES.indexOf("planned")) {
+      die(`task is '${phase}' — scope is declared once there is a plan to name a blast radius\n  fix: node tools/task-state.mjs advance ${id} planned   then re-run the scope amendment`);
+    }
+    const already = new Set(scopeOf(record));
+    const novel = adds.filter((p) => !already.has(p));
+    if (novel.length === 0) die(`every pattern is already inside ${id}'s declared scope — amendments record NEW blast radius, not repetition`);
+    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "scope", patterns: novel }] };
+  });
+  console.log(`task ${id}: scope amended +${adds.length} pattern(s) (append-only) — node tools/task-state.mjs status ${id} shows the union`);
+}
+
 const PIN_COMMAND_TIMEOUT_MS = 300_000;
 const PIN_MAX_BUFFER = 10 * 1024 * 1024;
 
@@ -502,7 +575,24 @@ export function selfTest() {
   ];
   for (const [name, passes] of remedyCases) if (!passes) fail(`task-state: ${name}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const scopeCases = [
+    ["scopeOf unions scope events in first-declared order", JSON.stringify(scopeOf({ events: [{ type: "scope", patterns: ["tools/**"] }, { type: "transition", to: "planned" }, { type: "scope", patterns: [".githooks/*", "tools/**"] }] })) === JSON.stringify(["tools/**", ".githooks/*"])],
+    ["a record with no scope events has an empty scope", scopeOf({ events: [{ type: "created" }] }).length === 0],
+    ["malformed scope events contribute nothing", scopeOf({ events: [{ type: "scope", patterns: "tools/**" }, { type: "scope" }] }).length === 0],
+    ["globRefusal accepts a tree glob", globRefusal("tools/**") === null],
+    ["globRefusal refuses a leading slash", globRefusal("/tools/**") !== null],
+    ["globRefusal refuses traversal segments", globRefusal("tools/../etc/**") !== null],
+    ["globRefusal refuses a trailing slash", globRefusal("tools/") !== null],
+    ["globRefusal refuses the everything-glob", globRefusal("**") !== null],
+    ["globRefusal refuses an empty pattern", globRefusal("") !== null],
+    ["globRefusal refuses a backslash pattern", globRefusal("tools\\**") !== null],
+    ["recordCreatedAt reads the first timestamped event", recordCreatedAt({ events: [{ type: "created", at: "2026-09-18T20:56:00.000Z" }] }) === "2026-09-18T20:56:00.000Z"],
+    ["recordCreatedAt is empty for an undated record", recordCreatedAt({ events: [{ type: "created" }] }) === ""],
+    ["the scope law cut over after the pin law did", SCOPE_LAW_CUTOVER >= PIN_LAW_CUTOVER],
+  ];
+  for (const [name, passes] of scopeCases) if (!passes) fail(`task-state: ${name}`);
+
+  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy + 13 scope cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -513,8 +603,8 @@ if (isEntry) {
   try {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
-    const commands = { new: cmdNew, approve: cmdApprove, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus };
-    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|red-check|pin-exempt|pin-retire|advance|status> ... (--self-test to self-test)");
+    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus };
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|red-check|pin-exempt|pin-retire|advance|status> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {

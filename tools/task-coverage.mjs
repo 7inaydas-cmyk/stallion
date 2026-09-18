@@ -24,14 +24,17 @@
  * Honest boundaries, acknowledged rather than fenced (an adversarial pass): the
  * record is read from the WORKING TREE at push time (CI re-judges from the pushed tree); nothing
  * re-checks a record after its push — a later rewind is the plain-JSON trust boundary whose
- * evidence is git history; and the footer is a bearer citation — the machine authorizes the TASK,
- * not the specific commit (task↔commit binding is registered future work).
+ * evidence is git history; and the footer binds the commit to the task's DECLARED SCOPE
+ * (scopeRefusal — the commit-msg gate at commit time, this fence at push time), so a citation is
+ * no longer bearer: post-cutover tasks must name their blast radius and code outside it refuses.
+ * A post-hoc scope widening IS possible (append-only amendment) and is visible: the amendment
+ * event's timestamp trails the commit it excuses.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER } from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, SCOPE_LAW_CUTOVER } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -130,9 +133,11 @@ export function invokesMode(text, mode) {
     if (!/^node\s+tools\/task-coverage\.mjs(\s|$)/.test(t)) return false;
     const doctor = t.includes("--doctor");
     const staged = t.includes("--staged");
+    const commitMsg = t.includes("--commit-msg");
     if (mode === "doctor") return doctor;
     if (mode === "staged") return staged && !doctor;
-    return !doctor && !staged; // "fence": the bare range check, with or without --base
+    if (mode === "commit-msg") return commitMsg && !doctor && !staged;
+    return !doctor && !staged && !commitMsg; // "fence": the bare range check, with or without --base
   });
 }
 
@@ -151,6 +156,75 @@ export function taskFooterOf(message) {
   if (!/^([\w-]+: .*\n?)+$/.test(lastParagraph)) return null;
   const m = /(?:^|\n)task: ([a-z0-9][a-z0-9-]*)\s*$/.exec(lastParagraph);
   return m ? m[1] : null;
+}
+
+/** One segment of a scope glob → one regex: `*` and `?` stay inside the segment, every other
+ *  metacharacter is literal. Cached — fences and gates match many paths against few patterns. */
+const segmentRegexCache = new Map();
+function segmentRegExp(segment) {
+  if (!segmentRegexCache.has(segment)) {
+    const source = segment
+      .replace(/[.*+?^${}()|[\]\\]/g, (ch) => (ch === "*" || ch === "?" ? ch : `\\${ch}`))
+      .replace(/\*/g, "[^/]*")
+      .replace(/\?/g, "[^/]");
+    segmentRegexCache.set(segment, new RegExp(`^${source}$`));
+  }
+  return segmentRegexCache.get(segment);
+}
+
+function segmentsMatch(patternSegs, pathSegs) {
+  if (patternSegs.length === 0) return pathSegs.length === 0;
+  const [head, ...rest] = patternSegs;
+  if (head === "**") {
+    // a whole `**` segment swallows zero or more path segments: tools/** covers tools/ itself
+    for (let take = 0; take <= pathSegs.length; take += 1) {
+      if (segmentsMatch(rest, pathSegs.slice(take))) return true;
+    }
+    return false;
+  }
+  if (pathSegs.length === 0) return false;
+  return segmentRegExp(head).test(pathSegs[0]) && segmentsMatch(rest, pathSegs.slice(1));
+}
+
+/**
+ * Pure: the scope glob dialect — repo-relative, whole-path matching (`tools/**` any depth,
+ * `tools/*` one segment, `?` one char). ONE dialect for the commit-msg gate and the push fence:
+ * the binding law cannot drift between the two transports that enforce it. No patterns match
+ * nothing — a garbage pattern in a hand-edited record refuses code, never authorizes it.
+ */
+export function pathInScope(path, patterns) {
+  if (typeof path !== "string" || !Array.isArray(patterns)) return false;
+  const pathSegs = path.split("/");
+  return patterns.some((p) => typeof p === "string" && segmentsMatch(p.split("/"), pathSegs));
+}
+
+/**
+ * Pure: the scope law, shared verbatim by the commit-msg gate and the push fence (the
+ * lanesFromChecklist discipline: the enforcement never re-implements the format). A task CREATED
+ * after SCOPE_LAW_CUTOVER binds its code commits with a DECLARED blast radius: no scope, or code
+ * outside it, refuses. Pre-cutover records are grandfathered — their commits settled under the
+ * law of their day. null = within the law; otherwise the reason names the files, the remedy the
+ * exact command. The fence reads the record from the pushed tree, so a post-hoc widening IS
+ * visible: the amendment event's timestamp trails the commit it excuses — an auditor's fact.
+ */
+export function scopeRefusal(record, codeFiles) {
+  if (!Array.isArray(codeFiles) || codeFiles.length === 0) return null;
+  if (recordCreatedAt(record) < SCOPE_LAW_CUTOVER) return null;
+  const patterns = scopeOf(record);
+  if (patterns.length === 0) {
+    return {
+      reason: `task '${record.id}' declares no scope — a post-cutover task binds its code commits with declared blast radius, not a bearer footer`,
+      remedy: `node tools/task-state.mjs scope ${record.id} --add "<glob>[,<glob>...]   (e.g. 'tools/**') — declare the blast radius the code will touch`,
+    };
+  }
+  const outside = codeFiles.filter((f) => !pathInScope(f, patterns));
+  if (outside.length > 0) {
+    return {
+      reason: `code outside task '${record.id}'s declared scope (${patterns.join(", ")}): ${outside.join(", ")}`,
+      remedy: `widen the record (append-only, auditable): node tools/task-state.mjs scope ${record.id} --add "<the missing glob>"   — or move the change to the task that owns those files`,
+    };
+  }
+  return null;
 }
 
 function classRefusal(record) {
@@ -318,7 +392,12 @@ function checkRange(base) {
     const { record, error } = loadRecord(footer);
     if (error) { errors.push(`${short}: ${error}\n      fix: node tools/task-state.mjs new ${footer} --risk-class <class> && node tools/task-state.mjs advance ${footer} planned && node tools/task-state.mjs advance ${footer} executing`); continue; }
     const refusal = recordRefusal(record);
-    if (refusal) errors.push(`${short} (task ${footer}): ${refusal}`);
+    if (refusal) { errors.push(`${short} (task ${footer}): ${refusal}`); continue; }
+    // The binding half of issue #8: the footer must not be a bearer citation — the named task's
+    // DECLARED scope has to cover every code file this commit touches (same law the commit-msg
+    // gate enforces at commit time; here it is re-judged from the pushed tree).
+    const scopeLaw = scopeRefusal(record, files.filter(isCodePath));
+    if (scopeLaw) { errors.push(`${short} (task ${footer}): ${scopeLaw.reason}\n      fix: ${scopeLaw.remedy}`); continue; }
   }
   return errors;
 }
@@ -365,6 +444,51 @@ function cmdStaged() {
 }
 
 /**
+ * The binding gate (issue #8): at commit-msg time the `task:` footer must name a REAL, IN-FLIGHT
+ * task whose DECLARED scope covers the staged code. The refusal lands within one action of the
+ * mistake; the push fence re-judges the same law from the pushed tree (a local hook is a
+ * convenience — the fence is the control). Wire as a commit-msg hook:
+ *   node tools/task-coverage.mjs --commit-msg "$1"
+ */
+function cmdCommitMsg(messageFile) {
+  if (typeof messageFile !== "string" || messageFile.length === 0) {
+    die(`--commit-msg requires the message file git passes the hook (usage: --commit-msg <file>, hook form: node tools/task-coverage.mjs --commit-msg "$1")`);
+  }
+  if (!existsSync(messageFile) && !existsSync(`${ROOT}${messageFile.replace(/^\//, "")}`)) {
+    die(`cannot read the commit message file: ${messageFile}\n  rule: a gate that cannot read state must not pass\n  fix: this runs as a commit-msg hook — check core.hooksPath (.githooks) and that the hook passes "$1" through`);
+  }
+  const message = readFileSync(existsSync(messageFile) ? messageFile : `${ROOT}${messageFile.replace(/^\//, "")}`, "utf8");
+  let staged;
+  try {
+    staged = gitOut("diff", "--cached", "--name-only");
+  } catch (e) {
+    die(`cannot read the staged file list — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass\n  fix: make git work in this environment (PATH, safe.directory, readable index), then retry the commit`);
+  }
+  const files = staged.trim().split("\n").filter(Boolean);
+  const codeFiles = files.filter(isCodePath);
+  const footer = taskFooterOf(message);
+  if (!footer) {
+    if (codeFiles.length === 0) return console.log("task-coverage (commit-msg): no code staged — no task footer required.");
+    const sample = codeFiles.slice(0, 3).join(", ") + (codeFiles.length > 3 ? ", …" : "");
+    die(`✖ REFUSED — this commit stages code (${codeFiles.length} file(s): ${sample}) but the message carries no 'task: <id>' footer\n  rule: code lands only under a task this machine can name, within that task's declared scope\n  fix: git commit --amend --trailer "task: <id>"   (existing tasks: node tools/task-state.mjs status)`);
+  }
+  const { record, error } = loadRecord(footer);
+  if (error) {
+    die(`✖ REFUSED — ${error}\n  fix: node tools/task-state.mjs new ${footer} --risk-class <class> && node tools/task-state.mjs advance ${footer} planned && node tools/task-state.mjs advance ${footer} executing   (or fix the footer: git commit --amend --trailer "task: <real-id>")`);
+  }
+  const refusal = recordRefusal(record);
+  if (refusal) die(`✖ REFUSED — task '${footer}' does not authorize this commit: ${refusal}`);
+  if (derivePhase(record.events ?? []) === "done") {
+    die(`✖ REFUSED — task '${footer}' is done; a finished task does not authorize new code\n  fix: node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}   (done is terminal by design)`);
+  }
+  const scopeLaw = scopeRefusal(record, codeFiles);
+  if (scopeLaw) die(`✖ REFUSED — ${scopeLaw.reason}\n  fix: ${scopeLaw.remedy}`);
+  console.log(codeFiles.length === 0
+    ? `task-coverage (commit-msg): footer cites in-flight task '${footer}' (no code staged).`
+    : `task-coverage (commit-msg): ${codeFiles.length} code file(s) bound to in-flight task '${footer}' within its declared scope.`);
+}
+
+/**
  * The gate for the gate: prove the fence is WIRED in this clone, not just present in the repo.
  * Fail-closed on everything a clone can observe; the one clone-local setting CI cannot carry
  * (core.hooksPath) is scoped to local runs.
@@ -378,8 +502,10 @@ function cmdDoctor() {
   // be able to certify the doctor.
   const committedPrePush = committedText(".githooks/pre-push") ?? "";
   const committedPreCommit = committedText(".githooks/pre-commit") ?? "";
+  const committedCommitMsg = committedText(".githooks/commit-msg") ?? "";
   check("pre-push hook committed and invoking the push fence", invokesMode(committedPrePush, "fence"), "commit .githooks/pre-push that runs 'node tools/task-coverage.mjs' (docs/WIRING.md)");
   check("pre-commit staged gate committed", invokesMode(committedPreCommit, "staged"), "commit .githooks/pre-commit that runs 'node tools/task-coverage.mjs --staged'");
+  check("commit-msg binding gate committed", invokesMode(committedCommitMsg, "commit-msg"), "commit .githooks/commit-msg that runs 'node tools/task-coverage.mjs --commit-msg \"$1\"' (docs/WIRING.md)");
 
   // Activation is clone-local config CI cannot carry — scoped honestly instead of faked:
   // locally it is checked for real (and value-checked, not just set); in CI it is SKIPPED,
@@ -391,8 +517,10 @@ function cmdDoctor() {
     const dir = hooksPath && hooksPath.startsWith("/") ? hooksPath.replace(/\/$/, "") : hooksPath ? `${ROOT}${hooksPath.replace(/^\//, "").replace(/\/$/, "")}` : null;
     const livePrePush = dir && existsSync(`${dir}/pre-push`) ? readFileSync(`${dir}/pre-push`, "utf8") : "";
     const livePreCommit = dir && existsSync(`${dir}/pre-commit`) ? readFileSync(`${dir}/pre-commit`, "utf8") : "";
+    const liveCommitMsg = dir && existsSync(`${dir}/commit-msg`) ? readFileSync(`${dir}/commit-msg`, "utf8") : "";
     check("core.hooksPath points at a wired pre-push", invokesMode(livePrePush, "fence"), "git config core.hooksPath .githooks   (must point at the committed hooks)");
     check("core.hooksPath points at a wired pre-commit", invokesMode(livePreCommit, "staged"), "git config core.hooksPath .githooks");
+    check("core.hooksPath points at a wired commit-msg", invokesMode(liveCommitMsg, "commit-msg"), "git config core.hooksPath .githooks");
   }
 
   const wfDir = `${ROOT}.github/workflows`;
@@ -475,8 +603,9 @@ function isAncestorOrSelf(rev, maybeDescendant) {
   }
 }
 
-/** Strict flags: --base takes a value (both --base x and --base=x, non-empty); --staged and
- *  --doctor are exclusive (a silent winner masked the other); unknown flags refuse. */
+/** Strict flags: --base and --commit-msg take values (both `--flag x` and `--flag=x`, non-empty);
+ *  --staged, --doctor, and --commit-msg are exclusive modes (a silent winner masked the others);
+ *  unknown flags refuse. */
 function parseFlags(argv) {
   const flags = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -485,21 +614,22 @@ function parseFlags(argv) {
       flags[a.slice(2)] = true;
       continue;
     }
-    if (a === "--base" || a.startsWith("--base=")) {
-      if (a.startsWith("--base=")) {
-        if (a.slice(7).length === 0) die("--base requires a non-empty revision");
-        flags.base = a.slice(7);
-        continue;
-      }
+    if (a === "--base" || a.startsWith("--base=") || a === "--commit-msg" || a.startsWith("--commit-msg=")) {
+      const eq = a.indexOf("=");
+      const inline = eq !== -1;
+      const key = a.slice(2, eq === -1 ? undefined : eq);
+      if (inline && a.slice(eq + 1).length === 0) die(`--${key} requires a non-empty value`);
+      if (inline) { flags[key] = a.slice(eq + 1); continue; }
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--") || next.length === 0) die("--base requires a non-empty revision (usage: [--base <rev>] [--staged] [--doctor])");
-      flags.base = next;
+      if (next === undefined || next.startsWith("--") || next.length === 0) die(`--${key} requires a non-empty value (usage: [--base <rev>] [--staged] [--doctor] [--commit-msg <file>])`);
+      flags[key] = next;
       i += 1;
       continue;
     }
-    die(`unknown flag: ${a} — usage: task-coverage.mjs [--base <rev>] [--staged] [--doctor] (--self-test to self-test)`);
+    die(`unknown flag: ${a} — usage: task-coverage.mjs [--base <rev>] [--staged] [--doctor] [--commit-msg <file>] (--self-test to self-test)`);
   }
-  if (flags.staged && flags.doctor) die("--staged and --doctor are separate invocations — running one silently would mask the other");
+  const modes = [flags.staged && "staged", flags.doctor && "doctor", flags["commit-msg"] && "commit-msg"].filter(Boolean);
+  if (modes.length > 1) die(`--${modes.join(" and --")} are separate invocations — running one silently would mask the other`);
   return flags;
 }
 
@@ -614,7 +744,44 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 15 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const scopedPost = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["tools/**", ".githooks/*"] }] };
+  const unscopedPost = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "transition", to: "executing" }] };
+  const unscopedPre = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }, { type: "transition", to: "executing" }] };
+  const globCases = [
+    ["a tree glob matches at any depth", pathInScope("tools/a/b/c.mjs", ["tools/**"])],
+    ["a star matches one segment", pathInScope("tools/a.mjs", ["tools/*"])],
+    ["a star stays inside one segment", !pathInScope("tools/a/b.mjs", ["tools/*"])],
+    ["a literal segment matches exactly", pathInScope("package.json", ["package.json"])],
+    ["a double-star segment matches zero segments", pathInScope("docs/x.md", ["docs/**/x.md"])],
+    ["a double-star segment matches many segments", pathInScope("docs/a/b/x.md", ["docs/**/x.md"])],
+    ["? matches exactly one non-separator char", pathInScope("tools/a1.mjs", ["tools/a?.mjs"]) && !pathInScope("tools/a12.mjs", ["tools/a?.mjs"])],
+    ["regex metacharacters in a pattern are literal", pathInScope("tools/a.b.mjs", ["tools/a.b.mjs"]) && !pathInScope("tools/axb.mjs", ["tools/a.b.mjs"])],
+    ["no scope means nothing matches (fail closed)", !pathInScope("tools/a.mjs", [])],
+    ["a path outside every pattern refuses", !pathInScope("apps/x.ts", ["tools/**", ".githooks/*"])],
+  ];
+  for (const [name, passes] of globCases) if (!passes) fail(`task-coverage: ${name}`);
+
+  const scopeCases = [
+    ["a post-cutover task with covering scope passes", scopeRefusal(scopedPost, ["tools/a.mjs", ".githooks/pre-commit"]) === null],
+    ["a post-cutover task with no declared scope refuses", scopeRefusal(unscopedPost, ["tools/a.mjs"]) !== null],
+    ["code outside the declared scope refuses", scopeRefusal(scopedPost, ["apps/x.ts"]) !== null],
+    ["the outside-scope refusal names the offending files", scopeRefusal(scopedPost, ["apps/x.ts", "packages/y.js"]).reason.includes("apps/x.ts")],
+    ["no code files means no scope question", scopeRefusal(unscopedPost, []) === null],
+    ["a pre-cutover task is grandfathered without scope", scopeRefusal(unscopedPre, ["tools/a.mjs", "apps/x.ts"]) === null],
+    ["the no-scope refusal carries the exact fix command", scopeRefusal(unscopedPost, ["tools/a.mjs"]).remedy?.includes("scope t --add")],
+    ["the outside-scope refusal carries the amendment fix", scopeRefusal(scopedPost, ["apps/x.ts"]).remedy?.includes("scope t --add")],
+  ];
+  for (const [name, passes] of scopeCases) if (!passes) fail(`task-coverage: ${name}`);
+
+  const commitMsgWiringCases = [
+    ["a commit-msg hook line certifies commit-msg mode", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 1\n", "commit-msg")],
+    ["a commit-msg line does not certify the fence", !invokesMode("node tools/task-coverage.mjs --commit-msg \"$1\"", "fence")],
+    ["a staged-only line does not certify commit-msg", !invokesMode("node tools/task-coverage.mjs --staged", "commit-msg")],
+    ["a commented-out commit-msg hook wires nothing", !invokesMode("# node tools/task-coverage.mjs --commit-msg \"$1\"\n", "commit-msg")],
+  ];
+  for (const [name, passes] of commitMsgWiringCases) if (!passes) fail(`task-coverage: ${name}`);
+
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 8 scope + 4 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -622,6 +789,7 @@ const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSyn
 if (isEntry) {
   const flags = parseFlags(process.argv.slice(2));
   if (flags["self-test"]) process.exit(selfTest() ? 0 : 1);
+  if (flags["commit-msg"]) { cmdCommitMsg(flags["commit-msg"]); process.exit(0); }
   if (flags.staged) { cmdStaged(); process.exit(0); }
   if (flags.doctor) { cmdDoctor(); process.exit(0); }
   const base = resolvePushBase(flags.base ?? null);
