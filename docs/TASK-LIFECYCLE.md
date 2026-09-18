@@ -31,10 +31,15 @@ remembered.
 - `planning-only` and `experiment` tasks never reach `executing`.
 - `protected` and `migration` tasks carry an approval whose reference literally equals an entry
   heading in the decisions register. A substring is not a decision.
-- `verified` requires RED-check evidence paths, re-checked to exist at transition time. A pin
-  whose evidence vanished is not a pin.
+- `verified` requires a command pin: `red-check --command "<the failing check>"` RUNS the
+  command, refuses if it passes, and records the command, its nonzero exit, and an output
+  digest. Path evidence supplements but never substitutes; a task that cannot carry a runnable
+  pin records a justified `pin-exempt` — accountability, not absence of law.
 - `done` requires a findings register that a prepared adversarial pass minted (empty is not a
-  pass) and that aggregates clean: zero UNRESOLVED findings.
+  pass), that aggregates clean: zero UNRESOLVED findings, whose resolve evidence still exists —
+  and every command pin re-runs GREEN. The full RED→GREEN arc is machine-verified at the gate.
+- The prepared register records the swept range (base, head, diff digest); `verdict` reports it,
+  so a pass can never silently claim to have swept more than it did.
 - Records are event logs under `tasks/`. Phase is derived from the last transition, never
   stored. The tool refuses illegal transitions; it cannot cryptographically stop a hand edit,
   and the git history of the record file is the tamper evidence.
@@ -46,8 +51,8 @@ node tools/task-state.mjs new fix-the-thing --risk-class runtime-code
 node tools/task-state.mjs advance fix-the-thing planned
 node tools/task-state.mjs approve fix-the-thing --decision "<full DECISIONS.md heading>"
 node tools/task-state.mjs advance fix-the-thing executing
-# ...work...
-node tools/task-state.mjs red-check fix-the-thing --evidence test/the-pin.test.ts
+# ...work; watch the pin fail against the broken code first, then record it...
+node tools/task-state.mjs red-check fix-the-thing --command "npm test -- the-pin.test.ts"
 node tools/task-state.mjs advance fix-the-thing verified
 node tools/adversarial-runner.mjs prepare fix-the-thing
 # ...dispatch bundles to fresh-context reviewers, record findings...

@@ -14,6 +14,7 @@
  * any UNRESOLVED finding, or a missing register, fails the verdict.
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, appendFinding, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
@@ -83,6 +84,13 @@ class Refused extends Error {}
 
 /** Refusals throw instead of exiting so a locked section's finally releases the lockfile —
  *  process.exit skips finally and would orphan the lock for the 60s stale-breaker. */
+/** Pure: the human-readable swept-range line for a prepared register — the pass is pinned to
+ *  WHAT it swept, not just when (issue #7's visibility half; gating waits for real usage). */
+export function sweptRangeLine(register) {
+  if (!register || typeof register !== "object" || !register.sweptBase || !register.sweptHead) return null;
+  return `swept ${register.sweptBase}..${register.sweptHead} (digest ${String(register.sweptDiffDigest ?? "unpinned")})`;
+}
+
 function die(message) {
   throw new Refused(message);
 }
@@ -144,16 +152,24 @@ function diffUnderAudit(args) {
   const head = args.head ?? "HEAD";
   const fileList = gitOut("diff", "--name-only", `${base}..${head}`);
   if (!fileList) die(`no diff between ${base} and ${head} — an adversarial pass audits a CHANGE\n  fix: name commits that differ: adversarial-runner.mjs prepare <task-id> --base <rev> --head <rev>`);
-  return { diffStat: gitOut("diff", "--stat", `${base}..${head}`), fileList };
+  return { diffStat: gitOut("diff", "--stat", `${base}..${head}`), fileList, base, head };
 }
 
 /**
  * Only prepare mints a register, and only with the pass marker: verdict and the done-gate
  * require it, so "no findings" can never stand in for "no pass".
  */
-function mintPassMarker(id) {
+function mintPassMarker(id, base, head, sweptContent) {
   mutateJson(findingsPath(id), (text) => {
-    if (text === null) return { ...emptyFindings(id), passStartedAt: new Date().toISOString() };
+    if (text === null) {
+      return {
+        ...emptyFindings(id),
+        passStartedAt: new Date().toISOString(),
+        sweptBase: base,
+        sweptHead: head,
+        sweptDiffDigest: createHash("sha256").update(sweptContent).digest("hex").slice(0, 12),
+      };
+    }
     let register;
     try {
       register = JSON.parse(text);
@@ -163,7 +179,9 @@ function mintPassMarker(id) {
     const error = validateFindings(register);
     if (error) die(error);
     if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-    return undefined; // already prepared — a re-prepare changes nothing
+    // A re-prepare is a NEW sweep of a possibly-new range: the marker re-pins to what this pass
+    // will audit (findings stay append-only; the marker is pass metadata).
+    return { ...register, passStartedAt: new Date().toISOString(), sweptBase: base, sweptHead: head, sweptDiffDigest: createHash("sha256").update(sweptContent).digest("hex").slice(0, 12) };
   });
 }
 
@@ -171,13 +189,13 @@ function cmdPrepare(args) {
   const id = args._[0];
   if (!id) die("usage: prepare <task-id> [--base <rev>] [--head <rev>]");
   requireTask(id);
-  const { diffStat, fileList } = diffUnderAudit(args);
+  const { diffStat, fileList, base, head } = diffUnderAudit(args);
   const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
   if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
   const dir = `${BUNDLE_DIR}/${id}`;
   mkdirSync(dir, { recursive: true });
   for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList));
-  mintPassMarker(id);
+  mintPassMarker(id, base, head, `${diffStat}\n${fileList}`);
   console.log(`${lanes.length} refute bundles written to adversarial/${id}/`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, then record findings here, then 'verdict ${id}'`);
 }
@@ -273,6 +291,8 @@ function cmdVerdict(args) {
   }
   const agg = aggregateFindings(register);
   console.log(`task ${id}: ${agg.total} finding(s) — ${agg.unresolved} UNRESOLVED, ${agg.resolved} RESOLVED, ${agg.wontFix} WONT-FIX`);
+  const swept = sweptRangeLine(register);
+  if (swept) console.log(`  ${swept}`);
   for (const f of register.findings) console.log(`  [${f.status}] ${f.id} (lane ${f.lane ?? "?"}, ${f.severity}): ${f.claim}`);
   if (!agg.clean) {
     console.error("adversarial-runner: verdict FAIL — resolve or wont-fix every finding");
@@ -358,7 +378,12 @@ export function selfTest() {
     ["lane zero refused", laneRefusal(0, 8) !== null],
   ];
   for (const [name, passes] of laneCases) if (!passes) fail(`adversarial-runner: ${name}`);
-  console.log(failures.length === 0 ? "adversarial-runner self-test: OK (2 lanes + bundle contract + aggregation + 3 lane-bound cases)" : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const sweptCases = [
+    ["the swept range is recorded and reported", sweptRangeLine({ sweptBase: "aaa", sweptHead: "bbb", sweptDiffDigest: "abc123" }) === "swept aaa..bbb (digest abc123)"],
+    ["an unmarked register reports nothing", sweptRangeLine({}) === null],
+  ];
+  for (const [name, passes] of sweptCases) if (!passes) fail(`adversarial-runner: ${name}`);
+  console.log(failures.length === 0 ? "adversarial-runner self-test: OK (2 lanes + bundle contract + aggregation + 3 lane-bound + 2 swept-range cases)" : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
