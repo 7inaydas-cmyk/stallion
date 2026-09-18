@@ -35,6 +35,12 @@ remembered.
   command, refuses if it passes, and records the command, its nonzero exit, and an output
   digest. Path evidence supplements but never substitutes; a task that cannot carry a runnable
   pin records a justified `pin-exempt` — accountability, not absence of law.
+- A task's code commits are bound by its DECLARED SCOPE: `scope <id> --add "tools/**,docs/*"`
+  records the blast radius as append-only glob events (declared once the task is `planned`).
+  The `commit-msg` gate refuses code staged outside it at commit time; the push fence re-judges
+  every commit in the range against the record. The footer is a citation; the scope is the
+  binding. Tasks created before 2026-09-18T20:50:00.000Z are grandfathered (their commits
+  settled under the law of their day — the same cutover pattern as the pin law).
 - `done` requires a findings register that a prepared adversarial pass minted (empty is not a
   pass), that aggregates clean: zero UNRESOLVED findings, whose resolve evidence still exists —
   and every command pin re-runs GREEN. The full RED→GREEN arc is machine-verified at the gate.
@@ -50,6 +56,7 @@ remembered.
 ```bash
 node tools/task-state.mjs new fix-the-thing --risk-class runtime-code
 node tools/task-state.mjs advance fix-the-thing planned
+node tools/task-state.mjs scope fix-the-thing --add "apps/api/**,packages/db/**"
 node tools/task-state.mjs approve fix-the-thing --decision "<full DECISIONS.md heading>"
 node tools/task-state.mjs advance fix-the-thing executing
 # ...work; watch the pin fail against the broken code first, then record it...

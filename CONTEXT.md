@@ -27,6 +27,12 @@ _Avoid_: harness-docs-only, product-protocol — pre-extraction names, removed.
 A task at executing, verified, or adversarial. Done is not in flight: a finished task
 authorizes no new code at the staged gate.
 
+**Scope**:
+The code blast radius a task declares as append-only glob events on its record.
+The commit-msg gate and the push fence refuse code files outside it; docs and
+state files are never scoped.
+_Avoid_: allowance, budget, permission list.
+
 **Adoption base**:
 The pinned revision where the push fence starts auditing, committed as `.stallion-base` so
 CI clones can resolve it. History before it is grandfathered; a base that fences an empty

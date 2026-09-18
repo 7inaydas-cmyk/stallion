@@ -40,7 +40,11 @@ must carry a `task: <id>` footer naming a record the machine authorized. Wire it
 pre-push hook and CI; see `docs/WIRING.md`.
 
 Two more fences ship with it. `--staged` refuses a commit that stages code while no task is in
-flight, so the refusal lands at the mistake, not at the push. `--doctor` checks the wiring
+flight, so the refusal lands at the mistake, not at the push. `--commit-msg` (wired as a
+commit-msg hook) binds the footer to a task: it refuses a code commit whose message carries no
+`task:` footer, names an unknown or finished task, or stages code outside that task's DECLARED
+SCOPE — globs recorded on the task record (`task-state scope <id> --add "tools/**"`), and
+re-judged by the push fence so a hookless clone is still fenced. `--doctor` checks the wiring
 itself. It fails when the hooks, the CI step, the push base, or a register is missing, so a
 clone that quietly lost its fence cannot pretend to have one.
 

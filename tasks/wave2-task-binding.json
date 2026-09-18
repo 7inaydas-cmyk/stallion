@@ -1,0 +1,46 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "wave2-task-binding",
+  "title": "Full task-commit binding: declared scope, commit-msg gate, fence scope re-check",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T20:58:56.414Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T20:58:56.441Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T20:58:56.465Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T20:59:52.645Z",
+      "type": "red-check",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "c1ba02860a99"
+    },
+    {
+      "at": "2026-09-18T20:59:52.706Z",
+      "type": "red-check",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b9469897a737"
+    },
+    {
+      "at": "2026-09-18T21:02:25.500Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**",
+        ".githooks/**",
+        ".github/workflows/**"
+      ]
+    }
+  ]
+}

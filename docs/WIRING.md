@@ -39,6 +39,8 @@ Code in this repo is written under the stallion task lifecycle.
 - Code lands only under a task: `node tools/task-state.mjs new <id> --risk-class <class>`,
   advanced one phase at a time (intake, planned, executing, verified, adversarial, done).
 - Commits that touch code carry a `task: <id>` footer on its own line, last paragraph.
+- Every task declares its blast radius at `planned`: `node tools/task-state.mjs scope <id> --add
+  "tools/**"` — code commits outside the declared scope are refused at commit time and at push.
 - `verified` needs a command pin: `red-check --command "<the failing check>"`; `done` needs a
   clean adversarial pass and every pin re-run GREEN.
 - Refusals print the exact fix command. Run it. Do not work around a refusal.
@@ -82,7 +84,33 @@ matters: Claude Code blocks a tool call only on exit 2; stallion refuses with ex
 
 Without the `|| exit 2`, a refusal is a non-blocking error and the commit proceeds.
 
-## 6. The push control
+## 6. The binding gate: refuse at message time
+
+`.githooks/commit-msg` (git passes the message file as `$1`):
+
+```bash
+#!/bin/sh
+node tools/task-coverage.mjs --commit-msg "$1" || exit 1
+```
+
+The staged gate (§5) proves SOME task is in flight; the binding gate proves THIS commit's footer
+names a real, in-flight task whose DECLARED SCOPE covers every staged code file. A code commit
+with no footer, an unknown id, a finished task, or code outside the declared scope refuses here
+— within one action of the mistake — with the exact fix command. The push fence (§7) re-judges
+the same law from the pushed tree, so a clone without hooks is still fenced.
+
+Declare the scope when the task is planned and amend append-only while it is in flight:
+
+```bash
+node tools/task-state.mjs scope fix-the-thing --add "apps/api/**,packages/db/**"
+```
+
+Globs are repo-relative whole-path matches: `**` crosses directories, `*` and `?` stay inside
+one segment. Docs and state files are not code — the scope binds code files only. Tasks created
+before the scope-law cutover (2026-09-18T20:50:00.000Z in stallion's own history) are
+grandfathered.
+
+## 7. The push control
 
 `.githooks/pre-push`:
 
@@ -131,7 +159,7 @@ every run.)
 Pull requests are not re-fenced, on purpose: every commit reaches the default branch through a
 push, and every push is fenced.
 
-## 7. The gate for the gate: doctor
+## 8. The gate for the gate: doctor
 
 ```yaml
 - name: Wiring doctor
@@ -139,13 +167,14 @@ push, and every push is fenced.
   run: node tools/task-coverage.mjs --doctor
 ```
 
-`--doctor` fails the build when the fence is unwired: hooks not committed or not activated,
+`--doctor` fails the build when the fence is unwired: hooks (pre-push, pre-commit, commit-msg)
+not committed or not activated,
 no CI coverage step, `CODE_TREES`/`CODE_EXTS` classifying nothing (a gate matching nothing
 covers nothing — the vacuous-gate trap), no resolvable push base, no decisions-register
 headings, checklist not parsing to eight lanes. Each failure prints its fix. Run it locally
 too: fresh clones must re-run `git config core.hooksPath .githooks`, and the doctor says so.
 
-## 8. Knobs
+## 9. Knobs
 
 - `CODE_TREES` / `CODE_EXTS` / `CODE_NAMES` in `tools/task-coverage.mjs`: what counts as code in
   your layout. Defaults fit a typical monorepo (`apps/`, `packages/`, `tools/`, `deploy/`,
