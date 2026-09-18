@@ -38,9 +38,13 @@ remembered.
 - A task's code commits are bound by its DECLARED SCOPE: `scope <id> --add "tools/**,docs/*"`
   records the blast radius as append-only glob events (declared once the task is `planned`).
   The `commit-msg` gate refuses code staged outside it at commit time; the push fence re-judges
-  every commit in the range against the record. The footer is a citation; the scope is the
-  binding. Tasks created before 2026-09-18T20:50:00.000Z are grandfathered (their commits
-  settled under the law of their day — the same cutover pattern as the pin law).
+  new work in the range against the record — and a FINISHED task never authorizes new code at
+  either transport (commits already on the remote are re-audited under the law of their day).
+  The footer is a citation; the scope is the binding. Tasks created before
+  2026-09-18T20:50:00.000Z are grandfathered for their settled commits (the same cutover
+  pattern as the pin law); an undated or malformed creation stamp fails CLOSED, not open.
+  Amendments are legal while a task is in flight and are visible as recorded events in the
+  record's git history — no machine check reads event-vs-commit ordering.
 - `done` requires a findings register that a prepared adversarial pass minted (empty is not a
   pass), that aggregates clean: zero UNRESOLVED findings, whose resolve evidence still exists —
   and every command pin re-runs GREEN. The full RED→GREEN arc is machine-verified at the gate.

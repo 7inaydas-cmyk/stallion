@@ -94,11 +94,40 @@ export function globRefusal(pattern) {
   if (pattern.includes("\\")) return "backslash is not in this glob dialect — use forward slashes";
   if (pattern.startsWith("/")) return "scope patterns are repo-relative — no leading slash";
   if (pattern.endsWith("/")) return "a trailing slash names a directory — write the glob for files (e.g. 'tools/**')";
-  for (const segment of pattern.split("/")) {
+  const segments = pattern.split("/");
+  for (const segment of segments) {
     if (segment.length === 0) return "empty path segment ('//' inside the pattern)";
     if (segment === "." || segment === "..") return `'${segment}' segment — scope stays inside the repo, relative to its root`;
   }
   if (pattern === "**") return "a scope of everything is no scope — name at least one top-level tree (e.g. 'tools/**')";
+  if (segments[0] === "**" || segments[0] === "*") {
+    return "the first segment must name a top-level tree ('**/' or '*/' could start anywhere and covers everything — e.g. 'tools/**')";
+  }
+  return null;
+}
+
+const FENCE_SURFACE_ROOTS = new Set([".githooks", ".github"]);
+/**
+ * Pure: patterns reaching the fence's own surface (.githooks/**, .github/**, .stallion-base)
+ * are protected-tier blast radius — only a protected or migration task WITH a recorded approval
+ * may declare them. The gated party must not be able to scope over the fence with a runtime-code
+ * self-serve amendment (the law isCodePath already states for the push fence).
+ */
+export function fenceSurfaceRefusal(record, patterns) {
+  const reaching = (patterns ?? []).filter((p) => p === ".stallion-base" || FENCE_SURFACE_ROOTS.has(String(p).split("/")[0]));
+  if (reaching.length === 0) return null;
+  if (!APPROVAL_REQUIRED.has(record.riskClass)) {
+    return {
+      reason: `scope pattern(s) reach the fence's own surface (${reaching.join(", ")}) — rewriting the fence is protected-tier blast radius, not a runtime-code self-serve`,
+      remedy: `open the fence change as its own task: node tools/task-state.mjs new <id> --risk-class protected   then approve --decision "<full DECISIONS.md heading>"`,
+    };
+  }
+  if (!hasApproval(record)) {
+    return {
+      reason: `scope reaches the fence surface but this ${record.riskClass} task carries no approval event`,
+      remedy: `node tools/task-state.mjs approve ${record.id} --decision "<full DECISIONS.md heading>"`,
+    };
+  }
   return null;
 }
 
@@ -356,12 +385,15 @@ function cmdScope(args) {
     if (PHASES.indexOf(phase) < PHASES.indexOf("planned")) {
       die(`task is '${phase}' — scope is declared once there is a plan to name a blast radius\n  fix: node tools/task-state.mjs advance ${id} planned   then re-run the scope amendment`);
     }
+    const tier = fenceSurfaceRefusal(record, adds);
+    if (tier) die(`REFUSED — ${tier.reason}\n  fix: ${tier.remedy}`);
     const already = new Set(scopeOf(record));
     const novel = adds.filter((p) => !already.has(p));
     if (novel.length === 0) die(`every pattern is already inside ${id}'s declared scope — amendments record NEW blast radius, not repetition`);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "scope", patterns: novel }] };
   });
-  console.log(`task ${id}: scope amended +${adds.length} pattern(s) (append-only) — node tools/task-state.mjs status ${id} shows the union`);
+  const written = loadTask(id);
+  console.log(`task ${id}: scope amended (append-only) — ${scopeOf(written).length} pattern(s) declared in total: ${scopeOf(written).join(", ")}`);
 }
 
 const PIN_COMMAND_TIMEOUT_MS = 300_000;
@@ -475,6 +507,8 @@ function cmdStatus(args) {
   if (args._[0]) {
     const record = loadTask(args._[0]);
     console.log(`task ${record.id} — ${derivePhase(record.events)} (risk class ${record.riskClass})`);
+    const scope = scopeOf(record);
+    if (scope.length > 0) console.log(`  scope: ${scope.join(", ")}`);
     for (const o of statusObligations(record)) console.log(`  • ${o}`);
     return;
   }
@@ -589,10 +623,18 @@ export function selfTest() {
     ["recordCreatedAt reads the first timestamped event", recordCreatedAt({ events: [{ type: "created", at: "2026-09-18T20:56:00.000Z" }] }) === "2026-09-18T20:56:00.000Z"],
     ["recordCreatedAt is empty for an undated record", recordCreatedAt({ events: [{ type: "created" }] }) === ""],
     ["the scope law cut over after the pin law did", SCOPE_LAW_CUTOVER >= PIN_LAW_CUTOVER],
+    ["globRefusal refuses a first segment of '**' (covers everything)", globRefusal("**/*") !== null],
+    ["globRefusal refuses a first segment of bare '*' (covers everything)", globRefusal("*/**") !== null],
+    ["globRefusal accepts a named first segment with wildcards", globRefusal("tool*/*.mjs") === null],
+    ["fence-surface scope under runtime-code refuses", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, [".githooks/**"]) !== null],
+    ["fence-surface scope under protected WITHOUT approval refuses", fenceSurfaceRefusal({ riskClass: "protected", events: [] }, [".github/workflows/**"]) !== null],
+    ["fence-surface scope under protected WITH approval passes", fenceSurfaceRefusal({ riskClass: "protected", events: [{ type: "approval", decision: "d" }] }, [".githooks/**", ".stallion-base"]) === null],
+    ["non-surface scope never trips the tier law", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, ["tools/**", "docs/*"]) === null],
+    ["the tier refusal carries the protected-task fix", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, [".githooks/**"]).remedy?.includes("--risk-class protected")],
   ];
   for (const [name, passes] of scopeCases) if (!passes) fail(`task-state: ${name}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy + 13 scope cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy + 23 scope cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

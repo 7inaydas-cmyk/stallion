@@ -25,16 +25,19 @@
  * record is read from the WORKING TREE at push time (CI re-judges from the pushed tree); nothing
  * re-checks a record after its push — a later rewind is the plain-JSON trust boundary whose
  * evidence is git history; and the footer binds the commit to the task's DECLARED SCOPE
- * (scopeRefusal — the commit-msg gate at commit time, this fence at push time), so a citation is
- * no longer bearer: post-cutover tasks must name their blast radius and code outside it refuses.
- * A post-hoc scope widening IS possible (append-only amendment) and is visible: the amendment
- * event's timestamp trails the commit it excuses.
+ * (citationRefusal — the commit-msg gate at commit time, this fence at push time), so a citation
+ * is no longer bearer: post-cutover tasks must name their blast radius and code outside it
+ * refuses. A post-hoc scope widening IS possible (append-only amendment); no machine check
+ * reads event-vs-commit ordering — this repo's neutral-date discipline makes timestamps
+ * non-evidence — so the visibility is the amendment event itself in the record's git history,
+ * and a single commit that both widens a scope and lands the excusing code is that history's
+ * plainest tell (registered future work).
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, SCOPE_LAW_CUTOVER } from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -131,12 +134,19 @@ export function invokesMode(text, mode) {
     if (t.length === 0 || t.startsWith("#")) return false;
     t = t.replace(/^run:\s*/, "").replace(/^sh\s+-c\s+['"]/, "").replace(/'\s*$/, "");
     if (!/^node\s+tools\/task-coverage\.mjs(\s|$)/.test(t)) return false;
+    // A hook that swallows the tool's verdict wires nothing, whatever mode it names — the
+    // doctor must not certify its own decoy (an adversarial finding: '|| exit 0' and
+    // '|| true' both passed every wiring check). '|| exit 2' (the Claude Code translation)
+    // is a BLOCKING outcome and stays certified.
+    if (/\|\|\s*(?:true|:|exit\s+0)\b/.test(t)) return false;
     const doctor = t.includes("--doctor");
     const staged = t.includes("--staged");
     const commitMsg = t.includes("--commit-msg");
     if (mode === "doctor") return doctor;
     if (mode === "staged") return staged && !doctor;
-    if (mode === "commit-msg") return commitMsg && !doctor && !staged;
+    // The commit-msg hook's ARGUMENT is the validated surface: git hands the message file as
+    // $1, and a decoy path (a committed file with a compliant footer) certifies nothing.
+    if (mode === "commit-msg") return commitMsg && !doctor && !staged && /\$1/.test(t);
     return !doctor && !staged && !commitMsg; // "fence": the bare range check, with or without --base
   });
 }
@@ -199,21 +209,41 @@ export function pathInScope(path, patterns) {
 }
 
 /**
+ * Pure: is this record excused from the scope law as genuinely pre-cutover? The timestamp is
+ * client-authored plain JSON, so it is PARSED, not trusted lexicographically — an undated,
+ * malformed, or offset-spelled stamp is NOT grandfathered (fail closed: the forge case is the
+ * case that must not escape). Only a parseable instant strictly before the cutover excuses.
+ */
+export function isGrandfatheredScope(record) {
+  const created = recordCreatedAt(record);
+  // Strict UTC ISO form only: V8's lenient parser makes "0000" a valid year zero, so shape is
+  // checked before parsing — real stamps come from toISOString() and always match.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(created)) return false;
+  const createdMs = Date.parse(created);
+  return Number.isFinite(createdMs) && createdMs < Date.parse(SCOPE_LAW_CUTOVER);
+}
+
+/**
  * Pure: the scope law, shared verbatim by the commit-msg gate and the push fence (the
  * lanesFromChecklist discipline: the enforcement never re-implements the format). A task CREATED
- * after SCOPE_LAW_CUTOVER binds its code commits with a DECLARED blast radius: no scope, or code
- * outside it, refuses. Pre-cutover records are grandfathered — their commits settled under the
- * law of their day. null = within the law; otherwise the reason names the files, the remedy the
- * exact command. The fence reads the record from the pushed tree, so a post-hoc widening IS
- * visible: the amendment event's timestamp trails the commit it excuses — an auditor's fact.
+ * after SCOPE_LAW_CUTOVER binds its code commits with a DECLARED blast radius: no usable scope,
+ * or code outside it, refuses. The ADMISSION law (globRefusal) is re-applied on the judge path —
+ * a hand-edited over-broad or malformed pattern matches NOTHING and the record fails closed, it
+ * never authorizes. null = within the law; otherwise the reason names the files, the remedy the
+ * exact command. The fence reads the record from the working tree at fence time (CI re-judges
+ * from the pushed tree); a post-hoc widening is visible as a recorded amendment event in the
+ * record's git history — in timestamped histories it trails the commit it excuses.
  */
 export function scopeRefusal(record, codeFiles) {
   if (!Array.isArray(codeFiles) || codeFiles.length === 0) return null;
-  if (recordCreatedAt(record) < SCOPE_LAW_CUTOVER) return null;
-  const patterns = scopeOf(record);
+  if (isGrandfatheredScope(record)) return null;
+  const declared = scopeOf(record);
+  const patterns = declared.filter((p) => globRefusal(p) === null);
+  const dropped = declared.length - patterns.length;
   if (patterns.length === 0) {
+    const note = dropped > 0 ? ` (${dropped} recorded pattern(s) are malformed or over-broad and match nothing — fail closed)` : "";
     return {
-      reason: `task '${record.id}' declares no scope — a post-cutover task binds its code commits with declared blast radius, not a bearer footer`,
+      reason: `task '${record.id}' declares no usable scope${note} — a post-cutover task binds its code commits with declared blast radius, not a bearer footer`,
       remedy: `node tools/task-state.mjs scope ${record.id} --add "<glob>[,<glob>...]   (e.g. 'tools/**') — declare the blast radius the code will touch`,
     };
   }
@@ -225,6 +255,24 @@ export function scopeRefusal(record, codeFiles) {
     };
   }
   return null;
+}
+
+/**
+ * Pure: the full citation law — one seam for the commit-msg gate and the push fence, so the two
+ * transports cannot drift (an adversarial finding found exactly that drift shipped). For a NEW
+ * commit, a finished task never authorizes code (the stale-done-master-key law the staged gate
+ * already lives under); re-judged history falls through to the scope law under its own day's
+ * record. `isNewCommit` is the caller's transport fact: always true at commit-msg time; at the
+ * fence, true for an explicitly-based range or a commit not already on the remote anchor.
+ */
+export function citationRefusal(record, codeFiles, isNewCommit) {
+  if (isNewCommit && derivePhase(record.events ?? []) === "done") {
+    return {
+      reason: `task '${record.id}' is done — a finished task does not authorize new code`,
+      remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}   (done is terminal by design)`,
+    };
+  }
+  return scopeRefusal(record, codeFiles);
 }
 
 function classRefusal(record) {
@@ -260,11 +308,14 @@ export function recordRefusal(record) {
   // Defense in depth: a DONE record that predates no pin law and carries no valid pin/exemption
   // is a hand-edit or a forgery — refuse it at the fence. In-flight records are exempt: code
   // commits land at executing, before the pin exists by design (verified is where pins bind).
-  // Records done before PIN_LAW_CUTOVER are grandfathered path-only evidence.
+  // Records done before PIN_LAW_CUTOVER are grandfathered path-only evidence. The doneAt stamp
+  // is client-authored plain JSON, so it is PARSED: a malformed or missing stamp is NOT
+  // grandfathered (fail closed — the forge case is the case that must not escape).
   const phase = derivePhase(record.events ?? []);
   if (phase === "done" && !hasValidPin(record) && !hasPinExemption(record)) {
     const doneAt = [...(record.events ?? [])].reverse().find((e) => e.type === "transition" && e.to === "done")?.at ?? "";
-    if (doneAt >= PIN_LAW_CUTOVER) {
+    const doneMs = Date.parse(doneAt);
+    if (!(Number.isFinite(doneMs) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(doneAt) && doneMs < Date.parse(PIN_LAW_CUTOVER))) {
       return "done record carries no valid command pin (and no recorded exemption) — hand-edited records refuse at the fence";
     }
   }
@@ -366,8 +417,22 @@ function loadRecord(id) {
   }
 }
 
+/**
+ * Is this range commit NEW WORK being judged now, or already-settled history re-audited because
+ * the pinned base predates the remote tip? An explicitly-based range IS this push. With a
+ * remote anchor, a commit already on the remote was judged under the law of its day (the fence
+ * re-reads records at run time; a task done NOW legitimately authorized a commit made and
+ * pushed THEN). With no anchor and no explicit base the done-citation law skips VISIBLY rather
+ * than bricking detached clones (the moved-base precedent: never brick on a missing anchor).
+ */
+function commitIsNew(sha, explicitBase, originRef) {
+  if (explicitBase) return true;
+  if (!originRef) return false;
+  return !isAncestorOrSelf(sha, originRef);
+}
+
 /** The range check: every code commit in base..HEAD must carry an authorizing task footer. */
-function checkRange(base) {
+function checkRange(base, explicitBase = false, originRef = null) {
   const errors = [];
   const headSha = gitOut("rev-parse", "HEAD").trim();
   const commits = gitOut("rev-list", "--reverse", `${base}..HEAD`).trim().split("\n").filter(Boolean);
@@ -393,11 +458,12 @@ function checkRange(base) {
     if (error) { errors.push(`${short}: ${error}\n      fix: node tools/task-state.mjs new ${footer} --risk-class <class> && node tools/task-state.mjs advance ${footer} planned && node tools/task-state.mjs advance ${footer} executing`); continue; }
     const refusal = recordRefusal(record);
     if (refusal) { errors.push(`${short} (task ${footer}): ${refusal}`); continue; }
-    // The binding half of issue #8: the footer must not be a bearer citation — the named task's
-    // DECLARED scope has to cover every code file this commit touches (same law the commit-msg
-    // gate enforces at commit time; here it is re-judged from the pushed tree).
-    const scopeLaw = scopeRefusal(record, files.filter(isCodePath));
-    if (scopeLaw) { errors.push(`${short} (task ${footer}): ${scopeLaw.reason}\n      fix: ${scopeLaw.remedy}`); continue; }
+    // The binding half of issue #8, through the ONE citation seam the commit-msg gate also
+    // lives behind: for new work, a finished task never authorizes code, and the named task's
+    // DECLARED scope must cover every code file this commit touches. Settled history re-audited
+    // from an older pinned base falls through to the scope law under its own day's record.
+    const citation = citationRefusal(record, files.filter(isCodePath), commitIsNew(sha, explicitBase, originRef));
+    if (citation) { errors.push(`${short} (task ${footer}): ${citation.reason}\n      fix: ${citation.remedy}`); continue; }
   }
   return errors;
 }
@@ -478,11 +544,8 @@ function cmdCommitMsg(messageFile) {
   }
   const refusal = recordRefusal(record);
   if (refusal) die(`✖ REFUSED — task '${footer}' does not authorize this commit: ${refusal}`);
-  if (derivePhase(record.events ?? []) === "done") {
-    die(`✖ REFUSED — task '${footer}' is done; a finished task does not authorize new code\n  fix: node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}   (done is terminal by design)`);
-  }
-  const scopeLaw = scopeRefusal(record, codeFiles);
-  if (scopeLaw) die(`✖ REFUSED — ${scopeLaw.reason}\n  fix: ${scopeLaw.remedy}`);
+  const citation = citationRefusal(record, codeFiles, true);
+  if (citation) die(`✖ REFUSED — ${citation.reason}\n  fix: ${citation.remedy}`);
   console.log(codeFiles.length === 0
     ? `task-coverage (commit-msg): footer cites in-flight task '${footer}' (no code staged).`
     : `task-coverage (commit-msg): ${codeFiles.length} code file(s) bound to in-flight task '${footer}' within its declared scope.`);
@@ -608,9 +671,15 @@ function isAncestorOrSelf(rev, maybeDescendant) {
  *  unknown flags refuse. */
 function parseFlags(argv) {
   const flags = {};
+  const seen = new Set();
+  const once = (name) => {
+    if (seen.has(name)) die(`--${name} given more than once — a repeated flag silently keeping the last value is the escape task-state's parser already refuses`);
+    seen.add(name);
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--self-test" || a === "--staged" || a === "--doctor") {
+      once(a.slice(2));
       flags[a.slice(2)] = true;
       continue;
     }
@@ -618,6 +687,7 @@ function parseFlags(argv) {
       const eq = a.indexOf("=");
       const inline = eq !== -1;
       const key = a.slice(2, eq === -1 ? undefined : eq);
+      once(key);
       if (inline && a.slice(eq + 1).length === 0) die(`--${key} requires a non-empty value`);
       if (inline) { flags[key] = a.slice(eq + 1); continue; }
       const next = argv[i + 1];
@@ -770,18 +840,40 @@ export function selfTest() {
     ["a pre-cutover task is grandfathered without scope", scopeRefusal(unscopedPre, ["tools/a.mjs", "apps/x.ts"]) === null],
     ["the no-scope refusal carries the exact fix command", scopeRefusal(unscopedPost, ["tools/a.mjs"]).remedy?.includes("scope t --add")],
     ["the outside-scope refusal carries the amendment fix", scopeRefusal(scopedPost, ["apps/x.ts"]).remedy?.includes("scope t --add")],
+    ["an UNDATED record is NOT grandfathered (fail closed)", !isGrandfatheredScope({ events: [{ type: "created" }] })],
+    ["a malformed timestamp is NOT grandfathered (fail closed)", !isGrandfatheredScope({ events: [{ type: "created", at: "0000" }] })],
+    ["an offset-spelled post-cutover instant is NOT grandfathered", !isGrandfatheredScope({ events: [{ type: "created", at: "2026-09-18T19:00:00.000-05:00" }] })],
+    ["a parseable pre-cutover instant IS grandfathered", isGrandfatheredScope(unscopedPre)],
+    ["a hand-edited everything-pattern matches nothing and fails closed", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["**"] }] }, ["tools/a.mjs"]).reason.includes("no usable scope")],
+    ["a record mixing good and malformed patterns keeps only the good", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["**", "tools/**"] }] }, ["tools/a.mjs"]) === null],
   ];
   for (const [name, passes] of scopeCases) if (!passes) fail(`task-coverage: ${name}`);
+
+  const citationCases = [
+    ["a NEW commit citing a done task refuses at the seam", (() => {
+      const donePost = { ...unscopedPost, events: [...unscopedPost.events, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done" }] };
+      return citationRefusal(donePost, ["tools/a.mjs"], true) !== null && citationRefusal(donePost, ["tools/a.mjs"], true).remedy?.includes("new <new-id>");
+    })()],
+    ["re-judged settled history citing a done task falls through to the scope law", citationRefusal(unscopedPre, ["tools/a.mjs"], false) === null],
+    ["a new commit citing an in-flight scoped task passes the seam", citationRefusal(scopedPost, ["tools/a.mjs"], false) === null && citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "transition", to: "executing" }] }, ["tools/a.mjs"], true) === null],
+    ["a malformed doneAt stamp does not grandfather the pin law", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "not-a-date" }] }) !== null],
+  ];
+  for (const [name, passes] of citationCases) if (!passes) fail(`task-coverage: ${name}`);
 
   const commitMsgWiringCases = [
     ["a commit-msg hook line certifies commit-msg mode", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 1\n", "commit-msg")],
     ["a commit-msg line does not certify the fence", !invokesMode("node tools/task-coverage.mjs --commit-msg \"$1\"", "fence")],
     ["a staged-only line does not certify commit-msg", !invokesMode("node tools/task-coverage.mjs --staged", "commit-msg")],
     ["a commented-out commit-msg hook wires nothing", !invokesMode("# node tools/task-coverage.mjs --commit-msg \"$1\"\n", "commit-msg")],
+    ["a hook that swallows its own verdict wires nothing", !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 0\n", "commit-msg")],
+    ["'|| true' is a swallow, not a wiring", !invokesMode("node tools/task-coverage.mjs --staged || true\n", "staged")],
+    ["'|| exit 2' (the Claude Code translation) still certifies", invokesMode("sh -c 'node tools/task-coverage.mjs --staged || exit 2'", "staged")],
+    ["a commit-msg line validating a decoy path certifies nothing", !invokesMode("node tools/task-coverage.mjs --commit-msg .githooks/footer.txt\n", "commit-msg")],
+    ["a fence line that swallows its verdict certifies no fence", !invokesMode("node tools/task-coverage.mjs || exit 0\n", "fence")],
   ];
   for (const [name, passes] of commitMsgWiringCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 8 scope + 4 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 16 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -808,17 +900,22 @@ if (isEntry) {
   // refusal — a tier-wide exemption let config=NEW-base skip the audit entirely (an
   // adversarial replay proved the smuggle). With no anchor, skip visibly; never fall back to
   // the base-commit copy, which always predates the move and bricked detached clones forever.
+  // The remote-tip anchor serves two laws: the moved-base audit and the done-citation law's
+  // new-work discrimination (a commit already on the remote was judged under the law of its
+  // day; the pinned adoption base deliberately re-audits older settled history).
   const guardBranch = [currentBranch(), remoteHeadBranch()].find((c) => c && revParseOk(`origin/${c}`))
     ?? [currentBranch(), remoteHeadBranch()].find(Boolean) ?? "";
-  if (revParseOk(`origin/${guardBranch}`)) {
-    const oldBaseRequired = movedBaseVerdict(flags.base ?? gitConfig("stallion.push-base"), committedTextAt(`origin/${guardBranch}`, ".stallion-base"), committedText(".stallion-base"));
+  const originRef = revParseOk(`origin/${guardBranch}`) ? `origin/${guardBranch}` : null;
+  if (originRef) {
+    const oldBaseRequired = movedBaseVerdict(flags.base ?? gitConfig("stallion.push-base"), committedTextAt(originRef, ".stallion-base"), committedText(".stallion-base"));
     if (oldBaseRequired !== null) {
       die(`the adoption base moves in THIS push and is not being audited from the OLD base\n  rule: a base move is judged exactly once, from the old base\n  fix: git config stallion.push-base <old-base-sha>   — the EXACT value in origin's copy of .stallion-base, byte-for-byte — then push, then unset`);
     }
   } else {
     console.log("task-coverage: ~ moved-base check skipped — no remote tip anchor resolvable (no origin/<branch>, no origin/HEAD)");
+    if (!flags.base) console.log("task-coverage: ~ done-citation law skipped for the same reason — without an anchor or an explicit --base, range commits are judged as settled history (skip, never brick)");
   }
-  const errors = checkRange(base);
+  const errors = checkRange(base, Boolean(flags.base), originRef);
   if (errors.length > 0) {
     for (const e of errors) console.error(`task-coverage: ✖ ${e}`);
     die("CODE LANDED OUTSIDE THE LIFECYCLE — nothing was pushed. Record the task (task-state new), advance it, and carry 'task: <id>' in the commit message.");

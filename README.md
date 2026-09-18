@@ -39,7 +39,7 @@ copy lands.
 must carry a `task: <id>` footer naming a record the machine authorized. Wire it into your
 pre-push hook and CI; see `docs/WIRING.md`.
 
-Two more fences ship with it. `--staged` refuses a commit that stages code while no task is in
+Three more fences ship with it. `--staged` refuses a commit that stages code while no task is in
 flight, so the refusal lands at the mistake, not at the push. `--commit-msg` (wired as a
 commit-msg hook) binds the footer to a task: it refuses a code commit whose message carries no
 `task:` footer, names an unknown or finished task, or stages code outside that task's DECLARED

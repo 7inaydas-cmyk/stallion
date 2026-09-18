@@ -97,7 +97,11 @@ The staged gate (§5) proves SOME task is in flight; the binding gate proves THI
 names a real, in-flight task whose DECLARED SCOPE covers every staged code file. A code commit
 with no footer, an unknown id, a finished task, or code outside the declared scope refuses here
 — within one action of the mistake — with the exact fix command. The push fence (§7) re-judges
-the same law from the pushed tree, so a clone without hooks is still fenced.
+the same law (one shared citation law, both transports), so a clone without hooks — and
+`--no-verify`, and partial `git commit <paths>` commits that skip hooks — is still fenced at
+push; for those transports the refusal lands at the fence, not at the commit. The doctor
+certifies a commit-msg hook only when it passes `"$1"` through and does not swallow the verdict
+(`|| exit 0`, `|| true` certify nothing; `|| exit 2` — the Claude Code translation — does).
 
 Declare the scope when the task is planned and amend append-only while it is in flight:
 
@@ -106,9 +110,16 @@ node tools/task-state.mjs scope fix-the-thing --add "apps/api/**,packages/db/**"
 ```
 
 Globs are repo-relative whole-path matches: `**` crosses directories, `*` and `?` stay inside
-one segment. Docs and state files are not code — the scope binds code files only. Tasks created
-before the scope-law cutover (2026-09-18T20:50:00.000Z in stallion's own history) are
-grandfathered.
+one segment, and the first segment must name a top-level tree — a pattern that could start
+anywhere (`**/*`, `*/**`) covers everything and refuses. The admission law also runs on the
+judge path: a hand-edited malformed or over-broad pattern matches NOTHING and the record fails
+closed. Docs and state files are not code — the scope binds code files only. Scope reaching the
+fence's own surface (`.githooks/**`, `.github/**`, `.stallion-base`) is protected-tier blast
+radius: only a protected or migration task with a recorded approval may declare it. Tasks
+created before the scope-law cutover (2026-09-18T20:50:00.000Z in stallion's own history) are
+grandfathered for their settled commits — a FINISHED task never authorizes new code, whatever
+its age (the fence discriminates: commits already on the remote are re-audited under the law of
+their day; new work answers to today's law).
 
 ## 7. The push control
 
@@ -168,7 +179,8 @@ push, and every push is fenced.
 ```
 
 `--doctor` fails the build when the fence is unwired: hooks (pre-push, pre-commit, commit-msg)
-not committed or not activated,
+not committed — and, in local runs, not activated (a CI clone cannot observe clone-local
+config, so there the activation check skips visibly instead);
 no CI coverage step, `CODE_TREES`/`CODE_EXTS` classifying nothing (a gate matching nothing
 covers nothing — the vacuous-gate trap), no resolvable push base, no decisions-register
 headings, checklist not parsing to eight lanes. Each failure prints its fix. Run it locally
