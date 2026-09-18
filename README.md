@@ -57,7 +57,7 @@ standalone without its history. The rules are the ones that survived contact.
 
 ## Install
 
-Vendor it. Copy `tools/` into your repo, add the four scripts, create your decisions register,
+Vendor it. Copy `tools/` into your repo, add the five scripts, create your decisions register,
 wire the push control. It is about ten minutes; `docs/WIRING.md` walks it. Node 18 or newer.
 Verify the wiring with `node tools/task-coverage.mjs --doctor`, and drop the `AGENTS.md` stanza
 from the wiring guide at your root so every agent reads the law.

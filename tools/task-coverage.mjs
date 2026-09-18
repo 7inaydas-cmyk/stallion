@@ -28,11 +28,10 @@
  * not the specific commit (task↔commit binding is registered future work).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED } from "./task-state.mjs";
-import * as taskStateTaxonomy from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -41,7 +40,6 @@ const CHECKLIST = `${ROOT}docs/ADVERSARIAL-CHECKLIST.md`;
 const CODE_TREES = ["apps/", "packages/", "tools/", "deploy/"];
 const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".mts", ".cts", ".css"]);
 const CODE_NAMES = new Set(["Dockerfile", "Caddyfile"]); // no-extension executables under the four trees
-const PHASE_ORDER = ["intake", "planned", "executing", "verified", "adversarial", "done"];
 
 /** Pure: does this changed path count as code the lifecycle must cover? The fence's own
  *  surface — .stallion-base, the hooks, the CI workflows — IS code: an adversarial finding
@@ -138,12 +136,6 @@ export function taskFooterOf(message) {
   if (!/^([\w-]+: .*\n?)+$/.test(lastParagraph)) return null;
   const m = /(?:^|\n)task: ([a-z0-9][a-z0-9-]*)\s*$/.exec(lastParagraph);
   return m ? m[1] : null;
-}
-
-function derivePhase(events) {
-  let phase = "intake";
-  for (const e of events) if (e.type === "transition" && PHASE_ORDER.includes(e.to)) phase = e.to;
-  return phase;
 }
 
 function classRefusal(record) {
@@ -531,7 +523,6 @@ export function selfTest() {
     ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
     ["unknown risk class refused (hand-forged record)", recordRefusal(record("totally-made-up-class", ["planned", "executing"])) !== null],
     ["docs-only cannot authorize code", recordRefusal(record("docs-only", ["planned", "executing"])) !== null],
-    ["the risk-class taxonomy is task-state's, not a copy (no drift)", RISK_CLASSES === taskStateTaxonomy.RISK_CLASSES && IMPLEMENTATION_FORBIDDEN === taskStateTaxonomy.IMPLEMENTATION_FORBIDDEN],
     ["malformed record refused", recordRefusal(null) !== null],
     ["wrong schema refused", recordRefusal({ schema: "nope" }) !== null],
   ];
@@ -572,11 +563,11 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 13 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 12 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const flags = parseFlags(process.argv.slice(2));
   if (flags["self-test"]) process.exit(selfTest() ? 0 : 1);

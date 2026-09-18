@@ -31,8 +31,9 @@
  * and shows in the diff). Storage: tasks/<id>.json
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, loadFindings, mutateJson } from "./task-findings.mjs";
+import { aggregateFindings, loadFindings, missingResolveEvidence, mutateJson } from "./task-findings.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -63,9 +64,14 @@ function redCheckEvidence(record) {
 }
 
 function evidencePathIsFile(p) {
+  if (typeof p !== "string" || p.length === 0) return false;
   const resolved = existsSync(p) ? p : `${ROOT}${p.replace(/^\//, "")}`;
   return existsSync(resolved) && statSync(resolved).isFile();
 }
+/** One evidence law for every consumer (RED-checks at advance, resolutions at verdict and done):
+ *  a path that exists AND is a file, cwd-relative then repo-relative. Exported so the other
+ *  tools cannot grow a weaker copy of it. */
+export { evidencePathIsFile };
 
 function executionGuard(record) {
   if (IMPLEMENTATION_FORBIDDEN.has(record.riskClass)) {
@@ -100,7 +106,7 @@ function verificationGuard(record, _findings, evidenceOnDisk) {
   return null;
 }
 
-function doneGuard(record, findings) {
+function doneGuard(record, findings, _evidenceOnDisk, resolveEvidenceMissing = []) {
   if (!findings) {
     return {
       reason: "no adversarial findings register — the adversarial pass must be recorded before done (adversarial-runner record/verdict)",
@@ -120,6 +126,15 @@ function doneGuard(record, findings) {
       remedy: `node tools/adversarial-runner.mjs resolve ${record.id} <finding-id> --evidence <paths>   (or: node tools/adversarial-runner.mjs wont-fix ${record.id} <finding-id> --justification "<why>")`,
     };
   }
+  // The done GATE re-verifies resolve evidence — the caller computes the fs fact (as it does for
+  // RED-checks) so this judge stays pure; a check that lives only in the advisory verdict
+  // command enforces nothing (an adversarial finding).
+  if (resolveEvidenceMissing.length > 0) {
+    return {
+      reason: `RESOLVED finding(s) cite evidence that no longer exists: ${resolveEvidenceMissing.join(", ")}`,
+      remedy: `re-resolve with evidence that exists: node tools/adversarial-runner.mjs resolve ${record.id} <finding-id> --evidence <paths-that-exist>`,
+    };
+  }
   return null;
 }
 
@@ -135,7 +150,7 @@ const TRANSITION_GUARDS = {
  * caller re-verifies, so this stays testable with synthetic records.
  * Returns { ok: true } or { ok: false, reason } — the reason is the law being invoked.
  */
-export function evaluateTransition(record, findings, target, evidenceOnDisk) {
+export function evaluateTransition(record, findings, target, evidenceOnDisk, resolveEvidenceMissing = []) {
   if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record", remedy: "start a real one: node tools/task-state.mjs new <id> --risk-class <class>" };
   if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}`, remedy: `phases are exactly: ${PHASES.join(", ")}` };
   const current = derivePhase(record.events);
@@ -146,7 +161,7 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk) {
   }
   const guard = TRANSITION_GUARDS[`${current}->${target}`];
   if (guard) {
-    const refusal = guard(record, findings, evidenceOnDisk);
+    const refusal = guard(record, findings, evidenceOnDisk, resolveEvidenceMissing);
     if (refusal) return { ok: false, reason: refusal.reason, remedy: refusal.remedy };
   }
   return { ok: true };
@@ -247,7 +262,8 @@ function cmdAdvance(args) {
     const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
     if (!ok) die(error);
     if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile));
+    const resolveMissing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
+    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), resolveMissing);
     if (!verdict.ok) die(`REFUSED — ${verdict.reason}\n  fix: ${verdict.remedy}`);
     from = derivePhase(record.events);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "transition", to: target }] };
@@ -319,6 +335,9 @@ export function selfTest() {
 
   const cases = [
     ["fresh task derives intake", derivePhase(base.events) === "intake"],
+    ["the taxonomy is pinned by content (the frozen six, in order)", JSON.stringify(RISK_CLASSES) === JSON.stringify(["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"])],
+    ["implementation-forbidden pinned by content", [...IMPLEMENTATION_FORBIDDEN].sort().join(",") === "experiment,planning-only"],
+    ["approval-required pinned by content", [...APPROVAL_REQUIRED].sort().join(",") === "migration,protected"],
     ["intake -> planned allowed", evaluateTransition(base, null, "planned", true).ok],
     ["skip intake -> executing refused", !evaluateTransition(base, null, "executing", true).ok],
     ["backwards move refused", !evaluateTransition(at(executing, "executing"), null, "planned", true).ok],
@@ -346,14 +365,16 @@ export function selfTest() {
     ["missing RED-check cites red-check", evaluateTransition(at(executing, "executing"), null, "verified", true).remedy?.includes("red-check t --evidence")],
     ["missing register cites prepare", evaluateTransition(adversarial, null, "done", true).remedy?.includes("prepare t")],
     ["unresolved findings cite resolve/wont-fix", evaluateTransition(adversarial, dirtyFindings, "done", true).remedy?.includes("resolve t")],
+    ["vanished resolve evidence blocks done at the gate", !evaluateTransition(adversarial, cleanFindings, "done", true, ["f1: gone.test.ts"]).ok],
+    ["a missing-evidence list absent (pure default) keeps the clean path pure", evaluateTransition(adversarial, cleanFindings, "done", true).ok],
   ];
   for (const [name, passes] of remedyCases) if (!passes) fail(`task-state: ${name}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (19 transition + 5 remedy cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-state self-test: OK (22 transition + 6 remedy cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

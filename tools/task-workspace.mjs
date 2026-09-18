@@ -17,27 +17,20 @@
  * (CI has no jj — the guards are still proven there, and the live jj path prints its own law).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, PHASES as TASK_PHASES } from "./task-state.mjs";
+import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, derivePhase } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
 const WORKSPACE_PHASES = new Set(["planned", "executing", "verified", "adversarial"]);
 
 /** Pure: the sibling dir a task's workspace lives in — derived from the repo's OWN name, so a
- *  vendored harness never stamps its brand on the host repo (issue #2). */
+ *  vendored harness never stamps its brand on the host repo (issue #2). Phase derivation is
+ *  task-state's exported law (issue #3): a forged or typo'd transition target is ignored. */
 export function workspaceSiblingPath(rootPath, id) {
-  const repo = rootPath.replace(/\/+$/, "").split("/").pop() || "repo";
+  const repo = rootPath.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "repo";
   return `../${repo}-task-${id}`;
-}
-
-/** Phase derived only from transitions the lifecycle knows — a forged/typo'd target is ignored
- *  here exactly as in task-state and task-coverage (issue #3). */
-function derivePhase(events) {
-  let phase = "intake";
-  for (const e of events) if (e.type === "transition" && TASK_PHASES.includes(e.to)) phase = e.to;
-  return phase;
 }
 
 /**
@@ -191,7 +184,7 @@ export function selfTest() {
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

@@ -9,7 +9,7 @@
  * read-modify-write — so every writer mutates state with the same discipline.
  */
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -42,6 +42,7 @@ function shapeError(f) {
   if (!f || typeof f !== "object") return "finding is not an object";
   const id = idError(f);
   if (id) return id;
+  if (f.lane !== null && f.lane !== undefined && (!Number.isInteger(f.lane) || f.lane < 1)) return `finding ${f.id}: lane must be a positive integer or null`;
   if (!SEVERITIES.includes(f.severity)) return `finding ${f.id}: unknown severity ${String(f.severity)}`;
   if (!FINDING_STATUSES.includes(f.status)) return `finding ${f.id}: unknown status ${String(f.status)}`;
   if (typeof f.claim !== "string" || f.claim.trim().length === 0) return `finding ${f.id}: empty claim`;
@@ -213,12 +214,16 @@ export function missingResolveEvidence(register, existsFn) {
 function selfTestResolveEvidence(fail) {
   const base = emptyFindings("self-test");
   const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "x" });
+  if (typeof appended === "string") fail(`task-findings: evidence fixture append refused (${appended})`);
   const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["gone.test.ts"] });
+  if (typeof resolved === "string") fail(`task-findings: evidence fixture resolve refused (${resolved})`);
   if (typeof resolved !== "string") {
     if (missingResolveEvidence(resolved, () => false).length !== 1) fail("task-findings: vanished resolve evidence must be reported");
     if (missingResolveEvidence(resolved, () => true).length !== 0) fail("task-findings: present resolve evidence must not be reported");
     if (missingResolveEvidence(appended, () => false).length !== 0) fail("task-findings: UNRESOLVED findings carry no evidence obligation");
   }
+  if (validateFindings({ ...base, findings: [{ id: "f1", lane: 0, severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) === null) fail("task-findings: a zero lane in a stored register must be refused");
+  if (validateFindings({ ...base, findings: [{ id: "f1", lane: "3", severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) === null) fail("task-findings: a string lane in a stored register must be refused");
 }
 
 /**
@@ -318,13 +323,13 @@ async function selfTestConcurrentWriters(fail) {
   }
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry && process.argv.includes("--self-test")) {
   (async () => {
     const failures = [];
     selfTestFindings((m) => failures.push(m));
     await selfTestConcurrentWriters((m) => failures.push(m));
-    console.log(failures.length === 0 ? "task-findings self-test: OK (7 validation + 9 mutation cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
+    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
     process.exit(failures.length === 0 ? 0 : 1);
   })();
 }

@@ -14,9 +14,10 @@
  * any UNRESOLVED finding, or a missing register, fails the verdict.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, appendFinding, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { evidencePathIsFile } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CHECKLIST = `${ROOT}docs/ADVERSARIAL-CHECKLIST.md`;
@@ -191,8 +192,11 @@ function cmdRecord(args) {
   if (!args.claim || typeof args.claim !== "string") die("record requires --claim <what is wrong, where, why it escapes>");
   let laneCount = 0;
   try {
-    laneCount = lanesFromChecklist(readFileSync(CHECKLIST, "utf8")).length;
-  } catch {
+    const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
+    if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes, the same pin prepare enforces)\n  fix: restore exactly eight '### N. Title' headings in docs/ADVERSARIAL-CHECKLIST.md`);
+    laneCount = lanes.length;
+  } catch (e) {
+    if (e instanceof Refused) throw e;
     die(`cannot read the checklist at ${CHECKLIST} to validate the lane\n  fix: restore docs/ADVERSARIAL-CHECKLIST.md (eight '### N. Title' escape classes)`);
   }
   const laneLaw = laneRefusal(lane, laneCount);
@@ -261,7 +265,7 @@ function cmdVerdict(args) {
   if (!id) die("usage: verdict <task-id>");
   requireKebabId(id);
   const register = loadMarkedRegister(id);
-  const missing = missingResolveEvidence(register, (p) => existsSync(p) || existsSync(`${ROOT}${p.replace(/^\//, "")}`));
+  const missing = missingResolveEvidence(register, evidencePathIsFile);
   if (missing.length > 0) {
     console.error("adversarial-runner: verdict FAIL — resolve evidence no longer exists:");
     for (const m of missing) console.error(`  ✖ ${m}`);
@@ -358,7 +362,7 @@ export function selfTest() {
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
