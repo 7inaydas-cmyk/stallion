@@ -46,6 +46,8 @@ jobs:
           COUNT=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('tasks/smoke-finding.findings.json','utf8')).findings.length)")
           echo "findings survived: $COUNT/6"
           test "$COUNT" = "6"
+      - name: Committed adoption base resolves with no --base and no local config
+        run: node tools/task-coverage.mjs
       - name: Wiring doctor (the fence checks itself)
         if: github.event_name == 'push'
         run: node tools/task-coverage.mjs --doctor

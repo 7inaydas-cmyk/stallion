@@ -43,8 +43,14 @@ const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected",
 const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "experiment"]);
 const APPROVAL_REQUIRED = new Set(["protected", "migration"]);
 
-/** Pure: does this changed path count as code the lifecycle must cover? */
+/** Pure: does this changed path count as code the lifecycle must cover? The fence's own
+ *  surface — .stallion-base, the hooks, the CI workflows — IS code: an adversarial finding
+ *  showed a base bump or a workflow edit needed no task footer, letting the gated party
+ *  rewrite the fence in the very push it fences. */
 export function isCodePath(path) {
+  if (path === ".stallion-base") return true;
+  if (path.startsWith(".githooks/")) return true;
+  if (path.startsWith(".github/workflows/") && /\.(yml|yaml)$/.test(path)) return true;
   if (!CODE_TREES.some((t) => path.startsWith(t))) return false;
   const base = path.slice(path.lastIndexOf("/") + 1);
   if (CODE_NAMES.has(base)) return true;
@@ -70,17 +76,24 @@ export function stagedRefusal(stagedFiles, records) {
   return { codeFiles };
 }
 
-/**
- * Pure: base resolution order — explicit argument, then local config, then the COMMITTED
- * adoption base (`.stallion-base`, the one thing a CI clone can read, which is what makes the
- * first push of a branch auditable), then the current branch's remote-tracking ref. null means
- * unresolvable, and the caller REFUSES: the fence must never fail open on a first push.
+/** Pure: base resolution order — explicit argument, then local config, then the COMMITTED
+ *  adoption base (`.stallion-base`, the one thing a CI clone can read, which is what makes the
+ *  first push of a branch auditable), then the current branch's remote-tracking ref (a local
+ *  convenience; CI checkouts are detached). null means unresolvable, and the caller REFUSES:
+ *  the fence must never fail open on a first push.
  */
 export function pickBase(explicit, config, committed, originCurrent) {
   if (explicit) return explicit;
   if (config) return config;
   if (committed) return committed;
   return originCurrent ?? null;
+}
+
+/** Pure: did the adoption base file change INSIDE the range it is about to judge? A baseline
+ *  rewritten by the commits under audit is the smuggle: refuse it (an adversarial finding). */
+export function baseMovedInRange(fileAtRangeStart, fileAtHead) {
+  if (fileAtRangeStart === null || fileAtHead === null) return false;
+  return fileAtRangeStart.trim() !== fileAtHead.trim();
 }
 
 /**
@@ -91,25 +104,19 @@ export function checklistLaneCount(text) {
   return typeof text === "string" ? lanesFromChecklist(text).length : 0;
 }
 
-/** Pure: a live (non-comment) line invokes task-coverage — a mention in a comment wires nothing. */
-export function hasCoverageStep(text) {
+/** Pure: a live (non-comment) line invokes task-coverage in the given MODE — the doctor must
+ *  not certify itself (an adversarial finding: the doctor's own step line satisfied the
+ *  "CI re-runs task-coverage" check, and a --staged-only hook passed as a pre-push fence). */
+export function invokesMode(text, mode) {
   if (typeof text !== "string") return false;
   return text.split("\n").some((l) => {
     const t = l.trim();
-    return t.length > 0 && !t.startsWith("#") && t.includes("task-coverage");
-  });
-}
-
-export function prePushWired(text) {
-  return hasCoverageStep(text);
-}
-
-/** Pure: the staged gate is wired only if a live line runs task-coverage WITH --staged. */
-export function preCommitWired(text) {
-  if (typeof text !== "string") return false;
-  return text.split("\n").some((l) => {
-    const t = l.trim();
-    return t.length > 0 && !t.startsWith("#") && t.includes("task-coverage") && t.includes("--staged");
+    if (t.length === 0 || t.startsWith("#") || !t.includes("task-coverage")) return false;
+    const doctor = t.includes("--doctor");
+    const staged = t.includes("--staged");
+    if (mode === "doctor") return doctor;
+    if (mode === "staged") return staged && !doctor;
+    return !doctor && !staged; // "fence": the bare range check, with or without --base
   });
 }
 
@@ -173,12 +180,12 @@ export function recordRefusal(record) {
 }
 
 function gitOut(...args) {
-  return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" });
+  return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
 }
 
 function revParseOk(rev) {
   try {
-    execFileSync("git", ["rev-parse", "--verify", rev], { cwd: ROOT, stdio: "ignore" });
+    execFileSync("git", ["rev-parse", "--verify", `${rev}^{commit}`], { cwd: ROOT, stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -205,13 +212,13 @@ function rangeCount(base) {
   try {
     return Number(gitOut("rev-list", "--count", `${base}..HEAD`).trim());
   } catch {
-    return 0;
+    return -1; // a git failure is NOT an empty range — the caller must not coach a base change
   }
 }
 
-/** The committed content of a path (null when absent from HEAD) — "committed" checks must read
- *  the tree git will serve to a fresh clone, not the working tree an adversarial pass caught
- *  certifying untracked hooks. */
+/** The committed content of a path (null when absent) — "committed" checks must read the tree
+ *  git will serve to a fresh clone, not the working tree an adversarial pass caught certifying
+ *  untracked hooks. */
 function committedText(path) {
   try {
     return gitOut("show", `HEAD:${path}`);
@@ -220,14 +227,27 @@ function committedText(path) {
   }
 }
 
-/** The committed adoption base — travels with the clone, so CI (which cannot read a developer's
- *  local git config) still resolves a real range on the very first push of a branch. */
-function committedBase() {
+function committedTextAt(rev, path) {
   try {
-    return committedText(".stallion-base")?.trim() || null;
+    return gitOut("show", `${rev}:${path}`);
   } catch {
     return null;
   }
+}
+
+/**
+ * The committed adoption base — travels with the clone, so CI (which cannot read a developer's
+ *  local git config) still resolves a real range on the very first push of a branch. Strictly
+ *  validated: one full 40-hex commit sha, nothing clever.
+ */
+function committedBase() {
+  const text = committedText(".stallion-base");
+  if (text === null) return null;
+  const value = text.trim();
+  if (!/^[0-9a-f]{40}$/.test(value)) {
+    die(`committed .stallion-base is malformed (expected one full 40-hex commit sha): ${JSON.stringify(value.slice(0, 60))}\n  fix: git rev-parse HEAD > .stallion-base   (full sha, one line) then commit it`);
+  }
+  return value;
 }
 
 function loadRecord(id) {
@@ -321,11 +341,13 @@ function cmdDoctor() {
   const results = [];
   const check = (name, ok, fix) => results.push({ name, ok, fix });
 
-  // Wiring checks read the COMMITTED tree: "committed" means a fresh clone gets it.
+  // Wiring checks read the COMMITTED tree and demand the right MODE per transport: the fence
+  // for CI and pre-push, the staged gate for pre-commit — the doctor's own step line must not
+  // be able to certify the doctor.
   const committedPrePush = committedText(".githooks/pre-push") ?? "";
   const committedPreCommit = committedText(".githooks/pre-commit") ?? "";
-  check("pre-push hook committed and invoking task-coverage", prePushWired(committedPrePush), "commit .githooks/pre-push that runs 'node tools/task-coverage.mjs' (docs/WIRING.md)");
-  check("pre-commit staged gate committed", preCommitWired(committedPreCommit), "commit .githooks/pre-commit that runs 'node tools/task-coverage.mjs --staged'");
+  check("pre-push hook committed and invoking the push fence", invokesMode(committedPrePush, "fence"), "commit .githooks/pre-push that runs 'node tools/task-coverage.mjs' (docs/WIRING.md)");
+  check("pre-commit staged gate committed", invokesMode(committedPreCommit, "staged"), "commit .githooks/pre-commit that runs 'node tools/task-coverage.mjs --staged'");
 
   // Activation is clone-local config CI cannot carry — scoped honestly instead of faked:
   // locally it is checked for real (and value-checked, not just set); in CI it is SKIPPED,
@@ -337,8 +359,8 @@ function cmdDoctor() {
     const dir = hooksPath && hooksPath.startsWith("/") ? hooksPath.replace(/\/$/, "") : hooksPath ? `${ROOT}${hooksPath.replace(/^\//, "").replace(/\/$/, "")}` : null;
     const livePrePush = dir && existsSync(`${dir}/pre-push`) ? readFileSync(`${dir}/pre-push`, "utf8") : "";
     const livePreCommit = dir && existsSync(`${dir}/pre-commit`) ? readFileSync(`${dir}/pre-commit`, "utf8") : "";
-    check("core.hooksPath points at a wired pre-push", prePushWired(livePrePush), "git config core.hooksPath .githooks   (must point at the committed hooks)");
-    check("core.hooksPath points at a wired pre-commit", preCommitWired(livePreCommit), "git config core.hooksPath .githooks");
+    check("core.hooksPath points at a wired pre-push", invokesMode(livePrePush, "fence"), "git config core.hooksPath .githooks   (must point at the committed hooks)");
+    check("core.hooksPath points at a wired pre-commit", invokesMode(livePreCommit, "staged"), "git config core.hooksPath .githooks");
   }
 
   const wfDir = `${ROOT}.github/workflows`;
@@ -349,8 +371,8 @@ function cmdDoctor() {
       return existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")) : [];
     }
   })();
-  const ciOk = committedWorkflows.some((f) => hasCoverageStep(committedText(f) ?? ""));
-  check("CI re-runs task-coverage", ciOk, "add a task-coverage step to .github/workflows (docs/WIRING.md) and commit it");
+  const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
+  check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
 
   let tracked = "";
   try {
@@ -396,13 +418,13 @@ function resolvePushBase(explicit) {
   const originCurrent = branch && revParseOk(`origin/${branch}`) ? `origin/${branch}` : null;
   const base = pickBase(explicit, gitConfig("stallion.push-base"), committedBase(), originCurrent);
   if (!base) {
-    die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git rev-parse HEAD > .stallion-base && git add .stallion-base   (committed — CI resolves from it)\n       or: git config stallion.push-base <rev>   (local override)\n       or run with an explicit --base <rev>`);
+    die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit   (committed — CI resolves from it)\n       or: git config stallion.push-base <rev>   (local override)\n       or run with an explicit --base <rev>`);
   }
   return base;
 }
 
-/** Strict flags: --base takes a value (both --base x and --base=x); booleans refuse values;
- *  anything unknown refuses. The lenient indexOf style silently mis-parsed both --base forms. */
+/** Strict flags: --base takes a value (both --base x and --base=x, non-empty); --staged and
+ *  --doctor are exclusive (a silent winner masked the other); unknown flags refuse. */
 function parseFlags(argv) {
   const flags = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -412,15 +434,20 @@ function parseFlags(argv) {
       continue;
     }
     if (a === "--base" || a.startsWith("--base=")) {
-      if (a.startsWith("--base=")) { flags.base = a.slice(7); continue; }
+      if (a.startsWith("--base=")) {
+        if (a.slice(7).length === 0) die("--base requires a non-empty revision");
+        flags.base = a.slice(7);
+        continue;
+      }
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) die("--base requires a revision (usage: [--base <rev>] [--staged] [--doctor])");
+      if (next === undefined || next.startsWith("--") || next.length === 0) die("--base requires a non-empty revision (usage: [--base <rev>] [--staged] [--doctor])");
       flags.base = next;
       i += 1;
       continue;
     }
     die(`unknown flag: ${a} — usage: task-coverage.mjs [--base <rev>] [--staged] [--doctor] (--self-test to self-test)`);
   }
+  if (flags.staged && flags.doctor) die("--staged and --doctor are separate invocations — running one silently would mask the other");
   return flags;
 }
 
@@ -451,6 +478,10 @@ export function selfTest() {
     ["Dockerfile is code", isCodePath("apps/api/Dockerfile")],
     ["deploy Caddyfile is code", isCodePath("deploy/Caddyfile")],
     ["sql is exempt by default", !isCodePath("db/migrations/0001_init.sql")],
+    ["the adoption-base file is code (it IS the fence)", isCodePath(".stallion-base")],
+    ["committed hooks are code (they ARE the fence)", isCodePath(".githooks/pre-push")],
+    ["CI workflows are code (they carry the fence)", isCodePath(".github/workflows/selftest.yml")],
+    ["docs under .github are not code", !isCodePath(".github/ISSUE_TEMPLATE.md")],
   ];
   for (const [name, passes] of codeCases) if (!passes) fail(`task-coverage: ${name}`);
 
@@ -491,11 +522,11 @@ export function selfTest() {
 
   const doctorCases = [
     ["lane count delegates to the enforcement parser", checklistLaneCount("### 1. A\nbody\n### 2. B\nbody") === 2],
-    ["coverage-step detector matches a live workflow step", hasCoverageStep("      run: node tools/task-coverage.mjs --base \"$BASE\"")],
-    ["a comment mentioning task-coverage wires nothing", !hasCoverageStep("# TODO: wire task-coverage later\nexit 0")],
-    ["pre-push detector matches a live hook body", prePushWired("#!/bin/sh\nnode tools/task-coverage.mjs || exit 1\n")],
-    ["a commented-out pre-commit hook does not wire the staged gate", !preCommitWired("#!/bin/sh\n# node tools/task-coverage.mjs --staged\nexit 0")],
-    ["pre-commit detector requires --staged on a live line", preCommitWired("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n")],
+    ["the fence detector matches a bare range-check step", invokesMode("      run: node tools/task-coverage.mjs --base \"$BASE\"", "fence")],
+    ["the doctor's own step does not certify the fence", !invokesMode("      run: node tools/task-coverage.mjs --doctor", "fence")],
+    ["a --staged-only hook does not certify the fence", !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n", "fence")],
+    ["the staged detector requires --staged on a live line", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n", "staged")],
+    ["a commented-out pre-commit hook wires nothing", !invokesMode("#!/bin/sh\n# node tools/task-coverage.mjs --staged\nexit 0\n", "staged")],
     ["register heading counter counts '## ' only", registerHeadingCount("## A\n### a\n## B") === 2],
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
@@ -506,10 +537,13 @@ export function selfTest() {
     ["the committed adoption base beats origin tracking", pickBase(null, null, "sha-c", "origin/x") === "sha-c"],
     ["origin tracking is the last fallback", pickBase(null, null, null, "origin/main") === "origin/main"],
     ["nothing resolvable is null (fail closed, never skip)", pickBase(null, null, null, null) === null],
+    ["an adoption base moved inside the audited range is flagged", baseMovedInRange("aaa\n", "bbb\n")],
+    ["an unchanged adoption base passes", !baseMovedInRange("aaa\n", "aaa\n")],
+    ["a base file absent at range start passes (first adoption)", !baseMovedInRange(null, "aaa\n")],
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (15 path + 6 footer + 11 authorization + 5 staged + 7 doctor + 5 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 11 authorization + 5 staged + 7 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -521,10 +555,21 @@ if (isEntry) {
   if (flags.doctor) { cmdDoctor(); process.exit(0); }
   const base = resolvePushBase(flags.base ?? null);
   if (!revParseOk(base)) {
-    die(`base revision does not resolve: ${base}\n  fix: pass --base <rev>, or update the adoption base: git config stallion.push-base <rev>\n       (a fresh repo with one commit has no parent to diff against — record the adoption base explicitly)`);
+    die(`base revision does not resolve: ${base}\n  fix: pass --base <rev>, or update the committed adoption base: git rev-parse <rev> > .stallion-base && git commit\n       (a fresh repo with one commit has no parent to diff against — pin the adoption base explicitly)`);
   }
-  if (rangeCount(base) === 0) {
-    die(`base ${base} fences an empty range — ${base}..HEAD contains no commits\n  rule: a range that audits nothing is not coverage (the vacuous-base escape, refused)\n  fix: set the base to an ancestor before HEAD: git config stallion.push-base <earlier-rev>`);
+  const count = rangeCount(base);
+  if (count === -1) {
+    die(`cannot count the range ${base}..HEAD — git rev-list failed\n  rule: a gate that cannot read state must not pass\n  fix: this is a git failure, not a configuration problem — check the repository (permissions, safe.directory, object store) and retry`);
+  }
+  if (count === 0) {
+    die(`base ${base} fences an empty range — ${base}..HEAD contains no commits\n  rule: a range that audits nothing is not coverage (the vacuous-base escape, refused)\n  fix: pin the base to an ancestor before HEAD: git rev-parse <earlier-rev> > .stallion-base && git commit`);
+  }
+  if (flags.base === undefined || flags.base === null) {
+    // The self-resolved tiers (config/committed) read the audited tree — refuse a baseline the
+    // audited commits themselves moved (the smuggle: unfooted code + a base bump past it).
+    if (baseMovedInRange(committedTextAt(base, ".stallion-base"), committedText(".stallion-base"))) {
+      die(`the adoption base moved INSIDE the audited range (${base}..HEAD)\n  rule: the fence's baseline cannot be rewritten by the commits it is judging\n  fix: if this move is deliberate, push once with the OLD base explicit (--base <old>, or git config stallion.push-base <old>), then let the new base take over`);
+    }
   }
   const errors = checkRange(base);
   if (errors.length > 0) {

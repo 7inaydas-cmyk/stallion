@@ -18,7 +18,8 @@ git subtree add   # or plain copy: tools/*.mjs into <your-repo>/tools/
     "task-state": "node tools/task-state.mjs",
     "adversarial": "node tools/adversarial-runner.mjs",
     "workspace": "node tools/task-workspace.mjs",
-    "task-coverage": "node tools/task-coverage.mjs"
+    "task-coverage": "node tools/task-coverage.mjs",
+    "selftest": "node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test"
   }
 }
 ```
@@ -100,6 +101,11 @@ git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit -m "
 ```
 
 Everything before that revision is grandfathered; every code commit after it needs a task.
+The fence's own surface counts as code: `.stallion-base`, `.githooks/*`, and
+`.github/workflows/*` all require a `task:` footer — the gated party cannot rewrite the fence
+in the push it fences. Moving the adoption base forward later is a deliberate two-step: push
+once with the old base explicit (`--base <old>` or `git config stallion.push-base <old>`),
+then let the new base take over — a base that moved inside its own audited range is refused.
 
 **CI**:
 
