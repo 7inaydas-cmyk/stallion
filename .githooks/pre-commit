@@ -1,0 +1,3 @@
+#!/bin/sh
+# The inner gate: refuse at stage time, within one action of the mistake.
+node tools/task-coverage.mjs --staged || exit 1

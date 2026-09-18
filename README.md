@@ -39,6 +39,11 @@ copy lands.
 must carry a `task: <id>` footer naming a record the machine authorized. Wire it into your
 pre-push hook and CI; see `docs/WIRING.md`.
 
+Two more fences ship with it. `--staged` refuses a commit that stages code while no task is in
+flight, so the refusal lands at the mistake, not at the push. `--doctor` checks the wiring
+itself. It fails when the hooks, the CI step, the push base, or a register is missing, so a
+clone that quietly lost its fence cannot pretend to have one.
+
 ## Why refusal instead of convention
 
 Each rule in stallion replaced a convention that stopped working under pressure. Checklists get
@@ -54,6 +59,8 @@ standalone without its history. The rules are the ones that survived contact.
 
 Vendor it. Copy `tools/` into your repo, add the four scripts, create your decisions register,
 wire the push control. It is about ten minutes; `docs/WIRING.md` walks it. Node 18 or newer.
+Verify the wiring with `node tools/task-coverage.mjs --doctor`, and drop the `AGENTS.md` stanza
+from the wiring guide at your root so every agent reads the law.
 
 ## License
 

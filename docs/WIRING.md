@@ -2,7 +2,7 @@
 
 The tools are dependency-free Node scripts that resolve your repo root from their own location
 (`tools/` at the root). Adoption means vendoring: copy `tools/` into your repo, add the scripts,
-wire the push control. Fork and adapt; the trees and defaults are knobs, not law.
+wire the fences. Fork and adapt; the trees and defaults are knobs, not law.
 
 ## 1. Vendor the tools
 
@@ -23,40 +23,120 @@ git subtree add   # or plain copy: tools/*.mjs into <your-repo>/tools/
 }
 ```
 
-## 3. The decisions register
+## 3. Tell the agents: AGENTS.md
+
+AGENTS.md is the one file every coding agent reads (Codex documents its precedence rules for
+it; Claude Code can import it via `@AGENTS.md`). Paste a stanza like this at your repo root and
+keep it true:
+
+```md
+# AGENTS.md
+
+Code in this repo is written under the stallion task lifecycle.
+
+- Before planning: `node tools/task-state.mjs status`
+- Code lands only under a task: `node tools/task-state.mjs new <id> --risk-class <class>`,
+  advanced one phase at a time (intake, planned, executing, verified, adversarial, done).
+- Commits that touch code carry a `task: <id>` footer on its own line, last paragraph.
+- `verified` needs RED-check evidence; `done` needs a clean adversarial pass.
+- Refusals print the exact fix command. Run it. Do not work around a refusal.
+- Self-check the wiring: `node tools/task-coverage.mjs --doctor`
+```
+
+## 4. The decisions register
 
 Create `docs/decisions/DECISIONS.md` (see stallion's own for format). Protected and migration
 tasks cite its full entry headings when approved. This is the human authorization surface: the
 machine checks that an approval names a real, recorded decision.
 
-## 4. The push control
+## 5. The inner gate: refuse at stage time
 
-`task-coverage` refuses a push whose range contains a code commit without an authorizing
-`task: <id>` footer. Run it at every transport that can refuse:
-
-**pre-push hook** (`.githooks/pre-push`, with `git config core.hooksPath .githooks`):
+`.githooks/pre-commit`:
 
 ```bash
-guard_base="origin/$(git branch --show-current)"
-if [ -n "$guard_base" ]; then
-  node tools/task-coverage.mjs --base "$guard_base" || exit 1
-fi
+#!/bin/sh
+node tools/task-coverage.mjs --staged || exit 1
 ```
 
-**CI** (GitHub Actions shape; give it the same base your other range checks use):
+Activate per clone: `git config core.hooksPath .githooks`. Agents that skip hooks (aider does,
+by default) are still fenced at push (next section) — the inner gate exists so the refusal
+lands within one action of the mistake, not as the last line of defense.
+
+**Claude Code PreToolUse hook** (blocks before `git commit` runs at all). Exit-code translation
+matters: Claude Code blocks a tool call only on exit 2; stallion refuses with exit 1, so wrap:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-coverage.mjs --staged || exit 2'" } ]
+      }
+    ]
+  }
+}
+```
+
+Without the `|| exit 2`, a refusal is a non-blocking error and the commit proceeds.
+
+## 6. The push control
+
+`.githooks/pre-push`:
+
+```bash
+#!/bin/sh
+node tools/task-coverage.mjs || exit 1
+```
+
+The base is resolved inside the tool, in order: an explicit `--base <rev>`, then
+`git config stallion.push-base <rev>`, then the current branch's remote-tracking ref. If none
+resolve — the first push of a new branch — the check REFUSES rather than skipping. Set the
+adoption base once, when you wire up:
+
+```bash
+git config stallion.push-base <rev-at-adoption>   # grandfathers all history before it
+```
+
+**CI**:
 
 ```yaml
 - name: Task coverage
-  run: node tools/task-coverage.mjs --base "${{ github.event.before }}"
+  if: github.event_name == 'push'
+  run: |
+    BASE="${{ github.event.before }}"
+    if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+      BASE="origin/${{ github.event.repository.default_branch }}"
+    fi
+    node tools/task-coverage.mjs --base "$BASE"
 ```
 
-**A push wrapper** works too: anything that can refuse before `git push` runs.
+(The zero-SHA guard matters: `github.event.before` is all zeros on a new branch, and an
+unhandled one kills the job with an unresolvable base.)
 
-## 5. Knobs
+Pull requests are not re-fenced, on purpose: every commit reaches the default branch through a
+push, and every push is fenced.
+
+## 7. The gate for the gate: doctor
+
+```yaml
+- name: Wiring doctor
+  if: github.event_name == 'push'
+  run: node tools/task-coverage.mjs --doctor
+```
+
+`--doctor` fails the build when the fence is unwired: hooks not committed or not activated,
+no CI coverage step, `CODE_TREES`/`CODE_EXTS` classifying nothing (a gate matching nothing
+covers nothing — the vacuous-gate trap), no resolvable push base, no decisions-register
+headings, checklist not parsing to eight lanes. Each failure prints its fix. Run it locally
+too: fresh clones must re-run `git config core.hooksPath .githooks`, and the doctor says so.
+
+## 8. Knobs
 
 - `CODE_TREES` / `CODE_EXTS` / `CODE_NAMES` in `tools/task-coverage.mjs`: what counts as code in
   your layout. Defaults fit a typical monorepo (`apps/`, `packages/`, `tools/`, `deploy/`,
-  TypeScript/JavaScript/shell, Dockerfile, Caddyfile).
+  TypeScript/JavaScript/shell, Dockerfile, Caddyfile). The doctor refuses a classification that
+  matches nothing.
 - `tasks/` — where records and findings registers live (both tools; keep them committed, the git
   history is the tamper evidence).
 - `docs/ADVERSARIAL-CHECKLIST.md` — the eight classes the refute bundles carry. Edit it to your
@@ -64,6 +144,7 @@ fi
 
 ## What is deliberately NOT enforced
 
-Working-tree edits are free; the fence is the push. Docs and config commits need no task record.
-Nothing stops a hand-edited record; the git history of the record file is the evidence trail.
-These are boundaries, not gaps, and they are stated so nobody has to discover them.
+Working-tree edits are free; the fence is the stage gate and the push. Docs and config commits
+need no task record. Nothing stops a hand-edited record; the git history of the record file is
+the evidence trail. These are boundaries, not gaps, and they are stated so nobody has to
+discover them.

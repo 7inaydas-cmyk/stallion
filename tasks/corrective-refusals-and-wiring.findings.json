@@ -1,0 +1,243 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "corrective-refusals-and-wiring",
+  "passStartedAt": "2026-09-18T12:34:15.613Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 6,
+      "severity": "CRITICAL",
+      "claim": "staged gate fails open on git error: the git diff --cached catch swallows any failure and treats it as nothing-staged, passing the gate (lanes 4/6/7 proved it live without git on PATH)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.537Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.463Z"
+    },
+    {
+      "id": "f2",
+      "lane": 3,
+      "severity": "CRITICAL",
+      "claim": "doctor certifies uncommitted wiring: checks named committed read the working tree only, so untracked hooks and uncommitted CI edits pass (lanes 3/5/6/8 caught it live against this very commit)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.564Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.495Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "CI=true environment flag flips the doctor hooks-activation check to pass: client-set env used as an authenticity signal",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.588Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.525Z"
+    },
+    {
+      "id": "f4",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "push-base is vacuous-rangeable: --base HEAD audits HEAD..HEAD and exits 0 claiming coverage; doctor checks non-null only, never resolvability or a non-empty range",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.611Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.557Z"
+    },
+    {
+      "id": "f5",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "staged gate binds nothing: any record ever at executing (including done, forever) authorizes all staged code; pass message claims a task-code relationship that was never checked",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.639Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.586Z"
+    },
+    {
+      "id": "f6",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "wiring detectors are raw substring matches: comments, TODOs, and if:false steps satisfy hasCoverageStep/prePushWired",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.665Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.618Z"
+    },
+    {
+      "id": "f7",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "approve remedy misleads: grep ^## output pasted verbatim is refused because the matcher strips the prefix; neither reason nor fix says to strip it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.692Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.649Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "HIGH",
+      "claim": "law-enforcement drift: TASK-LIFECYCLE.md teaches docs-only/experiment but tools enforce harness-docs-only/product-protocol (private-repo vocabulary surviving in code constants)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.719Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs",
+        "tools/task-workspace.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.681Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "checkRange remedy says advance to executing directly, a command the same tool refuses (illegal jump); must be the two-step chain",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.747Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.711Z"
+    },
+    {
+      "id": "f10",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "footerless-commit remedy names git commit --amend for every flagged sha, but amend only reaches HEAD; deeper commits need a rebase or drop",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.771Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.738Z"
+    },
+    {
+      "id": "f11",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "two independent checklist parsers (doctor regex vs runner lanesFromChecklist) can drift; doctor should delegate to the enforcement parser",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.797Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.762Z"
+    },
+    {
+      "id": "f12",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "doctor hooksPath check is value-blind: any configured directory passes, even one with no stallion hooks",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.827Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.787Z"
+    },
+    {
+      "id": "f13",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "WIRING.md at b702f0c still documents the old fail-open first-push recipe, neutralizing the new fail-closed base resolution for anyone wiring per the committed docs",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.853Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.818Z"
+    },
+    {
+      "id": "f14",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "resolve/wont-fix accept semantically empty evidence: any existing file resolves a CRITICAL finding; any non-empty string justifies a wont-fix",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T12:43:53.876Z",
+      "justification": "the machine verifies existence and shape; the truth of evidence is judged in review and preserved by git history — the register is accountability, not proof. Binding content (hashing pin-run output into records) is registered future work.",
+      "resolvedAt": "2026-09-18T12:48:24.955Z"
+    },
+    {
+      "id": "f15",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "red-check evidence is existence-only: any file satisfies the verifier; the pin itself is unproven by the machine",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T12:43:53.904Z",
+      "justification": "same boundary class as f14: RED evidence is existence-checked, and the demonstration lives in the session record and commit history. Machine-verifiable pins (failing command plus captured output) are registered future work.",
+      "resolvedAt": "2026-09-18T12:48:24.980Z"
+    },
+    {
+      "id": "f16",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "pull_request events are not fenced by the CI coverage step (if push only) while the doctor stays green",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.934Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.844Z"
+    },
+    {
+      "id": "f17",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "resolve enriches unknown-finding errors by sniffing a message prefix from another module; wording drift silently drops the fix hint",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:53.986Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.872Z"
+    },
+    {
+      "id": "f18",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "classifier sanity check is self-satisfying in the canonical repo (the doctor classifies its own file), incapable of failing at home",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T12:43:54.011Z",
+      "justification": "the classifier check targets adopting repos whose code lives outside the vendored tools tree; in the canonical repo it is self-satisfied by construction, which is acceptable — every adopter runs it against their own layout.",
+      "resolvedAt": "2026-09-18T12:48:25.004Z"
+    },
+    {
+      "id": "f19",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "README does not mention the staged gate, the doctor, or the AGENTS.md adoption surface",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:43:54.038Z",
+      "evidence": [
+        "README.md"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.899Z"
+    },
+    {
+      "id": "f20",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "--base=rev equals form is silently unparsed in task-coverage argv and --base --staged is swallowed, so the audit can run on a range the operator did not choose (recorded via --claim= because the strict parser refuses dash-leading values)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T12:45:02.724Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T12:48:24.930Z"
+    }
+  ]
+}

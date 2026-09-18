@@ -1,0 +1,4 @@
+#!/bin/sh
+# The push fence. Base resolution lives in the tool: --base > stallion.push-base >
+# origin/<branch>; unresolvable REFUSES (a first push must not fail open).
+node tools/task-coverage.mjs || exit 1

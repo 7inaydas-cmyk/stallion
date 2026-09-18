@@ -1,0 +1,46 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "corrective-refusals-and-wiring",
+  "title": "Corrective refusals, staged inner gate, wiring doctor",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T12:29:01.313Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T12:29:01.338Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T12:29:01.362Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T12:30:46.128Z",
+      "type": "red-check",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs"
+      ]
+    },
+    {
+      "at": "2026-09-18T12:32:33.727Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T12:48:25.055Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T12:48:40.946Z",
+      "type": "transition",
+      "to": "done"
+    }
+  ]
+}

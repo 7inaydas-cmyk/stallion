@@ -46,3 +46,14 @@ jobs:
           COUNT=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('tasks/smoke-finding.findings.json','utf8')).findings.length)")
           echo "findings survived: $COUNT/6"
           test "$COUNT" = "6"
+      - name: Wiring doctor (the fence checks itself)
+        if: github.event_name == 'push'
+        run: node tools/task-coverage.mjs --doctor
+      - name: Task coverage (push-range fence; adoption base grandfathers history)
+        if: github.event_name == 'push'
+        run: |
+          BASE="${{ github.event.before }}"
+          if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="origin/${{ github.event.repository.default_branch }}"
+          fi
+          node tools/task-coverage.mjs --base "$BASE"
