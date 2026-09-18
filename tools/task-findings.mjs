@@ -5,9 +5,13 @@
  * The adversarial pass produces findings; the task lifecycle consumes them as a precondition for
  * `done`. Both consumers parse and aggregate through THESE functions, so "any UNRESOLVED finding
  * blocks advance" cannot drift between the tool that records findings and the tool that enforces
- * them. Pure functions over the register object; the fs shell lives in each tool.
+ * them. Pure functions over the register object, plus the one shared fs shell — locked
+ * read-modify-write — so every writer mutates state with the same discipline.
  */
-import { closeSync, existsSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export const FINDINGS_SCHEMA = "stallion/task-findings@1";
 export const FINDING_STATUSES = ["UNRESOLVED", "RESOLVED", "WONT-FIX"];
@@ -190,11 +194,10 @@ export function selfTestFindings(fail) {
 }
 
 /**
- * Serialized read-modify-write for the JSON state both tools mutate (a real
- * finding: two concurrent `record`s both computed `f1` and the second silently erased the first —
- * a lost UNRESOLVED finding makes the register cleaner than reality). An O_EXCL lockfile with
- * stale-breaking plus temp+rename so a crashed writer leaves either the old or the new file,
- * never a torn one.
+ * Mutual exclusion around one file: an O_EXCL lockfile with stale-breaking. `fn` runs holding
+ * the lock; a throw releases it via finally — so a refusal raised inside a locked section must
+ * THROW, never process.exit: exit skips finally and orphans the lockfile for the 60s
+ * stale-breaker to clean up.
  */
 export function withLock(path, fn) {
   const lock = `${path}.lock`;
@@ -226,10 +229,74 @@ export function atomicWriteJson(path, value) {
   renameSync(tmp, path);
 }
 
+/**
+ * Read-modify-write with the load INSIDE the lock. The load must happen there — locking only
+ * the write serializes nothing: two writers load the same snapshot, both append, and the second
+ * write silently erases the first's event while both report success (a real finding: two
+ * concurrent `record`s both computed `f1`; a lost UNRESOLVED finding makes the register cleaner
+ * than reality). `mutate` gets the file's current text (null when absent) and returns the next
+ * value to write; null/undefined means "no write".
+ */
+export function mutateJson(path, mutate) {
+  return withLock(path, () => {
+    const next = mutate(existsSync(path) ? readFileSync(path, "utf8") : null);
+    if (next !== undefined && next !== null) atomicWriteJson(path, next);
+    return next;
+  });
+}
+
+/**
+ * The one case that needs real processes: 8 children race read-modify-writes on one file.
+ * Under the lost-update bug the survivors land short of 8 while every writer reports success —
+ * that silence is what makes the bug dangerous; under the lock every append survives.
+ */
+async function selfTestConcurrentWriters(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "stallion-race-"));
+  try {
+    const target = join(dir, "shared.json");
+    atomicWriteJson(target, { items: [] });
+    const script = `
+      (async () => {
+        const m = await import(${JSON.stringify(import.meta.url)});
+        m.mutateJson(${JSON.stringify(target)}, (text) => {
+          const o = JSON.parse(text);
+          o.items.push(1);
+          return o;
+        });
+      })().catch((e) => { console.error(e); process.exit(1); });
+    `;
+    const children = [];
+    const exits = [];
+    for (let i = 0; i < 8; i += 1) {
+      const child = spawn(process.execPath, ["-e", script]);
+      children.push(child);
+      exits.push(new Promise((resolve) => child.on("exit", (code) => resolve(code))));
+    }
+    const codes = await Promise.race([
+      Promise.all(exits),
+      new Promise((resolve) => { setTimeout(() => resolve(null), 30_000); }),
+    ]);
+    if (codes === null) {
+      for (const c of children) c.kill("SIGKILL");
+      fail("task-findings: 8 concurrent writers did not settle within 30s");
+      return;
+    }
+    const failed = codes.filter((c) => c !== 0).length;
+    if (failed > 0) fail(`task-findings: ${failed}/8 concurrent writer(s) exited nonzero`);
+    const final = JSON.parse(readFileSync(target, "utf8"));
+    if (final.items.length !== 8) fail(`task-findings: LOST UPDATE — 8 concurrent read-modify-writes left ${final.items.length} appends`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 if (isEntry && process.argv.includes("--self-test")) {
-  const failures = [];
-  selfTestFindings((m) => failures.push(m));
-  console.log(failures.length === 0 ? "task-findings self-test: OK (7 validation + 9 mutation cases)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
-  process.exit(failures.length === 0 ? 0 : 1);
+  (async () => {
+    const failures = [];
+    selfTestFindings((m) => failures.push(m));
+    await selfTestConcurrentWriters((m) => failures.push(m));
+    console.log(failures.length === 0 ? "task-findings self-test: OK (7 validation + 9 mutation cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
+    process.exit(failures.length === 0 ? 0 : 1);
+  })();
 }

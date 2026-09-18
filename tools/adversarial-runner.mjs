@@ -15,7 +15,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { aggregateFindings, appendFinding, emptyFindings, loadFindings, setFindingStatus, validateFindings, withLock, atomicWriteJson, SEVERITIES } from "./task-findings.mjs";
+import { aggregateFindings, appendFinding, emptyFindings, loadFindings, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
 
 const ROOT = new URL("../", import.meta.url).pathname;
 const CHECKLIST = `${ROOT}docs/ADVERSARIAL-CHECKLIST.md`;
@@ -77,9 +77,12 @@ clause above against every file in the diff, not after the first file.
 `;
 }
 
+class Refused extends Error {}
+
+/** Refusals throw instead of exiting so a locked section's finally releases the lockfile —
+ *  process.exit skips finally and would orphan the lock for the 60s stale-breaker. */
 function die(message) {
-  console.error(`adversarial-runner: ${message}`);
-  process.exit(1);
+  throw new Refused(message);
 }
 
 function gitOut(...args) {
@@ -104,24 +107,24 @@ function requireTask(id) {
 }
 
 /**
- * The register a WRITE path may touch: it must already exist (only `prepare` mints one, against a
- * real diff) and belong to this task. A real failure mode, found the hard way: the old
- * load-or-init let a FAILING 'resolve <typo-id>' mint an empty register that verdict scored CLEAN
- * and the done-gate accepted — a command that fails must leave no state that passes.
+ * The register a WRITE path may touch, parsed INSIDE the lock: it must already exist (only
+ * `prepare` mints one, against a real diff) and belong to this task. A real failure mode, found
+ * the hard way: the old load-or-init let a FAILING 'resolve <typo-id>' mint an empty register
+ * that verdict scored CLEAN and the done-gate accepted — a command that fails must leave no
+ * state that passes.
  */
-function loadFindingsForWrite(id) {
-  requireKebabId(id);
-  const { ok, register, error } = loadFindings(findingsPath(id));
-  if (!ok) die(error);
-  if (!register) die(`no findings register for ${id} — a pass begins with 'prepare ${id}', not with a write`);
+function parseRegisterForWrite(text, id) {
+  if (text === null) die(`no findings register for ${id} — a pass begins with 'prepare ${id}', not with a write`);
+  let register;
+  try {
+    register = JSON.parse(text);
+  } catch (e) {
+    die(`findings register is not valid JSON: ${e.message}`);
+  }
+  const error = validateFindings(register);
+  if (error) die(error);
   if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
   return register;
-}
-
-function saveFindings(id, register) {
-  const error = validateFindings(register);
-  if (error) die(`refusing to write invalid register: ${error}`);
-  withLock(findingsPath(id), () => atomicWriteJson(findingsPath(id), register));
 }
 
 /** The diff under audit: defaults to the last commit, overridable for multi-commit waves. */
@@ -138,10 +141,19 @@ function diffUnderAudit(args) {
  * require it, so "no findings" can never stand in for "no pass".
  */
 function mintPassMarker(id) {
-  const { ok, register, error } = loadFindings(findingsPath(id));
-  if (!ok) die(error);
-  if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-  if (!register) saveFindings(id, { ...emptyFindings(id), passStartedAt: new Date().toISOString() });
+  mutateJson(findingsPath(id), (text) => {
+    if (text === null) return { ...emptyFindings(id), passStartedAt: new Date().toISOString() };
+    let register;
+    try {
+      register = JSON.parse(text);
+    } catch (e) {
+      die(`findings register is not valid JSON: ${e.message}`);
+    }
+    const error = validateFindings(register);
+    if (error) die(error);
+    if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
+    return undefined; // already prepared — a re-prepare changes nothing
+  });
 }
 
 function cmdPrepare(args) {
@@ -167,12 +179,15 @@ function cmdRecord(args) {
   if (!Number.isInteger(lane) || lane < 1) die("record requires --lane <n> (the checklist escape class)");
   if (!SEVERITIES.includes(args.severity)) die(`record requires --severity in ${SEVERITIES.join(", ")}`);
   if (!args.claim || typeof args.claim !== "string") die("record requires --claim <what is wrong, where, why it escapes>");
-  const register = loadFindingsForWrite(id);
-  const id_ = `f${register.findings.length + 1}`;
-  const next = appendFinding(register, { id: id_, lane, severity: args.severity, claim: args.claim });
-  if (typeof next === "string") die(next);
-  saveFindings(id, next);
-  console.log(`finding ${id_} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
+  // The id mint and the append are one locked step: f{len+1} computed against a stale snapshot
+  // collides with the sibling writer that already appended.
+  const next = mutateJson(findingsPath(id), (text) => {
+    const register = parseRegisterForWrite(text, id);
+    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim });
+    if (typeof appended === "string") die(appended);
+    return appended;
+  });
+  console.log(`finding ${next.findings[next.findings.length - 1].id} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
 }
 
 /** Parse + existence-check the --evidence list (comma-split, repo-relative or cwd-relative). */
@@ -185,21 +200,27 @@ function evidencePaths(args) {
 function cmdResolve(args) {
   const [id, findingId] = args._;
   if (!id || !findingId) die("usage: resolve <task-id> <finding-id> --evidence <path>[,<path>...]");
+  requireKebabId(id);
   const evidence = evidencePaths(args);
   if (evidence.length === 0) die("resolve requires --evidence — the paths that prove the fix");
-  const next = setFindingStatus(loadFindingsForWrite(id), findingId, { status: "RESOLVED", evidence });
-  if (typeof next === "string") die(next);
-  saveFindings(id, next);
+  mutateJson(findingsPath(id), (text) => {
+    const next = setFindingStatus(parseRegisterForWrite(text, id), findingId, { status: "RESOLVED", evidence });
+    if (typeof next === "string") die(next);
+    return next;
+  });
   console.log(`finding ${findingId} RESOLVED (${evidence.length} evidence path(s))`);
 }
 
 function cmdWontFix(args) {
   const [id, findingId] = args._;
   if (!id || !findingId) die("usage: wont-fix <task-id> <finding-id> --justification <why this is accepted>");
+  requireKebabId(id);
   if (!args.justification || typeof args.justification !== "string") die("wont-fix requires --justification — an accepted escape must say why, in the register, forever");
-  const next = setFindingStatus(loadFindingsForWrite(id), findingId, { status: "WONT-FIX", justification: args.justification });
-  if (typeof next === "string") die(next);
-  saveFindings(id, next);
+  mutateJson(findingsPath(id), (text) => {
+    const next = setFindingStatus(parseRegisterForWrite(text, id), findingId, { status: "WONT-FIX", justification: args.justification });
+    if (typeof next === "string") die(next);
+    return next;
+  });
   console.log(`finding ${findingId} WONT-FIX (justification recorded)`);
 }
 
@@ -301,9 +322,17 @@ const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
-  const [cmd, ...rest] = argv;
-  const args = parseArgs(rest);
-  const commands = { prepare: cmdPrepare, record: cmdRecord, resolve: cmdResolve, "wont-fix": cmdWontFix, verdict: cmdVerdict };
-  if (!commands[cmd]) die("usage: adversarial-runner.mjs <prepare|record|resolve|wont-fix|verdict> ... (--self-test to self-test)");
-  commands[cmd](args);
+  try {
+    const [cmd, ...rest] = argv;
+    const args = parseArgs(rest);
+    const commands = { prepare: cmdPrepare, record: cmdRecord, resolve: cmdResolve, "wont-fix": cmdWontFix, verdict: cmdVerdict };
+    if (!commands[cmd]) die("usage: adversarial-runner.mjs <prepare|record|resolve|wont-fix|verdict> ... (--self-test to self-test)");
+    commands[cmd](args);
+  } catch (e) {
+    if (e instanceof Refused) {
+      console.error(`adversarial-runner: ${e.message}`);
+      process.exit(1);
+    }
+    throw e;
+  }
 }

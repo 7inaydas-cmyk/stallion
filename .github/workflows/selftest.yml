@@ -7,6 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the record-race smoke prepares a pass over HEAD~1..HEAD — real history required
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -21,3 +23,26 @@ jobs:
             echo "planning-only reached executing: the gate is decoration"; exit 1
           fi
           echo "refusal fired: planning-only cannot execute"
+      - name: Concurrent-writers smoke (no silent lost appends)
+        run: |
+          set -e
+          node tools/task-state.mjs new smoke-race --risk-class runtime-code
+          for i in 1 2 3 4 5 6 7 8; do
+            node tools/task-state.mjs red-check smoke-race --evidence README.md &
+          done
+          wait
+          COUNT=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('tasks/smoke-race.json','utf8')).events.filter(e => e.type === 'red-check').length)")
+          echo "red-check events survived: $COUNT/8"
+          test "$COUNT" = "8"
+      - name: Concurrent record smoke (the original lost-finding bug)
+        run: |
+          set -e
+          node tools/task-state.mjs new smoke-finding --risk-class runtime-code
+          node tools/adversarial-runner.mjs prepare smoke-finding
+          for i in 1 2 3 4 5 6; do
+            node tools/adversarial-runner.mjs record smoke-finding --lane 1 --severity LOW --claim "concurrent writer $i" &
+          done
+          wait
+          COUNT=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('tasks/smoke-finding.findings.json','utf8')).findings.length)")
+          echo "findings survived: $COUNT/6"
+          test "$COUNT" = "6"

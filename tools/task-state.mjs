@@ -31,7 +31,7 @@
  * and shows in the diff). Storage: tasks/<id>.json
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { aggregateFindings, atomicWriteJson, loadFindings, withLock } from "./task-findings.mjs";
+import { aggregateFindings, loadFindings, mutateJson } from "./task-findings.mjs";
 
 const ROOT = new URL("../", import.meta.url).pathname;
 const STATE_DIR = `${ROOT}tasks`;
@@ -131,9 +131,12 @@ export function obligations(record, findings, evidenceOnDisk) {
   return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason];
 }
 
+class Refused extends Error {}
+
+/** Refusals throw instead of exiting so a locked section's finally releases the lockfile —
+ *  process.exit skips finally and would orphan the lock for the 60s stale-breaker. */
 function die(message) {
-  console.error(`task-state: ${message}`);
-  process.exit(1);
+  throw new Refused(message);
 }
 
 function taskPath(id) {
@@ -141,12 +144,11 @@ function taskPath(id) {
   return `${STATE_DIR}/${id}.json`;
 }
 
-function loadTask(id) {
-  const path = taskPath(id);
-  if (!existsSync(path)) die(`no such task: ${id} (expected ${path})`);
+function parseTaskRecord(text, id, path) {
+  if (text === null) die(`no such task: ${id} (expected ${path})`);
   let record;
   try {
-    record = JSON.parse(readFileSync(path, "utf8"));
+    record = JSON.parse(text);
   } catch (e) {
     die(`task record is not valid JSON: ${e.message}`);
   }
@@ -154,13 +156,19 @@ function loadTask(id) {
   return record;
 }
 
-function appendEvent(record, event) {
-  saveTask({ ...record, events: [...record.events, { at: new Date().toISOString(), ...event }] });
+function loadTask(id) {
+  const path = taskPath(id);
+  return parseTaskRecord(existsSync(path) ? readFileSync(path, "utf8") : null, id, path);
 }
 
-function saveTask(record) {
-  mkdirSync(STATE_DIR, { recursive: true });
-  withLock(taskPath(record.id), () => atomicWriteJson(taskPath(record.id), record));
+/**
+ * The only way a record changes: parse, judge, and append all INSIDE the file lock. A load
+ * outside the lock is the lost-update bug — two writers append to the same snapshot and the
+ * second write silently erases the first's event.
+ */
+function mutateTask(id, mutate) {
+  const path = taskPath(id);
+  return mutateJson(path, (text) => mutate(parseTaskRecord(text, id, path)));
 }
 
 function cmdNew(args) {
@@ -169,8 +177,11 @@ function cmdNew(args) {
   const riskClass = args["risk-class"];
   if (!riskClass || riskClass === true) die("new requires --risk-class <class>");
   if (!RISK_CLASSES.includes(riskClass)) die(`unknown risk class: ${riskClass} (one of ${RISK_CLASSES.join(", ")})`);
-  if (existsSync(taskPath(id))) die(`task already exists: ${id}`);
-  saveTask({ schema: TASK_SCHEMA, id, title: args.title ?? null, riskClass, events: [{ at: new Date().toISOString(), type: "created", riskClass }] });
+  mkdirSync(STATE_DIR, { recursive: true });
+  mutateJson(taskPath(id), (text) => {
+    if (text !== null) die(`task already exists: ${id}`);
+    return { schema: TASK_SCHEMA, id, title: args.title ?? null, riskClass, events: [{ at: new Date().toISOString(), type: "created", riskClass }] };
+  });
   console.log(`task ${id}: intake (risk class ${riskClass}) — tasks/${id}.json`);
 }
 
@@ -184,7 +195,7 @@ function cmdApprove(args) {
   if (!heading) {
     die(`no decisions-register entry heading equals: ${ref}\n  an approval must cite a FULL entry heading from docs/decisions/DECISIONS.md, verbatim — a substring is not an act: short refs match by accident`);
   }
-  appendEvent(loadTask(id), { type: "approval", decision: ref });
+  mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] }));
   console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
 }
 
@@ -194,21 +205,24 @@ function cmdRedCheck(args) {
   const all = [...paths, ...(typeof args.evidence === "string" ? args.evidence.split(",") : [])].map((p) => p.trim()).filter(Boolean);
   if (all.length === 0) die("red-check requires evidence paths — the files that prove the pin ran RED");
   for (const p of all) if (!evidencePathIsFile(p)) die(`evidence path is not a readable file: ${p}`);
-  appendEvent(loadTask(id), { type: "red-check", evidence: all });
+  mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "red-check", evidence: all }] }));
   console.log(`task ${id}: RED-check evidence recorded (${all.length} path(s))`);
 }
 
 function cmdAdvance(args) {
   const [id, target] = args._;
   if (!id || !target) die("usage: advance <id> <phase>");
-  const record = loadTask(id);
-  const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
-  if (!ok) die(error);
-  if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-  const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile));
-  if (!verdict.ok) die(`REFUSED — ${verdict.reason}`);
-  appendEvent(record, { type: "transition", to: target });
-  console.log(`task ${id}: ${derivePhase(record.events)} -> ${target}`);
+  let from;
+  mutateTask(id, (record) => {
+    const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
+    if (!ok) die(error);
+    if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
+    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile));
+    if (!verdict.ok) die(`REFUSED — ${verdict.reason}`);
+    from = derivePhase(record.events);
+    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "transition", to: target }] };
+  });
+  console.log(`task ${id}: ${from} -> ${target}`);
 }
 
 function statusObligations(record) {
@@ -304,9 +318,17 @@ const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
-  const [cmd, ...rest] = argv;
-  const args = parseArgs(rest);
-  const commands = { new: cmdNew, approve: cmdApprove, "red-check": cmdRedCheck, advance: cmdAdvance, status: cmdStatus };
-  if (!commands[cmd]) die("usage: task-state.mjs <new|approve|red-check|advance|status> ... (--self-test to self-test)");
-  commands[cmd](args);
+  try {
+    const [cmd, ...rest] = argv;
+    const args = parseArgs(rest);
+    const commands = { new: cmdNew, approve: cmdApprove, "red-check": cmdRedCheck, advance: cmdAdvance, status: cmdStatus };
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|red-check|advance|status> ... (--self-test to self-test)");
+    commands[cmd](args);
+  } catch (e) {
+    if (e instanceof Refused) {
+      console.error(`task-state: ${e.message}`);
+      process.exit(1);
+    }
+    throw e;
+  }
 }
