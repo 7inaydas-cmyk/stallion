@@ -31,3 +31,12 @@ authorizes no new code at the staged gate.
 The pinned revision where the push fence starts auditing, committed as `.stallion-base` so
 CI clones can resolve it. History before it is grandfathered; a base that fences an empty
 range is a refusal, not a configuration.
+
+**Authoring layer (stallion)**:
+The harness agents work under while writing and testing code: task lifecycle, RED→GREEN
+pins, commit binding, adversarial passes. It governs the writing, never the running.
+
+**Ingest layer**:
+The target repo's own gates that judge what lands: its push fences, approvals, and CI.
+Stallion's hardening ports down into it; its law stays the target repo's own.
+_Avoid_: describing either layer as replacing the other.

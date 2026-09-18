@@ -25,6 +25,21 @@
       "command": "node tools/task-coverage.mjs --base 9357bc5",
       "exitCode": 1,
       "outputDigest": "0c03053d3e61"
+    },
+    {
+      "at": "2026-09-18T20:27:23.784Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T20:34:45.005Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T20:34:45.178Z",
+      "type": "transition",
+      "to": "done"
     }
   ]
 }

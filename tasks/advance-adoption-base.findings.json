@@ -1,0 +1,87 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "advance-adoption-base",
+  "passStartedAt": "2026-09-18T20:27:23.870Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 8,
+      "severity": "CRITICAL",
+      "claim": "the base-move two-step was structurally unexecutable: the moved-base guard anchored on the base commit (which always predates the move), bricking the bare fence forever, while fence parity applied the pin law retroactively so the old-base push refused on all eight grandfathered commits",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:34:44.215Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:34:44.601Z"
+    },
+    {
+      "id": "f2",
+      "lane": 8,
+      "severity": "HIGH",
+      "claim": "the advance task's only pin was degenerate: its RED was the vacuous-range refusal and its GREEN audits the self-authorizing commit — verified in form, disclosed in substance",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:34:44.269Z",
+      "justification": "a base move has no external test to pin; the pin discriminates the fence's empty-versus-nonempty range semantics, which is the change's actual behavior. Disclosed in the register.",
+      "resolvedAt": "2026-09-18T20:34:44.755Z"
+    },
+    {
+      "id": "f3",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "the fence-surface change landed while its authorizing record sat mid-flight and its register was uncommitted — a transient bearer-citation window",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:34:44.332Z",
+      "evidence": [
+        "tasks/advance-adoption-base.json"
+      ],
+      "resolvedAt": "2026-09-18T20:34:44.655Z"
+    },
+    {
+      "id": "f4",
+      "lane": 8,
+      "severity": "HIGH",
+      "claim": "commit timestamps are neutral by policy while event timestamps are honest session time: the artifact reads as backdating unless the policy is known",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:34:44.391Z",
+      "justification": "deliberate commit-timestamp neutrality (the public-history leak discipline) alongside honest event timestamps is standing policy, recorded in two prior registers; the divergence is the audit trail.",
+      "resolvedAt": "2026-09-18T20:34:44.804Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "the sweep range is client-aimed: prepare defaults to HEAD~1 and nothing ties the pinned span to the task's commit footprint",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:34:44.446Z",
+      "justification": "range-to-commit binding is the registered task-commit binding design (issue #8); until then dispatch discipline plus the pinned-sha swept range is the documented boundary.",
+      "resolvedAt": "2026-09-18T20:34:44.855Z"
+    },
+    {
+      "id": "f6",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "the GREEN re-run leaves no durable event: the done transition is trusted computation, not recorded evidence",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:34:44.499Z",
+      "justification": "the transition event plus the git history of the record is the evidence; a recorded green-run event would be more client-writable prose, not stronger evidence.",
+      "resolvedAt": "2026-09-18T20:34:44.907Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "WIRING's PR claim met an unconditional bare CI step",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:34:44.549Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:34:44.705Z"
+    }
+  ],
+  "sweptBase": "9357bc595d609e51b559e7781d093b7d2048fba6",
+  "sweptHead": "5b5071dcd6b92a33f32ad22f92cd62810bbb08a5",
+  "sweptDiffDigest": "161f8b4418e9"
+}
