@@ -114,7 +114,7 @@ function requireTask(id) {
  * state that passes.
  */
 function parseRegisterForWrite(text, id) {
-  if (text === null) die(`no findings register for ${id} — a pass begins with 'prepare ${id}', not with a write`);
+  if (text === null) die(`no findings register for ${id} — a pass begins with 'prepare ${id}', not with a write\n  fix: node tools/adversarial-runner.mjs prepare ${id}`);
   let register;
   try {
     register = JSON.parse(text);
@@ -132,7 +132,7 @@ function diffUnderAudit(args) {
   const base = args.base ?? "HEAD~1";
   const head = args.head ?? "HEAD";
   const fileList = gitOut("diff", "--name-only", `${base}..${head}`);
-  if (!fileList) die(`no diff between ${base} and ${head} — an adversarial pass audits a CHANGE`);
+  if (!fileList) die(`no diff between ${base} and ${head} — an adversarial pass audits a CHANGE\n  fix: name commits that differ: adversarial-runner.mjs prepare <task-id> --base <rev> --head <rev>`);
   return { diffStat: gitOut("diff", "--stat", `${base}..${head}`), fileList };
 }
 
@@ -162,7 +162,7 @@ function cmdPrepare(args) {
   requireTask(id);
   const { diffStat, fileList } = diffUnderAudit(args);
   const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
-  if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately`);
+  if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
   const dir = `${BUNDLE_DIR}/${id}`;
   mkdirSync(dir, { recursive: true });
   for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList));
@@ -193,7 +193,7 @@ function cmdRecord(args) {
 /** Parse + existence-check the --evidence list (comma-split, repo-relative or cwd-relative). */
 function evidencePaths(args) {
   const evidence = typeof args.evidence === "string" ? args.evidence.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  for (const p of evidence) if (!existsSync(p) && !existsSync(`${ROOT}${p.replace(/^\//, "")}`)) die(`evidence path does not exist: ${p}`);
+  for (const p of evidence) if (!existsSync(p) && !existsSync(`${ROOT}${p.replace(/^\//, "")}`)) die(`evidence path does not exist: ${p}\n  fix: pass repo-relative or cwd-relative paths that exist, comma-separated`);
   return evidence;
 }
 
@@ -204,8 +204,14 @@ function cmdResolve(args) {
   const evidence = evidencePaths(args);
   if (evidence.length === 0) die("resolve requires --evidence — the paths that prove the fix");
   mutateJson(findingsPath(id), (text) => {
-    const next = setFindingStatus(parseRegisterForWrite(text, id), findingId, { status: "RESOLVED", evidence });
-    if (typeof next === "string") die(next);
+    const register = parseRegisterForWrite(text, id);
+    const next = setFindingStatus(register, findingId, { status: "RESOLVED", evidence });
+    if (typeof next === "string") {
+      if (next.startsWith("no such finding")) {
+        die(`${next}\n  evidence: register ${id} holds ${register.findings.map((f) => f.id).join(", ") || "no findings yet"}\n  fix: node tools/adversarial-runner.mjs resolve ${id} <one-of-those> --evidence <paths>`);
+      }
+      die(next);
+    }
     return next;
   });
   console.log(`finding ${findingId} RESOLVED (${evidence.length} evidence path(s))`);
@@ -242,7 +248,13 @@ function cmdVerdict(args) {
   const agg = aggregateFindings(register);
   console.log(`task ${id}: ${agg.total} finding(s) — ${agg.unresolved} UNRESOLVED, ${agg.resolved} RESOLVED, ${agg.wontFix} WONT-FIX`);
   for (const f of register.findings) console.log(`  [${f.status}] ${f.id} (lane ${f.lane ?? "?"}, ${f.severity}): ${f.claim}`);
-  if (!agg.clean) { console.error("adversarial-runner: verdict FAIL — resolve or wont-fix every finding"); process.exit(1); }
+  if (!agg.clean) {
+    console.error("adversarial-runner: verdict FAIL — resolve or wont-fix every finding");
+    for (const f of register.findings) {
+      if (f.status === "UNRESOLVED") console.error(`  fix: node tools/adversarial-runner.mjs resolve ${id} ${f.id} --evidence <paths>   |   node tools/adversarial-runner.mjs wont-fix ${id} ${f.id} --justification "<why>"`);
+    }
+    process.exit(1);
+  }
   console.log("adversarial-runner: verdict CLEAN — task-state may advance to done");
 }
 

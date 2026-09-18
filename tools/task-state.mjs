@@ -67,10 +67,16 @@ function evidencePathIsFile(p) {
 
 function executionGuard(record) {
   if (IMPLEMENTATION_FORBIDDEN.has(record.riskClass)) {
-    return `risk class '${record.riskClass}' is implementation-forbidden by TASK-LIFECYCLE — a separate, explicitly authorized task must be opened`;
+    return {
+      reason: `risk class '${record.riskClass}' is implementation-forbidden by TASK-LIFECYCLE — a separate, explicitly authorized task must be opened`,
+      remedy: `node tools/task-state.mjs new <new-id> --risk-class runtime-code  (class '${record.riskClass}' can never reach executing)`,
+    };
   }
   if (APPROVAL_REQUIRED.has(record.riskClass) && !hasApproval(record)) {
-    return `risk class '${record.riskClass}' requires a recorded owner approval (approve --decision <ref>) before executing`;
+    return {
+      reason: `risk class '${record.riskClass}' requires a recorded owner approval (approve --decision <ref>) before executing`,
+      remedy: `node tools/task-state.mjs approve ${record.id} --decision "<FULL heading>"  — candidates: grep "^## " docs/decisions/DECISIONS.md`,
+    };
   }
   return null;
 }
@@ -78,19 +84,40 @@ function executionGuard(record) {
 function verificationGuard(record, _findings, evidenceOnDisk) {
   const evidence = redCheckEvidence(record);
   if (evidence.length === 0) {
-    return "no RED-check recorded — a pin is not a pin until it has been run RED against pre-fix source (red-check --evidence <paths>)";
+    return {
+      reason: "no RED-check recorded — a pin is not a pin until it has been run RED against pre-fix source (red-check --evidence <paths>)",
+      remedy: `node tools/task-state.mjs red-check ${record.id} --evidence <test-file>`,
+    };
   }
   if (!evidenceOnDisk) {
-    return "recorded RED-check evidence no longer exists on disk — evidence must be present at verification time, not just remembered";
+    return {
+      reason: "recorded RED-check evidence no longer exists on disk — evidence must be present at verification time, not just remembered",
+      remedy: `re-run the pin against the broken code, then re-record: node tools/task-state.mjs red-check ${record.id} --evidence <path>`,
+    };
   }
   return null;
 }
 
-function doneGuard(_record, findings) {
-  if (!findings) return "no adversarial findings register — the adversarial pass must be recorded before done (adversarial-runner record/verdict)";
-  if (!findings.passStartedAt) return "findings register carries no pass marker — only a prepared pass (a real diff swept) counts; an empty register is not a completed pass";
+function doneGuard(record, findings) {
+  if (!findings) {
+    return {
+      reason: "no adversarial findings register — the adversarial pass must be recorded before done (adversarial-runner record/verdict)",
+      remedy: `node tools/adversarial-runner.mjs prepare ${record.id} — dispatch the bundles, record findings, then verdict`,
+    };
+  }
+  if (!findings.passStartedAt) {
+    return {
+      reason: "findings register carries no pass marker — only a prepared pass (a real diff swept) counts; an empty register is not a completed pass",
+      remedy: `node tools/adversarial-runner.mjs prepare ${record.id}`,
+    };
+  }
   const agg = aggregateFindings(findings);
-  if (!agg.clean) return `${agg.unresolved} UNRESOLVED adversarial finding(s) — resolve or wont-fix each before done`;
+  if (!agg.clean) {
+    return {
+      reason: `${agg.unresolved} UNRESOLVED adversarial finding(s) — resolve or wont-fix each before done`,
+      remedy: `node tools/adversarial-runner.mjs resolve ${record.id} <finding-id> --evidence <paths>   (or: node tools/adversarial-runner.mjs wont-fix ${record.id} <finding-id> --justification "<why>")`,
+    };
+  }
   return null;
 }
 
@@ -107,17 +134,18 @@ const TRANSITION_GUARDS = {
  * Returns { ok: true } or { ok: false, reason } — the reason is the law being invoked.
  */
 export function evaluateTransition(record, findings, target, evidenceOnDisk) {
-  if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record" };
-  if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}` };
+  if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record", remedy: "start a real one: node tools/task-state.mjs new <id> --risk-class <class>" };
+  if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}`, remedy: `phases are exactly: ${PHASES.join(", ")}` };
   const current = derivePhase(record.events);
-  if (current === "done") return { ok: false, reason: "done is terminal — a finished task is reopened as a NEW task, not by rewinding this one" };
+  if (current === "done") return { ok: false, reason: "done is terminal — a finished task is reopened as a NEW task, not by rewinding this one", remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}` };
   if (PHASES.indexOf(target) !== PHASES.indexOf(current) + 1) {
-    return { ok: false, reason: `illegal jump ${current} -> ${target}: phases advance one at a time, in order` };
+    const next = PHASES[PHASES.indexOf(current) + 1];
+    return { ok: false, reason: `illegal jump ${current} -> ${target}: phases advance one at a time, in order`, remedy: `node tools/task-state.mjs advance ${record.id} ${next}` };
   }
   const guard = TRANSITION_GUARDS[`${current}->${target}`];
   if (guard) {
-    const reason = guard(record, findings, evidenceOnDisk);
-    if (reason) return { ok: false, reason };
+    const refusal = guard(record, findings, evidenceOnDisk);
+    if (refusal) return { ok: false, reason: refusal.reason, remedy: refusal.remedy };
   }
   return { ok: true };
 }
@@ -128,7 +156,7 @@ export function obligations(record, findings, evidenceOnDisk) {
   if (current === "done") return ["done — reopen as a new task if more work is needed"];
   const target = PHASES[PHASES.indexOf(current) + 1];
   const verdict = evaluateTransition(record, findings, target, evidenceOnDisk);
-  return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason];
+  return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason, `fix: ${verdict.remedy}`];
 }
 
 class Refused extends Error {}
@@ -145,12 +173,12 @@ function taskPath(id) {
 }
 
 function parseTaskRecord(text, id, path) {
-  if (text === null) die(`no such task: ${id} (expected ${path})`);
+  if (text === null) die(`no such task: ${id} (expected ${path})\n  fix: node tools/task-state.mjs status   — lists every recorded task`);
   let record;
   try {
     record = JSON.parse(text);
   } catch (e) {
-    die(`task record is not valid JSON: ${e.message}`);
+    die(`task record is not valid JSON: ${e.message}\n  evidence: ${path} — the git history of this file is the tamper trail`);
   }
   if (record.schema !== TASK_SCHEMA) die(`task record has unknown schema: ${String(record.schema)}`);
   return record;
@@ -179,7 +207,7 @@ function cmdNew(args) {
   if (!RISK_CLASSES.includes(riskClass)) die(`unknown risk class: ${riskClass} (one of ${RISK_CLASSES.join(", ")})`);
   mkdirSync(STATE_DIR, { recursive: true });
   mutateJson(taskPath(id), (text) => {
-    if (text !== null) die(`task already exists: ${id}`);
+    if (text !== null) die(`task already exists: ${id}\n  fix: node tools/task-state.mjs status ${id}   — see where it stands before duplicating it`);
     return { schema: TASK_SCHEMA, id, title: args.title ?? null, riskClass, events: [{ at: new Date().toISOString(), type: "created", riskClass }] };
   });
   console.log(`task ${id}: intake (risk class ${riskClass}) — tasks/${id}.json`);
@@ -193,7 +221,7 @@ function cmdApprove(args) {
   if (!existsSync(DECISIONS)) die("docs/decisions/DECISIONS.md is missing — cannot cross-reference an approval");
   const heading = readFileSync(DECISIONS, "utf8").split("\n").find((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
   if (!heading) {
-    die(`no decisions-register entry heading equals: ${ref}\n  an approval must cite a FULL entry heading from docs/decisions/DECISIONS.md, verbatim — a substring is not an act: short refs match by accident`);
+    die(`no decisions-register entry heading equals: ${ref}\n  rule: an approval must cite a FULL entry heading from docs/decisions/DECISIONS.md, verbatim — a substring is not an act: short refs match by accident\n  fix: grep "^## " docs/decisions/DECISIONS.md   then: node tools/task-state.mjs approve ${id} --decision "<full heading>"`);
   }
   mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] }));
   console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
@@ -204,7 +232,7 @@ function cmdRedCheck(args) {
   if (!id) die("usage: red-check <id> --evidence <path>[,<path>...]  (or bare paths after the id)");
   const all = [...paths, ...(typeof args.evidence === "string" ? args.evidence.split(",") : [])].map((p) => p.trim()).filter(Boolean);
   if (all.length === 0) die("red-check requires evidence paths — the files that prove the pin ran RED");
-  for (const p of all) if (!evidencePathIsFile(p)) die(`evidence path is not a readable file: ${p}`);
+  for (const p of all) if (!evidencePathIsFile(p)) die(`evidence path is not a readable file: ${p}\n  fix: pass paths that exist, repo-relative or cwd-relative: node tools/task-state.mjs red-check ${id} --evidence <path>`);
   mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "red-check", evidence: all }] }));
   console.log(`task ${id}: RED-check evidence recorded (${all.length} path(s))`);
 }
@@ -218,7 +246,7 @@ function cmdAdvance(args) {
     if (!ok) die(error);
     if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
     const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile));
-    if (!verdict.ok) die(`REFUSED — ${verdict.reason}`);
+    if (!verdict.ok) die(`REFUSED — ${verdict.reason}\n  fix: ${verdict.remedy}`);
     from = derivePhase(record.events);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "transition", to: target }] };
   });
@@ -310,7 +338,16 @@ export function selfTest() {
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-state: ${name}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (19 transition cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const remedyCases = [
+    ["illegal jump names the legal next step", evaluateTransition(base, null, "executing", true).remedy?.includes("advance t planned")],
+    ["approval refusal cites the approve command", evaluateTransition({ ...at(base, "planned"), riskClass: "protected" }, null, "executing", true).remedy?.includes("approve t --decision")],
+    ["missing RED-check cites red-check", evaluateTransition(at(executing, "executing"), null, "verified", true).remedy?.includes("red-check t --evidence")],
+    ["missing register cites prepare", evaluateTransition(adversarial, null, "done", true).remedy?.includes("prepare t")],
+    ["unresolved findings cite resolve/wont-fix", evaluateTransition(adversarial, dirtyFindings, "done", true).remedy?.includes("resolve t")],
+  ];
+  for (const [name, passes] of remedyCases) if (!passes) fail(`task-state: ${name}`);
+
+  console.log(failures.length === 0 ? "task-state self-test: OK (19 transition + 5 remedy cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
