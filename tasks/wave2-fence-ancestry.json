@@ -31,6 +31,23 @@
       "at": "2026-09-18T21:21:29.455Z",
       "type": "pin-exemption",
       "justification": "The runnable pin for this battery is recorded RED on wave2-task-binding (both --self-test commands, exit 1 + digests, re-run GREEN at its done gate); this follow-up only changes the fence's done-work discriminator to done-flip ancestry after the origin-recency design bricked the wave's own tail commit at push time. The change is pinned by the four citation-seam self-test cases and exercised live by this wave's own push."
+    },
+    {
+      "at": "2026-09-18T21:21:46.188Z",
+      "type": "red-check",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ]
+    },
+    {
+      "at": "2026-09-18T21:21:46.224Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T21:21:46.252Z",
+      "type": "transition",
+      "to": "adversarial"
     }
   ]
 }
