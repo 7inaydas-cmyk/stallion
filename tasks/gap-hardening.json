@@ -1,0 +1,47 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "gap-hardening",
+  "title": "Work GitHub issues 1-6: taxonomy dedupe, workspace path/phase, lane bound, URL decode, evidence recheck",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T15:16:17.879Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T15:16:17.903Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T15:16:17.928Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T15:16:23.328Z",
+      "type": "red-check",
+      "evidence": [
+        "tools/task-workspace.mjs",
+        "tools/adversarial-runner.mjs",
+        "tools/task-findings.mjs"
+      ]
+    },
+    {
+      "at": "2026-09-18T15:32:50.697Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T15:32:50.722Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T15:32:50.748Z",
+      "type": "transition",
+      "to": "done"
+    }
+  ]
+}

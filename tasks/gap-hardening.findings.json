@@ -1,0 +1,162 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "gap-hardening",
+  "passStartedAt": "2026-09-18T15:18:18.152Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "the resolve-evidence re-check lived only in the advisory verdict command, not the done gate; nothing automated runs verdict (lanes 1/2/3/7)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.646Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:23.986Z"
+    },
+    {
+      "id": "f2",
+      "lane": 6,
+      "severity": "HIGH",
+      "claim": "symlinked invocation paths made all five tools silent no-ops with exit 0: the entry check compared argv against the realpathed module URL (proven live via /proc/self/cwd)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.673Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-findings.mjs",
+        "tools/adversarial-runner.mjs",
+        "tools/task-coverage.mjs",
+        "tools/task-workspace.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.017Z"
+    },
+    {
+      "id": "f3",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "the no-drift taxonomy self-test was an unfalsifiable identity tautology while PHASE_ORDER and derivePhase stayed local copies in task-coverage and task-workspace",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.704Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs",
+        "tools/task-workspace.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.051Z"
+    },
+    {
+      "id": "f4",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "the evidence law was weaker than the RED-check law it claimed to mirror: bare existsSync accepted directories, absolute paths outside the repo, and empty strings",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.730Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/adversarial-runner.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.080Z"
+    },
+    {
+      "id": "f5",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "record trusted the live checklist with no exactly-eight pin, so a mid-pass edit widened the recordable lane range; stored registers accepted any lane value",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.757Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs",
+        "tools/task-findings.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.107Z"
+    },
+    {
+      "id": "f6",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "a forged transition to a KNOWN phase still authorizes a workspace; the filter only ignores unknown targets",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.782Z",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.133Z"
+    },
+    {
+      "id": "f7",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "workspaceSiblingPath still stamps the harness brand when vendored nested, and splits POSIX-only despite the URL-decode fix",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T15:32:23.810Z",
+      "justification": "nested vendoring is an unsupported layout by WIRING section 1 (tools at the repo root); at root level the derivation names the host repo. Windows is out of scope: the harness depends on POSIX (jj, sh hooks). Noted in issue #2.",
+      "resolvedAt": "2026-09-18T15:32:24.215Z"
+    },
+    {
+      "id": "f8",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "the wave's own task record, register, and bundles were untracked at audit time; commit timestamps are neutral by policy while event timestamps are honest session time",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T15:32:23.840Z",
+      "justification": "records land with the wave they authorize, before any push (established procedure); commit-timestamp neutrality is deliberate policy while event timestamps stay honest — the divergence is the audit trail itself.",
+      "resolvedAt": "2026-09-18T15:32:24.242Z"
+    },
+    {
+      "id": "f9",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "no task-to-file tenancy: lane attribution and evidence content remain the client's say-so (bearer citations)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.866Z",
+      "evidence": [
+        "tools/task-findings.mjs"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.159Z"
+    },
+    {
+      "id": "f10",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "selfTestResolveEvidence could silently skip its assertions when the fixture was refused",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T15:32:23.894Z",
+      "evidence": [
+        "tools/task-findings.mjs",
+        "README.md"
+      ],
+      "resolvedAt": "2026-09-18T15:32:24.189Z"
+    },
+    {
+      "id": "f11",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "banner counts drifted in task-findings and README said four scripts where five exist",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T15:32:23.923Z",
+      "justification": "bearer citations are the documented plain-JSON trust boundary (issue #8); task-to-file binding and content-bound evidence are registered there as the design work.",
+      "resolvedAt": "2026-09-18T15:32:24.271Z"
+    },
+    {
+      "id": "f12",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "git stderr is suppressed in gitOut, trading diagnosability for noise-free gates",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T15:32:23.954Z",
+      "justification": "stderr suppression in gitOut is deliberate: expected-absent probes (git show of a path missing from an older rev) printed fatal noise during normal operation, and e.message retains the failing command for diagnosis.",
+      "resolvedAt": "2026-09-18T15:32:50.577Z"
+    },
+    {
+      "id": "f13",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "register correction: f9 (task-to-file tenancy, bearer citations) was resolved with evidence that does not prove a repair, and f11 (banner drift) received a justification belonging to f9 — f11's actual fix landed in the same wave; corrected here because resolutions are append-only",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T15:32:50.606Z",
+      "justification": "bearer citations are the documented plain-JSON trust boundary and the registered design work of issue #8; today the gates demand per-commit footers naming a specific valid record, and content-bound evidence is issue #9.",
+      "resolvedAt": "2026-09-18T15:32:50.638Z"
+    }
+  ]
+}
