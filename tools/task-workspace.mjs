@@ -18,15 +18,25 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, PHASES as TASK_PHASES } from "./task-state.mjs";
 
-const ROOT = new URL("../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
 const WORKSPACE_PHASES = new Set(["planned", "executing", "verified", "adversarial"]);
-const DRAFT_FORBIDDEN = new Set(["planning-only", "experiment"]);
 
+/** Pure: the sibling dir a task's workspace lives in — derived from the repo's OWN name, so a
+ *  vendored harness never stamps its brand on the host repo (issue #2). */
+export function workspaceSiblingPath(rootPath, id) {
+  const repo = rootPath.replace(/\/+$/, "").split("/").pop() || "repo";
+  return `../${repo}-task-${id}`;
+}
+
+/** Phase derived only from transitions the lifecycle knows — a forged/typo'd target is ignored
+ *  here exactly as in task-state and task-coverage (issue #3). */
 function derivePhase(events) {
   let phase = "intake";
-  for (const e of events) if (e.type === "transition") phase = e.to;
+  for (const e of events) if (e.type === "transition" && TASK_PHASES.includes(e.to)) phase = e.to;
   return phase;
 }
 
@@ -94,7 +104,8 @@ function cmdAdd(args) {
   const id = args._[0];
   if (!id) die("usage: add <task-id>");
   const record = loadTask(id);
-  const dir = `${ROOT}../stallion-task-${id}`;
+  const sibling = workspaceSiblingPath(ROOT, id);
+  const dir = `${ROOT}${sibling}`;
   const guard = canAddWorkspace(record, existsSync(dir));
   if (!guard.ok) die(`REFUSED — ${guard.reason}`);
   try {
@@ -103,7 +114,7 @@ function cmdAdd(args) {
     die("jj is not on PATH — install jujutsu or draft in the primary working copy");
   }
   jjOut("workspace", "add", "--name", `task-${id}`, dir);
-  console.log(`workspace 'task-${id}' added at ../stallion-task-${id} (task phase: ${derivePhase(record.events)})`);
+  console.log(`workspace 'task-${id}' added at ${sibling} (task phase: ${derivePhase(record.events)})`);
   printLandingLaw();
 }
 
@@ -171,14 +182,16 @@ export function selfTest() {
     ["forget without a claim refused", !canForgetWorkspace("none").ok],
     ["forget landed allowed", canForgetWorkspace("landed").ok],
     ["forget discard acknowledged allowed", canForgetWorkspace("discard").ok],
+    ["workspace sibling derives from the repo's own name, not the harness's", workspaceSiblingPath("/x/clones/my-repo/", "t1") === "../my-repo-task-t1"],
+    ["forged transition to an unknown phase is ignored (no fake-phase workspace)", canAddWorkspace({ ...mk("planned"), events: [...mk("planned").events, { type: "transition", to: "shipped" }] }, false).ok],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-workspace: ${name}`);
 
-  console.log(failures.length === 0 ? "task-workspace self-test: OK (10 guard cases; live jj path prints its own landing law)" : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-workspace self-test: OK (12 guard cases; live jj path prints its own landing law)" : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

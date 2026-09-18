@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const FINDINGS_SCHEMA = "stallion/task-findings@1";
 export const FINDING_STATUSES = ["UNRESOLVED", "RESOLVED", "WONT-FIX"];
@@ -191,6 +192,33 @@ export function selfTestFindings(fail) {
   selfTestValidate(fail);
   selfTestAppendResolve(fail);
   selfTestStatusGuards(fail);
+  selfTestResolveEvidence(fail);
+}
+
+/**
+ * Resolve evidence that no longer exists. RESOLVED findings owe their evidence at verdict time,
+ * not just at resolve time (the same law RED-checks already live under). Returns one
+ * "<finding>: <path>" entry per vanished path; empty means clean.
+ */
+export function missingResolveEvidence(register, existsFn) {
+  if (!register || typeof register !== "object" || !Array.isArray(register.findings)) return [];
+  const missing = [];
+  for (const f of register.findings) {
+    if (f.status !== "RESOLVED") continue;
+    for (const p of f.evidence ?? []) if (!existsFn(p)) missing.push(`${f.id}: ${p}`);
+  }
+  return missing;
+}
+
+function selfTestResolveEvidence(fail) {
+  const base = emptyFindings("self-test");
+  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "x" });
+  const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["gone.test.ts"] });
+  if (typeof resolved !== "string") {
+    if (missingResolveEvidence(resolved, () => false).length !== 1) fail("task-findings: vanished resolve evidence must be reported");
+    if (missingResolveEvidence(resolved, () => true).length !== 0) fail("task-findings: present resolve evidence must not be reported");
+    if (missingResolveEvidence(appended, () => false).length !== 0) fail("task-findings: UNRESOLVED findings carry no evidence obligation");
+  }
 }
 
 /**
@@ -290,7 +318,7 @@ async function selfTestConcurrentWriters(fail) {
   }
 }
 
-const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry && process.argv.includes("--self-test")) {
   (async () => {
     const failures = [];

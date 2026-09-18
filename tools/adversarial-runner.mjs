@@ -15,9 +15,10 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { aggregateFindings, appendFinding, emptyFindings, loadFindings, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { aggregateFindings, appendFinding, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
 
-const ROOT = new URL("../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CHECKLIST = `${ROOT}docs/ADVERSARIAL-CHECKLIST.md`;
 const STATE_DIR = `${ROOT}tasks`;
 const BUNDLE_DIR = `${ROOT}adversarial`;
@@ -87,10 +88,19 @@ function die(message) {
 
 function gitOut(...args) {
   try {
-    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   } catch (e) {
     die(`git ${args.join(" ")} failed: ${e.message}`);
   }
+}
+
+/** Pure: a lane number must name one of the checklist's real escape classes — findings no
+ *  sweep covered must not be recordable. */
+export function laneRefusal(lane, laneCount) {
+  if (!Number.isInteger(lane) || lane < 1 || lane > laneCount) {
+    return `--lane ${String(lane)} is outside the checklist's 1..${laneCount} escape classes — no sweep covered that lane`;
+  }
+  return null;
 }
 
 function findingsPath(id) {
@@ -179,6 +189,14 @@ function cmdRecord(args) {
   if (!Number.isInteger(lane) || lane < 1) die("record requires --lane <n> (the checklist escape class)");
   if (!SEVERITIES.includes(args.severity)) die(`record requires --severity in ${SEVERITIES.join(", ")}`);
   if (!args.claim || typeof args.claim !== "string") die("record requires --claim <what is wrong, where, why it escapes>");
+  let laneCount = 0;
+  try {
+    laneCount = lanesFromChecklist(readFileSync(CHECKLIST, "utf8")).length;
+  } catch {
+    die(`cannot read the checklist at ${CHECKLIST} to validate the lane\n  fix: restore docs/ADVERSARIAL-CHECKLIST.md (eight '### N. Title' escape classes)`);
+  }
+  const laneLaw = laneRefusal(lane, laneCount);
+  if (laneLaw) die(`${laneLaw}\n  fix: record with --lane between 1 and ${laneCount} (the lane whose sweep produced the finding)`);
   // The id mint and the append are one locked step: f{len+1} computed against a stale snapshot
   // collides with the sibling writer that already appended.
   const next = mutateJson(findingsPath(id), (text) => {
@@ -243,6 +261,12 @@ function cmdVerdict(args) {
   if (!id) die("usage: verdict <task-id>");
   requireKebabId(id);
   const register = loadMarkedRegister(id);
+  const missing = missingResolveEvidence(register, (p) => existsSync(p) || existsSync(`${ROOT}${p.replace(/^\//, "")}`));
+  if (missing.length > 0) {
+    console.error("adversarial-runner: verdict FAIL — resolve evidence no longer exists:");
+    for (const m of missing) console.error(`  ✖ ${m}`);
+    die(`  rule: a resolution is proven by its evidence at verdict time, not remembered from resolve time\n  fix: node tools/adversarial-runner.mjs resolve ${id} <finding-id> --evidence <paths-that-exist>`);
+  }
   const agg = aggregateFindings(register);
   console.log(`task ${id}: ${agg.total} finding(s) — ${agg.unresolved} UNRESOLVED, ${agg.resolved} RESOLVED, ${agg.wontFix} WONT-FIX`);
   for (const f of register.findings) console.log(`  [${f.status}] ${f.id} (lane ${f.lane ?? "?"}, ${f.severity}): ${f.claim}`);
@@ -324,11 +348,17 @@ export function selfTest() {
   selfTestLanes(fail);
   selfTestBundle(fail);
   selfTestAggregation(fail);
-  console.log(failures.length === 0 ? "adversarial-runner self-test: OK (2 lanes + bundle contract + aggregation)" : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const laneCases = [
+    ["lane beyond the checklist refused", laneRefusal(99, 8) !== null],
+    ["lane within the checklist allowed", laneRefusal(3, 8) === null],
+    ["lane zero refused", laneRefusal(0, 8) !== null],
+  ];
+  for (const [name, passes] of laneCases) if (!passes) fail(`adversarial-runner: ${name}`);
+  console.log(failures.length === 0 ? "adversarial-runner self-test: OK (2 lanes + bundle contract + aggregation + 3 lane-bound cases)" : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

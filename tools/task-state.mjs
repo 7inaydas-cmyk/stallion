@@ -31,17 +31,19 @@
  * and shows in the diff). Storage: tasks/<id>.json
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, loadFindings, mutateJson } from "./task-findings.mjs";
 
-const ROOT = new URL("../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
 const DECISIONS = `${ROOT}docs/decisions/DECISIONS.md`;
 
 export const TASK_SCHEMA = "stallion/task-state@1";
 export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
-const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "experiment"]);
-const APPROVAL_REQUIRED = new Set(["protected", "migration"]);
+/** The taxonomy is defined HERE and imported by every other tool (issue #1): one law, no drift. */
+export const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "experiment"]);
+export const APPROVAL_REQUIRED = new Set(["protected", "migration"]);
 
 /** Phase is derived, never stored — and a forged/typo'd `to` is ignored rather than trusted. */
 export function derivePhase(events) {
@@ -351,7 +353,7 @@ export function selfTest() {
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
