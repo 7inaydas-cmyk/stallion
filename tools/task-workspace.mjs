@@ -22,7 +22,7 @@ import { existsSync, readFileSync } from "node:fs";
 const ROOT = new URL("../", import.meta.url).pathname;
 const STATE_DIR = `${ROOT}tasks`;
 const WORKSPACE_PHASES = new Set(["planned", "executing", "verified", "adversarial"]);
-const DRAFT_FORBIDDEN = new Set(["planning-only", "product-protocol"]);
+const DRAFT_FORBIDDEN = new Set(["planning-only", "experiment"]);
 
 function derivePhase(events) {
   let phase = "intake";

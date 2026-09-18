@@ -205,13 +205,11 @@ function cmdResolve(args) {
   if (evidence.length === 0) die("resolve requires --evidence — the paths that prove the fix");
   mutateJson(findingsPath(id), (text) => {
     const register = parseRegisterForWrite(text, id);
-    const next = setFindingStatus(register, findingId, { status: "RESOLVED", evidence });
-    if (typeof next === "string") {
-      if (next.startsWith("no such finding")) {
-        die(`${next}\n  evidence: register ${id} holds ${register.findings.map((f) => f.id).join(", ") || "no findings yet"}\n  fix: node tools/adversarial-runner.mjs resolve ${id} <one-of-those> --evidence <paths>`);
-      }
-      die(next);
+    if (!register.findings.some((f) => f.id === findingId)) {
+      die(`no such finding: ${findingId}\n  evidence: register ${id} holds ${register.findings.map((f) => f.id).join(", ") || "no findings yet"}\n  fix: node tools/adversarial-runner.mjs resolve ${id} <one-of-those> --evidence <paths>`);
     }
+    const next = setFindingStatus(register, findingId, { status: "RESOLVED", evidence });
+    if (typeof next === "string") die(next);
     return next;
   });
   console.log(`finding ${findingId} RESOLVED (${evidence.length} evidence path(s))`);

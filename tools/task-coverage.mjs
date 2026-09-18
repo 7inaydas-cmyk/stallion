@@ -28,7 +28,8 @@
  * not the specific commit (task↔commit binding is registered future work).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { lanesFromChecklist } from "./adversarial-runner.mjs";
 
 const ROOT = new URL("../", import.meta.url).pathname;
 const STATE_DIR = `${ROOT}tasks`;
@@ -38,8 +39,8 @@ const CODE_TREES = ["apps/", "packages/", "tools/", "deploy/"];
 const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".mts", ".cts", ".css"]);
 const CODE_NAMES = new Set(["Dockerfile", "Caddyfile"]); // no-extension executables under the four trees
 const PHASE_ORDER = ["intake", "planned", "executing", "verified", "adversarial", "done"];
-const RISK_CLASSES = ["planning-only", "harness-docs-only", "runtime-code", "protected", "migration", "product-protocol"];
-const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "product-protocol"]);
+const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
+const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "experiment"]);
 const APPROVAL_REQUIRED = new Set(["protected", "migration"]);
 
 /** Pure: does this changed path count as code the lifecycle must cover? */
@@ -52,13 +53,19 @@ export function isCodePath(path) {
 }
 
 /**
- * Pure: the staged-files gate decision. Code staged + no record at executing-or-later with a
- * legal class = refusal carrying the code files as evidence; null = pass.
+ * Pure: the staged-files gate decision. Code staged + no task in flight = refusal carrying the
+ * code files as evidence; null = pass. In flight means executing, verified, or adversarial —
+ * done does NOT authorize new code (an adversarial finding: one stale done task was a master
+ * key that held this gate open forever).
  */
 export function stagedRefusal(stagedFiles, records) {
   const codeFiles = stagedFiles.filter(isCodePath);
   if (codeFiles.length === 0) return null;
-  const active = records.filter((r) => recordRefusal(r) === null);
+  const active = records.filter((r) => {
+    if (recordRefusal(r) !== null) return false;
+    const phase = derivePhase(r.events ?? []);
+    return phase !== "done" && PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.indexOf("executing");
+  });
   if (active.length > 0) return null;
   return { codeFiles };
 }
@@ -74,18 +81,34 @@ export function pickBase(explicit, config, originCurrent) {
   return originCurrent ?? null;
 }
 
-/** Pure: count '### N.' lane headings — the doctor's checklist-format check. */
+/**
+ * Pure: lane count via the ENFORCEMENT parser — the doctor must never re-implement the format
+ * (an adversarial finding: two dialects of one law drift apart silently).
+ */
 export function checklistLaneCount(text) {
-  return typeof text === "string" ? text.split("\n").filter((l) => /^### \d+\.\s/.test(l)).length : 0;
+  return typeof text === "string" ? lanesFromChecklist(text).length : 0;
 }
 
-/** Pure: does a workflow or hook text actually invoke task-coverage? (one detector, both seams) */
+/** Pure: a live (non-comment) line invokes task-coverage — a mention in a comment wires nothing. */
 export function hasCoverageStep(text) {
-  return typeof text === "string" && text.includes("task-coverage");
+  if (typeof text !== "string") return false;
+  return text.split("\n").some((l) => {
+    const t = l.trim();
+    return t.length > 0 && !t.startsWith("#") && t.includes("task-coverage");
+  });
 }
 
 export function prePushWired(text) {
   return hasCoverageStep(text);
+}
+
+/** Pure: the staged gate is wired only if a live line runs task-coverage WITH --staged. */
+export function preCommitWired(text) {
+  if (typeof text !== "string") return false;
+  return text.split("\n").some((l) => {
+    const t = l.trim();
+    return t.length > 0 && !t.startsWith("#") && t.includes("task-coverage") && t.includes("--staged");
+  });
 }
 
 /** Pure: count '## ' entry headings in the decisions register. */
@@ -176,6 +199,25 @@ function currentBranch() {
   }
 }
 
+function rangeCount(base) {
+  try {
+    return Number(gitOut("rev-list", "--count", `${base}..HEAD`).trim());
+  } catch {
+    return 0;
+  }
+}
+
+/** The committed content of a path (null when absent from HEAD) — "committed" checks must read
+ *  the tree git will serve to a fresh clone, not the working tree an adversarial pass caught
+ *  certifying untracked hooks. */
+function committedText(path) {
+  try {
+    return gitOut("show", `HEAD:${path}`);
+  } catch {
+    return null;
+  }
+}
+
 function loadRecord(id) {
   const path = `${STATE_DIR}/${id}.json`;
   if (!existsSync(path)) return { error: `no task record for '${id}' (expected ${path})` };
@@ -189,6 +231,7 @@ function loadRecord(id) {
 /** The range check: every code commit in base..HEAD must carry an authorizing task footer. */
 function checkRange(base) {
   const errors = [];
+  const headSha = gitOut("rev-parse", "HEAD").trim();
   const commits = gitOut("rev-list", "--reverse", `${base}..HEAD`).trim().split("\n").filter(Boolean);
   for (const sha of commits) {
     // -m --first-parent: merges are diffed against their first parent. Plain `diff-tree -r` emits
@@ -202,11 +245,14 @@ function checkRange(base) {
     const footer = taskFooterOf(message);
     const short = sha.slice(0, 8);
     if (!footer) {
-      errors.push(`${short} touches code but carries no 'task: <id>' footer — future code is written only through the task-state lifecycle (task-state new)\n      fix: git commit --amend --no-edit --trailer "task: <id>"`);
+      const fix = sha === headSha
+        ? `git commit --amend --no-edit --trailer "task: <id>"`
+        : `rebase to add the footer to ${short} (git rebase -i ${base}) or drop the code change — amend cannot reach a non-HEAD commit`;
+      errors.push(`${short} touches code but carries no 'task: <id>' footer — future code is written only through the task-state lifecycle (task-state new)\n      fix: ${fix}`);
       continue;
     }
     const { record, error } = loadRecord(footer);
-    if (error) { errors.push(`${short}: ${error}\n      fix: node tools/task-state.mjs new ${footer} --risk-class <class>   — then advance it to executing`); continue; }
+    if (error) { errors.push(`${short}: ${error}\n      fix: node tools/task-state.mjs new ${footer} --risk-class <class> && node tools/task-state.mjs advance ${footer} planned && node tools/task-state.mjs advance ${footer} executing`); continue; }
     const refusal = recordRefusal(record);
     if (refusal) errors.push(`${short} (task ${footer}): ${refusal}`);
   }
@@ -224,11 +270,11 @@ function die(message) {
  * with the exit-code translation that vendor's contract requires (see docs/WIRING.md).
  */
 function cmdStaged() {
-  let staged = "";
+  let staged;
   try {
     staged = gitOut("diff", "--cached", "--name-only");
-  } catch {
-    staged = "";
+  } catch (e) {
+    die(`cannot read the staged file list — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass — this seam fails closed like every other\n  fix: make git work in this environment (PATH, safe.directory, readable index), then retry the commit`);
   }
   const files = staged.trim().split("\n").filter(Boolean);
   const records = [];
@@ -244,9 +290,11 @@ function cmdStaged() {
   const refusal = stagedRefusal(files, records);
   if (!refusal) {
     const stagedCode = files.filter(isCodePath).length;
-    return console.log(`task-coverage (staged): ${stagedCode} code file(s) staged under an active task.`);
+    return console.log(stagedCode === 0
+      ? "task-coverage (staged): no code files staged."
+      : `task-coverage (staged): ${stagedCode} code file(s) staged while a task is in flight (executing/verified/adversarial).`);
   }
-  console.error(`task-coverage: ✖ REFUSED — code is staged but no task record is at executing or later`);
+  console.error(`task-coverage: ✖ REFUSED — code is staged but no task is in flight (executing/verified/adversarial)`);
   console.error(`  rule: implementation happens only under a task the machine has authorized`);
   console.error(`  evidence: ${refusal.codeFiles.join(", ")}`);
   die(`  fix: node tools/task-state.mjs new <id> --risk-class runtime-code && node tools/task-state.mjs advance <id> planned && node tools/task-state.mjs advance <id> executing\n      (existing tasks: node tools/task-state.mjs status)`);
@@ -261,20 +309,36 @@ function cmdDoctor() {
   const results = [];
   const check = (name, ok, fix) => results.push({ name, ok, fix });
 
-  const hooksDir = `${ROOT}.githooks`;
-  const prePush = existsSync(`${hooksDir}/pre-push`) ? readFileSync(`${hooksDir}/pre-push`, "utf8") : "";
-  const preCommit = existsSync(`${hooksDir}/pre-commit`) ? readFileSync(`${hooksDir}/pre-commit`, "utf8") : "";
-  check("pre-push hook committed and invoking task-coverage", prePushWired(prePush), "create .githooks/pre-push running 'node tools/task-coverage.mjs' and commit it (docs/WIRING.md)");
-  check("pre-commit staged gate committed", prePushWired(preCommit) && preCommit.includes("--staged"), "create .githooks/pre-commit running 'node tools/task-coverage.mjs --staged'");
+  // Wiring checks read the COMMITTED tree: "committed" means a fresh clone gets it.
+  const committedPrePush = committedText(".githooks/pre-push") ?? "";
+  const committedPreCommit = committedText(".githooks/pre-commit") ?? "";
+  check("pre-push hook committed and invoking task-coverage", prePushWired(committedPrePush), "commit .githooks/pre-push that runs 'node tools/task-coverage.mjs' (docs/WIRING.md)");
+  check("pre-commit staged gate committed", preCommitWired(committedPreCommit), "commit .githooks/pre-commit that runs 'node tools/task-coverage.mjs --staged'");
 
-  const inCI = process.env.CI === "true";
-  const hooksActive = gitConfig("core.hooksPath") !== null;
-  check(`core.hooksPath activates the hooks${inCI ? " (CI clone: unset is expected, push CI re-fences)" : ""}`, hooksActive || inCI, "git config core.hooksPath .githooks   (per clone — fresh clones must re-run this; the doctor enforces it)");
+  // Activation is clone-local config CI cannot carry — scoped honestly instead of faked:
+  // locally it is checked for real (and value-checked, not just set); in CI it is SKIPPED,
+  // visibly, never silently passed.
+  const hooksPath = gitConfig("core.hooksPath");
+  if (process.env.CI === "true") {
+    console.log("task-coverage doctor: ~ core.hooksPath activation — not observable in a CI clone (clone-local config); enforced by local doctor runs and the push fence");
+  } else {
+    const dir = hooksPath && hooksPath.startsWith("/") ? hooksPath.replace(/\/$/, "") : hooksPath ? `${ROOT}${hooksPath.replace(/^\//, "").replace(/\/$/, "")}` : null;
+    const livePrePush = dir && existsSync(`${dir}/pre-push`) ? readFileSync(`${dir}/pre-push`, "utf8") : "";
+    const livePreCommit = dir && existsSync(`${dir}/pre-commit`) ? readFileSync(`${dir}/pre-commit`, "utf8") : "";
+    check("core.hooksPath points at a wired pre-push", prePushWired(livePrePush), "git config core.hooksPath .githooks   (must point at the committed hooks)");
+    check("core.hooksPath points at a wired pre-commit", preCommitWired(livePreCommit), "git config core.hooksPath .githooks");
+  }
 
   const wfDir = `${ROOT}.github/workflows`;
-  const workflows = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")) : [];
-  const ciOk = workflows.some((f) => hasCoverageStep(readFileSync(`${wfDir}/${f}`, "utf8")));
-  check("CI re-runs task-coverage", ciOk, "add a task-coverage step to .github/workflows (docs/WIRING.md)");
+  const committedWorkflows = (() => {
+    try {
+      return gitOut("ls-files", ".github/workflows").split("\n").filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
+    } catch {
+      return existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")) : [];
+    }
+  })();
+  const ciOk = committedWorkflows.some((f) => hasCoverageStep(committedText(f) ?? ""));
+  check("CI re-runs task-coverage", ciOk, "add a task-coverage step to .github/workflows (docs/WIRING.md) and commit it");
 
   let tracked = "";
   try {
@@ -287,12 +351,14 @@ function cmdDoctor() {
 
   const branch = currentBranch();
   const originCurrent = branch && revParseOk(`origin/${branch}`) ? `origin/${branch}` : null;
-  check("push base resolvable (--base / stallion.push-base / origin/<branch>)", pickBase(null, gitConfig("stallion.push-base"), originCurrent) !== null, "git config stallion.push-base <rev-at-adoption>   (once at adoption; grandfathers earlier history)");
+  const doctorBase = pickBase(null, gitConfig("stallion.push-base"), originCurrent);
+  const baseSane = doctorBase !== null && revParseOk(doctorBase) && rangeCount(doctorBase) > 0;
+  check("push base resolves and fences a non-empty range", baseSane, "git config stallion.push-base <rev-at-adoption>   (an ancestor before HEAD; a base at HEAD audits nothing)");
 
-  const register = existsSync(DECISIONS) ? readFileSync(DECISIONS, "utf8") : "";
+  const register = committedText("docs/decisions/DECISIONS.md") ?? "";
   check("decisions register exists with entry headings", registerHeadingCount(register) > 0, "create docs/decisions/DECISIONS.md with at least one '## ' entry heading");
 
-  const checklist = existsSync(CHECKLIST) ? readFileSync(CHECKLIST, "utf8") : "";
+  const checklist = committedText("docs/ADVERSARIAL-CHECKLIST.md") ?? "";
   check("adversarial checklist parses to exactly 8 lanes", checklistLaneCount(checklist) === 8, "keep exactly eight '### N. Title' escape-class headings (or change the runner's count pin deliberately)");
 
   let failed = 0;
@@ -321,6 +387,29 @@ function resolvePushBase(explicit) {
     die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git config stallion.push-base <rev-at-adoption>   (once, at adoption; see docs/WIRING.md)\n       or run with an explicit --base <rev>`);
   }
   return base;
+}
+
+/** Strict flags: --base takes a value (both --base x and --base=x); booleans refuse values;
+ *  anything unknown refuses. The lenient indexOf style silently mis-parsed both --base forms. */
+function parseFlags(argv) {
+  const flags = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === "--self-test" || a === "--staged" || a === "--doctor") {
+      flags[a.slice(2)] = true;
+      continue;
+    }
+    if (a === "--base" || a.startsWith("--base=")) {
+      if (a.startsWith("--base=")) { flags.base = a.slice(7); continue; }
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("--")) die("--base requires a revision (usage: [--base <rev>] [--staged] [--doctor])");
+      flags.base = next;
+      i += 1;
+      continue;
+    }
+    die(`unknown flag: ${a} — usage: task-coverage.mjs [--base <rev>] [--staged] [--doctor] (--self-test to self-test)`);
+  }
+  return flags;
 }
 
 /** Self-test: the refusals ARE the feature — every guard proven both directions. */
@@ -384,13 +473,17 @@ export function selfTest() {
     ["code staged with an executing task passes", stagedRefusal(["apps/a.ts"], [record("runtime-code", ["planned", "executing"])]) === null],
     ["code staged with no tasks refuses and lists the code files", stagedRefusal(["apps/a.ts", "docs/x.md"], []).codeFiles?.length === 1],
     ["code staged under a planning-only task still refuses", stagedRefusal(["tools/x.mjs"], [record("planning-only", ["planned", "executing"])]) !== null],
+    ["a done task does not keep the staged gate open", stagedRefusal(["apps/a.ts"], [record("runtime-code", ["planned", "executing", "verified", "adversarial", "done"])]) !== null],
   ];
   for (const [name, passes] of stagedCases) if (!passes) fail(`task-coverage: ${name}`);
 
   const doctorCases = [
-    ["lane counter counts '### N.' headings", checklistLaneCount("### 1. A\nbody\n### 2. B\nbody") === 2],
-    ["coverage-step detector matches a workflow step", hasCoverageStep("      run: node tools/task-coverage.mjs --base \"$BASE\"")],
-    ["pre-push detector matches the hook body", prePushWired("#!/bin/sh\nnode tools/task-coverage.mjs || exit 1\n")],
+    ["lane count delegates to the enforcement parser", checklistLaneCount("### 1. A\nbody\n### 2. B\nbody") === 2],
+    ["coverage-step detector matches a live workflow step", hasCoverageStep("      run: node tools/task-coverage.mjs --base \"$BASE\"")],
+    ["a comment mentioning task-coverage wires nothing", !hasCoverageStep("# TODO: wire task-coverage later\nexit 0")],
+    ["pre-push detector matches a live hook body", prePushWired("#!/bin/sh\nnode tools/task-coverage.mjs || exit 1\n")],
+    ["a commented-out pre-commit hook does not wire the staged gate", !preCommitWired("#!/bin/sh\n# node tools/task-coverage.mjs --staged\nexit 0")],
+    ["pre-commit detector requires --staged on a live line", preCommitWired("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n")],
     ["register heading counter counts '## ' only", registerHeadingCount("## A\n### a\n## B") === 2],
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
@@ -403,21 +496,22 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (15 path + 6 footer + 11 authorization + 4 staged + 4 doctor + 4 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (15 path + 6 footer + 11 authorization + 5 staged + 7 doctor + 4 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
 const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 if (isEntry) {
-  const argv = process.argv.slice(2);
-  if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
-  if (argv.includes("--staged")) { cmdStaged(); process.exit(0); }
-  if (argv.includes("--doctor")) { cmdDoctor(); process.exit(0); }
-  const baseIdx = argv.indexOf("--base");
-  if (baseIdx !== -1 && !argv[baseIdx + 1]) die("usage: task-coverage.mjs [--base <rev>] [--staged] [--doctor]   (--self-test to self-test)");
-  const base = resolvePushBase(baseIdx === -1 ? null : argv[baseIdx + 1]);
+  const flags = parseFlags(process.argv.slice(2));
+  if (flags["self-test"]) process.exit(selfTest() ? 0 : 1);
+  if (flags.staged) { cmdStaged(); process.exit(0); }
+  if (flags.doctor) { cmdDoctor(); process.exit(0); }
+  const base = resolvePushBase(flags.base ?? null);
   if (!revParseOk(base)) {
     die(`base revision does not resolve: ${base}\n  fix: pass --base <rev>, or update the adoption base: git config stallion.push-base <rev>\n       (a fresh repo with one commit has no parent to diff against — record the adoption base explicitly)`);
+  }
+  if (rangeCount(base) === 0) {
+    die(`base ${base} fences an empty range — ${base}..HEAD contains no commits\n  rule: a range that audits nothing is not coverage (the vacuous-base escape, refused)\n  fix: set the base to an ancestor before HEAD: git config stallion.push-base <earlier-rev>`);
   }
   const errors = checkRange(base);
   if (errors.length > 0) {

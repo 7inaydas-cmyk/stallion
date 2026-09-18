@@ -16,7 +16,7 @@
  *   done        — steps 12-13 (terminal; report + retrospective)
  *
  * Law encoded (each line refuses where prose used to merely ask):
- *   - planning-only and product-protocol tasks can NEVER reach executing.
+ *   - planning-only and experiment tasks can NEVER reach executing.
  *   - protected and migration tasks need a recorded owner approval that cross-references a
  *     real line of docs/decisions/DECISIONS.md before executing.
  *   - executing -> verified requires recorded RED-check evidence paths, re-verified to EXIST at
@@ -38,9 +38,9 @@ const STATE_DIR = `${ROOT}tasks`;
 const DECISIONS = `${ROOT}docs/decisions/DECISIONS.md`;
 
 export const TASK_SCHEMA = "stallion/task-state@1";
-export const RISK_CLASSES = ["planning-only", "harness-docs-only", "runtime-code", "protected", "migration", "product-protocol"];
+export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
-const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "product-protocol"]);
+const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "experiment"]);
 const APPROVAL_REQUIRED = new Set(["protected", "migration"]);
 
 /** Phase is derived, never stored — and a forged/typo'd `to` is ignored rather than trusted. */
@@ -75,7 +75,7 @@ function executionGuard(record) {
   if (APPROVAL_REQUIRED.has(record.riskClass) && !hasApproval(record)) {
     return {
       reason: `risk class '${record.riskClass}' requires a recorded owner approval (approve --decision <ref>) before executing`,
-      remedy: `node tools/task-state.mjs approve ${record.id} --decision "<FULL heading>"  — candidates: grep "^## " docs/decisions/DECISIONS.md`,
+      remedy: `node tools/task-state.mjs approve ${record.id} --decision "<heading text WITHOUT the '## ' prefix>" — candidates: grep "^## " docs/decisions/DECISIONS.md | sed 's/^## //'`,
     };
   }
   return null;
@@ -221,7 +221,7 @@ function cmdApprove(args) {
   if (!existsSync(DECISIONS)) die("docs/decisions/DECISIONS.md is missing — cannot cross-reference an approval");
   const heading = readFileSync(DECISIONS, "utf8").split("\n").find((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
   if (!heading) {
-    die(`no decisions-register entry heading equals: ${ref}\n  rule: an approval must cite a FULL entry heading from docs/decisions/DECISIONS.md, verbatim — a substring is not an act: short refs match by accident\n  fix: grep "^## " docs/decisions/DECISIONS.md   then: node tools/task-state.mjs approve ${id} --decision "<full heading>"`);
+    die(`no decisions-register entry heading equals: ${ref}\n  rule: an approval cites a FULL entry heading from docs/decisions/DECISIONS.md verbatim, MINUS its '## ' prefix — a substring is not an act\n  fix: grep "^## " docs/decisions/DECISIONS.md | sed 's/^## //'   then: node tools/task-state.mjs approve ${id} --decision "<one full line of that output>"`);
   }
   mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] }));
   console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
@@ -321,7 +321,7 @@ export function selfTest() {
     ["skip intake -> executing refused", !evaluateTransition(base, null, "executing", true).ok],
     ["backwards move refused", !evaluateTransition(at(executing, "executing"), null, "planned", true).ok],
     ["planning-only cannot execute", !evaluateTransition({ ...base, riskClass: "planning-only" }, null, "executing", true).ok],
-    ["product-protocol cannot execute", !evaluateTransition({ ...base, riskClass: "product-protocol" }, null, "executing", true).ok],
+    ["experiment cannot execute", !evaluateTransition({ ...base, riskClass: "experiment" }, null, "executing", true).ok],
     ["protected without approval refused", !evaluateTransition({ ...at(base, "planned"), riskClass: "protected" }, null, "executing", true).ok],
     ["protected with approval allowed", evaluateTransition({ ...at(base, "planned"), riskClass: "protected", events: [...at(base, "planned").events, { type: "approval", decision: "d" }] }, null, "executing", true).ok],
     ["migration without approval refused", !evaluateTransition({ ...at(base, "planned"), riskClass: "migration" }, null, "executing", true).ok],
