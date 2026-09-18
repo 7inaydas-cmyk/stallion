@@ -41,6 +41,10 @@ const STATE_DIR = `${ROOT}tasks`;
 const DECISIONS = `${ROOT}docs/decisions/DECISIONS.md`;
 
 export const TASK_SCHEMA = "stallion/task-state@1";
+/** The moment the command-pin law took effect. Records whose done transition predates this
+ *  carry path-only evidence by design (documented in TASK-LIFECYCLE.md); the push fence
+ *  exempts them from pin parity so a deliberate old-base audit stays executable. */
+export const PIN_LAW_CUTOVER = "2026-09-18T20:00:00.000Z";
 export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
 /** The taxonomy is defined HERE and imported by every other tool (issue #1): one law, no drift. */

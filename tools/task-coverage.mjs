@@ -31,7 +31,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption } from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -168,12 +168,17 @@ export function recordRefusal(record) {
   const classLaw = classRefusal(record);
   if (classLaw) return classLaw;
   if (record.riskClass === "docs-only") return "risk class 'docs-only' writes docs, not code — a code change needs a runtime-code/protected/migration task";
-  // Defense in depth: the advance-time pin law re-checked at the fence, because a hand-edited
-  // record must not sail through on the advance-time check alone (an adversarial finding).
-  if (record.riskClass !== "planning-only" && record.riskClass !== "experiment" && !hasValidPin(record) && !hasPinExemption(record)) {
-    return "code task carries no valid command pin (and no recorded exemption) — red-check --command is machine-verified at advance time and re-checked here";
-  }
+  // Defense in depth: a DONE record that predates no pin law and carries no valid pin/exemption
+  // is a hand-edit or a forgery — refuse it at the fence. In-flight records are exempt: code
+  // commits land at executing, before the pin exists by design (verified is where pins bind).
+  // Records done before PIN_LAW_CUTOVER are grandfathered path-only evidence.
   const phase = derivePhase(record.events ?? []);
+  if (phase === "done" && !hasValidPin(record) && !hasPinExemption(record)) {
+    const doneAt = [...(record.events ?? [])].reverse().find((e) => e.type === "transition" && e.to === "done")?.at ?? "";
+    if (doneAt >= PIN_LAW_CUTOVER) {
+      return "done record carries no valid command pin (and no recorded exemption) — hand-edited records refuse at the fence";
+    }
+  }
   if (PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf("executing")) {
     return `task is '${phase}' — code landed before the machine authorized executing`;
   }
@@ -533,7 +538,9 @@ export function selfTest() {
     ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
     ["unknown risk class refused (hand-forged record)", recordRefusal(record("totally-made-up-class", ["planned", "executing"])) !== null],
     ["docs-only cannot authorize code", recordRefusal(record("docs-only", ["planned", "executing"])) !== null],
-    ["a pin-less record is refused at the fence (advance-time law, re-checked)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) !== null],
+    ["a pin-less done record is refused at the fence (hand-edit parity)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "2026-09-19T00:00:00.000Z" }] }) !== null],
+    ["a pin-less in-flight record passes the fence (pins bind at verified, commits land at executing)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) === null],
+    ["a pre-cutover done record is grandfathered at the fence", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "2026-09-18T15:00:00.000Z" }] }) === null],
     ["malformed record refused", recordRefusal(null) !== null],
     ["wrong schema refused", recordRefusal({ schema: "nope" }) !== null],
   ];
@@ -574,7 +581,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 13 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -596,10 +603,16 @@ if (isEntry) {
     die(`base ${base} fences an empty range — ${base}..HEAD contains no commits\n  rule: a range that audits nothing is not coverage (the vacuous-base escape, refused)\n  fix: pin the base to an ancestor before HEAD: git rev-parse <earlier-rev> > .stallion-base && git commit`);
   }
   if (flags.base === undefined || flags.base === null) {
-    // The self-resolved tiers (config/committed) read the audited tree — refuse a baseline the
-    // audited commits themselves moved (the smuggle: unfooted code + a base bump past it).
-    if (baseMovedInRange(committedTextAt(base, ".stallion-base"), committedText(".stallion-base"))) {
-      die(`the adoption base moved INSIDE the audited range (${base}..HEAD)\n  rule: the fence's baseline cannot be rewritten by the commits it is judging\n  fix: if this move is deliberate, push once with the OLD base explicit (--base <old>, or git config stallion.push-base <old>), then let the new base take over`);
+    // The self-resolved tiers must refuse a baseline moved by the very push being judged. The
+    // honest anchor is the REMOTE TIP's copy of the file: a base move differs from origin until
+    // the move has landed (this push must then run with the old base explicit, once), and
+    // settles after — comparing against the base COMMIT instead bricked the fence forever,
+    // because the base commit always predates the move (an adversarial finding, proven live).
+    const branch = currentBranch();
+    const remoteTipBase = branch && revParseOk(`origin/${branch}`) ? committedTextAt(`origin/${branch}`, ".stallion-base") : committedTextAt(base, ".stallion-base");
+    const headBase = committedText(".stallion-base");
+    if (remoteTipBase !== null && headBase !== null && baseMovedInRange(remoteTipBase, headBase)) {
+      die(`the adoption base moves in THIS push (differs from the remote tip)\n  rule: the fence's baseline cannot be rewritten by the push it judges without the old range being audited\n  fix: push once with the OLD base explicit: git config stallion.push-base <old> (widen-only), push, then unset — after it lands, the new base takes over`);
     }
   }
   const errors = checkRange(base);
