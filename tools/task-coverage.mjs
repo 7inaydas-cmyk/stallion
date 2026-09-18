@@ -31,7 +31,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase } from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -168,6 +168,11 @@ export function recordRefusal(record) {
   const classLaw = classRefusal(record);
   if (classLaw) return classLaw;
   if (record.riskClass === "docs-only") return "risk class 'docs-only' writes docs, not code — a code change needs a runtime-code/protected/migration task";
+  // Defense in depth: the advance-time pin law re-checked at the fence, because a hand-edited
+  // record must not sail through on the advance-time check alone (an adversarial finding).
+  if (record.riskClass !== "planning-only" && record.riskClass !== "experiment" && !hasValidPin(record) && !hasPinExemption(record)) {
+    return "code task carries no valid command pin (and no recorded exemption) — red-check --command is machine-verified at advance time and re-checked here";
+  }
   const phase = derivePhase(record.events ?? []);
   if (PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf("executing")) {
     return `task is '${phase}' — code landed before the machine authorized executing`;
@@ -475,7 +480,12 @@ export function selfTest() {
     schema: "stallion/task-state@1",
     id: "t",
     riskClass,
-    events: [{ type: "created" }, ...phases.map((to) => ({ type: "transition", to })), ...extraEvents],
+    events: [
+      { type: "created" },
+      { type: "red-check", command: "npm test -- the-pin.test.ts", exitCode: 1, outputDigest: "abc" },
+      ...phases.map((to) => ({ type: "transition", to })),
+      ...extraEvents,
+    ],
   });
 
   const codeCases = [
@@ -523,6 +533,7 @@ export function selfTest() {
     ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
     ["unknown risk class refused (hand-forged record)", recordRefusal(record("totally-made-up-class", ["planned", "executing"])) !== null],
     ["docs-only cannot authorize code", recordRefusal(record("docs-only", ["planned", "executing"])) !== null],
+    ["a pin-less record is refused at the fence (advance-time law, re-checked)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) !== null],
     ["malformed record refused", recordRefusal(null) !== null],
     ["wrong schema refused", recordRefusal({ schema: "nope" }) !== null],
   ];
@@ -563,7 +574,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 12 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 13 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

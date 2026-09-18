@@ -39,7 +39,8 @@ Code in this repo is written under the stallion task lifecycle.
 - Code lands only under a task: `node tools/task-state.mjs new <id> --risk-class <class>`,
   advanced one phase at a time (intake, planned, executing, verified, adversarial, done).
 - Commits that touch code carry a `task: <id>` footer on its own line, last paragraph.
-- `verified` needs RED-check evidence; `done` needs a clean adversarial pass.
+- `verified` needs a command pin: `red-check --command "<the failing check>"`; `done` needs a
+  clean adversarial pass and every pin re-run GREEN.
 - Refusals print the exact fix command. Run it. Do not work around a refusal.
 - Self-check the wiring: `node tools/task-coverage.mjs --doctor`
 ```

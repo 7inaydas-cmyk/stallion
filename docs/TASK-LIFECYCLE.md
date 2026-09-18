@@ -42,7 +42,8 @@ remembered.
   so a pass can never silently claim to have swept more than it did.
 - Records are event logs under `tasks/`. Phase is derived from the last transition, never
   stored. The tool refuses illegal transitions; it cannot cryptographically stop a hand edit,
-  and the git history of the record file is the tamper evidence.
+  and the git history of the record file is the tamper evidence. Records completed before the
+  command-pin law carry path-only evidence; the law binds transitions from its introduction.
 
 ## Commands
 

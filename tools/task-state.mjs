@@ -59,20 +59,27 @@ function hasApproval(record) {
 }
 
 function redCheckEvidence(record) {
+  const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
   const paths = [];
-  for (const e of record.events) if (e.type === "red-check") paths.push(...(e.evidence ?? []));
+  for (const e of record.events) if (e.type === "red-check" && !retired.has(e.command)) paths.push(...(e.evidence ?? []));
   return paths;
 }
 
-/** Command pins: red-check events that RAN a command and recorded its nonzero exit — the only
- *  machine-verified form. Path evidence supplements; it never substitutes (issue #9). A pin
- *  retired with a recorded justification no longer counts and no longer re-runs at done. */
-function commandPins(record) {
+/** Command pins: red-check events that RAN a command and recorded a nonzero integer exit —
+ *  the only machine-verified form. A recorded pin without a nonzero integer exitCode is not a
+ *  pin (hand-forged or killed events refuse, they do not pass). A pin retired with a recorded
+ *  justification no longer counts and no longer re-runs at done. */
+export function hasValidPin(record) {
   const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
-  return record.events.filter((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command));
+  return record.events.some((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0);
 }
 
-function hasPinExemption(record) {
+function commandPins(record) {
+  const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
+  return record.events.filter((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0);
+}
+
+export function hasPinExemption(record) {
   return record.events.some((e) => e.type === "pin-exemption" && typeof e.justification === "string" && e.justification.trim().length > 0);
 }
 
@@ -163,7 +170,7 @@ function doneGuard(record, findings, _evidenceOnDisk, resolveEvidenceMissing = [
   if (greenFailures.length > 0) {
     return {
       reason: `command pin(s) no longer pass at done: ${greenFailures.join("; ")}`,
-      remedy: `the fix must make every pin GREEN before done — repair the code or the command; a genuinely wrong pin needs a recorded exemption`,
+      remedy: `the fix must make every pin GREEN before done — repair the code, or retire a genuinely wrong pin: node tools/task-state.mjs pin-retire ${record.id} --command "<the exact pin command>" --justification "<why the pin is wrong>"`,
     };
   }
   return null;
@@ -198,12 +205,17 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, res
   return { ok: true };
 }
 
-/** What blocks the next transition, computed from the SAME facts `advance` will check. */
+/** What blocks the next transition, computed from the SAME facts `advance` will check (the one
+ *  exception: `advance done` re-runs command pins, which a status read must not do — status
+ *  reports that the re-run WILL happen instead). */
 export function obligations(record, findings, evidenceOnDisk) {
   const current = derivePhase(record.events);
   if (current === "done") return ["done — reopen as a new task if more work is needed"];
   const target = PHASES[PHASES.indexOf(current) + 1];
   const verdict = evaluateTransition(record, findings, target, evidenceOnDisk);
+  if (verdict.ok && target === "done") {
+    return [`advance to ${target} is unblocked`, `done will re-run ${commandPins(record).length} command pin(s) — each must pass`];
+  }
   return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason, `fix: ${verdict.remedy}`];
 }
 
@@ -276,15 +288,19 @@ function cmdApprove(args) {
 }
 
 const PIN_COMMAND_TIMEOUT_MS = 300_000;
+const PIN_MAX_BUFFER = 10 * 1024 * 1024;
 
-/** Run a pin command and return { exitCode, output } — the machine-verified RED capture. */
+/** Run a pin command and return { exitCode, output } — the machine-verified RED capture.
+ *  exitCode is null when the command could not deliver a verdict (spawn failure, timeout,
+ *  signal, buffer overflow): a null verdict is NEVER a RED pin (an adversarial finding: real
+ *  Node reports status null, not undefined, on all those paths). */
 export function runPinCommand(command) {
   try {
-    const out = execFileSync("sh", ["-c", command], { cwd: ROOT, encoding: "utf8", timeout: PIN_COMMAND_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"] });
+    const out = execFileSync("sh", ["-c", command], { cwd: ROOT, encoding: "utf8", timeout: PIN_COMMAND_TIMEOUT_MS, maxBuffer: PIN_MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] });
     return { exitCode: 0, output: out };
   } catch (e) {
-    if (e.status === undefined) {
-      die(`pin command could not run: ${command} (${e.code ?? e.message})\n  fix: a pin must be a runnable shell command from the repo root`);
+    if (!Number.isInteger(e.status)) {
+      die(`pin command delivered no verdict: ${command} (${e.code ?? e.signal ?? e.message})\n  rule: a pin that did not run to completion is not evidence of anything\n  fix: make the command complete (it hangs, explodes past ${PIN_MAX_BUFFER / 1024 / 1024}MB of output, or cannot start)`);
     }
     return { exitCode: e.status, output: `${e.stdout ?? ""}${e.stderr ?? ""}` };
   }
@@ -326,6 +342,7 @@ function cmdPinRetire(args) {
   if (typeof command !== "string" || command.trim().length === 0) die("pin-retire requires --command — the exact command of the pin being retired");
   if (typeof justification !== "string" || justification.trim().length === 0) die("pin-retire requires --justification — retiring a pin without a reason is deleting evidence");
   mutateTask(id, (record) => {
+    if (derivePhase(record.events) === "done") die("done is terminal — a finished task's pins cannot be retired; reopen the concern as a new task");
     const recorded = record.events.some((e) => e.type === "red-check" && e.command === command);
     if (!recorded) die(`no command pin records exactly: ${command}\n  evidence: the task's pin commands are ${commandPins(record).map((p) => JSON.stringify(p.command)).join(", ") || "none"}`);
     const alreadyRetired = record.events.some((e) => e.type === "pin-retire" && e.command === command);
@@ -348,18 +365,22 @@ function cmdAdvance(args) {
   const [id, target] = args._;
   if (!id || !target) die("usage: advance <id> <phase>");
   let from;
+  // Pin re-runs happen OUTSIDE the task lock and only when the transition could succeed: a pin
+  // may run minutes, and the lock's stale-breaker would gift concurrent writers a lost update
+  // (an adversarial finding — the exact bug the lock exists to prevent).
+  let greenFailures = [];
+  if (target === "done" && derivePhase(loadTask(id).events) === "adversarial") {
+    const pins = commandPins(loadTask(id));
+    for (const pin of pins) {
+      const run = runPinCommand(pin.command);
+      if (run.exitCode !== 0) greenFailures.push(`"${pin.command}" exit ${run.exitCode ?? "no verdict"}`);
+    }
+  }
   mutateTask(id, (record) => {
     const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
     if (!ok) die(error);
     if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
     const resolveMissing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
-    let greenFailures = [];
-    if (target === "done") {
-      for (const pin of commandPins(record)) {
-        const run = runPinCommand(pin.command);
-        if (run.exitCode !== 0) greenFailures.push(`"${pin.command}" exit ${run.exitCode}`);
-      }
-    }
     const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), resolveMissing, greenFailures);
     if (!verdict.ok) die(`REFUSED — ${verdict.reason}\n  fix: ${verdict.remedy}`);
     from = derivePhase(record.events);
@@ -447,6 +468,8 @@ export function selfTest() {
     ["a path-only red-check no longer verifies a code task", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }] }, null, "verified", true).ok],
     ["a command pin verifies a code task", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true).ok],
     ["a recorded pin exemption substitutes for the command pin", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }, { type: "pin-exemption", justification: "cannot re-run in this env" }] }, null, "verified", true).ok],
+    ["a forged pin with exit 0 is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "true", exitCode: 0, outputDigest: "x" }] }, null, "verified", true).ok],
+    ["a killed pin (null exit) is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "hang", exitCode: null, outputDigest: "x" }] }, null, "verified", true).ok],
     ["verified with vanished evidence refused", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["gone.test.ts"] }] }, null, "verified", false).ok],
     ["done without findings register refused", !evaluateTransition(adversarial, null, "done", true).ok],
     ["done with UNRESOLVED finding refused", !evaluateTransition(adversarial, dirtyFindings, "done", true).ok],
@@ -475,7 +498,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of remedyCases) if (!passes) fail(`task-state: ${name}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (24 transition + 9 remedy cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

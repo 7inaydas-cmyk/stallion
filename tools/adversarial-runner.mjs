@@ -146,13 +146,16 @@ function parseRegisterForWrite(text, id) {
   return register;
 }
 
-/** The diff under audit: defaults to the last commit, overridable for multi-commit waves. */
+/** The diff under audit: defaults to the last commit, overridable for multi-commit waves. The
+ *  head is resolved to a pinned sha — an alias like HEAD names a different range every day. */
 function diffUnderAudit(args) {
   const base = args.base ?? "HEAD~1";
   const head = args.head ?? "HEAD";
   const fileList = gitOut("diff", "--name-only", `${base}..${head}`);
   if (!fileList) die(`no diff between ${base} and ${head} — an adversarial pass audits a CHANGE\n  fix: name commits that differ: adversarial-runner.mjs prepare <task-id> --base <rev> --head <rev>`);
-  return { diffStat: gitOut("diff", "--stat", `${base}..${head}`), fileList, base, head };
+  const pinnedHead = gitOut("rev-parse", head).trim();
+  const pinnedBase = gitOut("rev-parse", base).trim();
+  return { diffStat: gitOut("diff", "--stat", `${base}..${head}`), fileList, base: pinnedBase, head: pinnedHead, content: gitOut("diff", `${base}..${head}`) };
 }
 
 /**
@@ -189,13 +192,13 @@ function cmdPrepare(args) {
   const id = args._[0];
   if (!id) die("usage: prepare <task-id> [--base <rev>] [--head <rev>]");
   requireTask(id);
-  const { diffStat, fileList, base, head } = diffUnderAudit(args);
+  const { diffStat, fileList, base, head, content } = diffUnderAudit(args);
   const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
   if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
   const dir = `${BUNDLE_DIR}/${id}`;
   mkdirSync(dir, { recursive: true });
   for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList));
-  mintPassMarker(id, base, head, `${diffStat}\n${fileList}`);
+  mintPassMarker(id, base, head, content);
   console.log(`${lanes.length} refute bundles written to adversarial/${id}/`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, then record findings here, then 'verdict ${id}'`);
 }
