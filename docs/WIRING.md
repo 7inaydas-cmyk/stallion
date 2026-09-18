@@ -118,8 +118,9 @@ fence's own surface (`.githooks/**`, `.github/**`, `.stallion-base`) is protecte
 radius: only a protected or migration task with a recorded approval may declare it. Tasks
 created before the scope-law cutover (2026-09-18T20:50:00.000Z in stallion's own history) are
 grandfathered for their settled commits — a FINISHED task never authorizes new code, whatever
-its age (the fence discriminates: commits already on the remote are re-audited under the law of
-their day; new work answers to today's law).
+its age. The fence discriminates by HISTORY, not recency: code written while the task was in
+flight (an ancestor of the task's done-flip commit) stays authorized after the task finishes;
+code landing after the flip cites finished work and refuses.
 
 ## 7. The push control
 

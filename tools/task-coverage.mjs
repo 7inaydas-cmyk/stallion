@@ -418,21 +418,35 @@ function loadRecord(id) {
 }
 
 /**
- * Is this range commit NEW WORK being judged now, or already-settled history re-audited because
- * the pinned base predates the remote tip? An explicitly-based range IS this push. With a
- * remote anchor, a commit already on the remote was judged under the law of its day (the fence
- * re-reads records at run time; a task done NOW legitimately authorized a commit made and
- * pushed THEN). With no anchor and no explicit base the done-citation law skips VISIBLY rather
- * than bricking detached clones (the moved-base precedent: never brick on a missing anchor).
+ * The first commit where a task's record gained its done transition — the machine-visible
+ * moment the task finished. History, not the working tree: the flip a pusher never commits
+ * never happened as far as citation law can tell (the plain-JSON boundary the fence header
+ * already records), and the record legitimately lands one commit after the code it authorizes.
  */
-function commitIsNew(sha, explicitBase, originRef) {
-  if (explicitBase) return true;
-  if (!originRef) return false;
-  return !isAncestorOrSelf(sha, originRef);
+function doneFlipSha(id) {
+  try {
+    const out = gitOut("log", "--reverse", "--format=%H", "-S", '"to": "done"', "--", `tasks/${id}.json`);
+    return out.trim().split("\n").filter(Boolean)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Was this citing commit written while the task was still in flight? Operational, not
+ * timestamp-trusting: true unless the commit is an ancestor of (or IS) the commit that flipped
+ * the task to done. Code written under an in-flight task stays authorized after the task
+ * finishes (its own wave's tail commits are exactly this); code that lands AFTER the flip
+ * cites finished work and refuses. With no committed flip the question is unanswerable from
+ * history and the commit is judged as in-flight work (visible boundary, never a brick).
+ */
+function citesFinishedWork(sha, id) {
+  const flip = doneFlipSha(id);
+  return flip !== null && !isAncestorOrSelf(sha, flip);
 }
 
 /** The range check: every code commit in base..HEAD must carry an authorizing task footer. */
-function checkRange(base, explicitBase = false, originRef = null) {
+function checkRange(base) {
   const errors = [];
   const headSha = gitOut("rev-parse", "HEAD").trim();
   const commits = gitOut("rev-list", "--reverse", `${base}..HEAD`).trim().split("\n").filter(Boolean);
@@ -459,10 +473,9 @@ function checkRange(base, explicitBase = false, originRef = null) {
     const refusal = recordRefusal(record);
     if (refusal) { errors.push(`${short} (task ${footer}): ${refusal}`); continue; }
     // The binding half of issue #8, through the ONE citation seam the commit-msg gate also
-    // lives behind: for new work, a finished task never authorizes code, and the named task's
-    // DECLARED scope must cover every code file this commit touches. Settled history re-audited
-    // from an older pinned base falls through to the scope law under its own day's record.
-    const citation = citationRefusal(record, files.filter(isCodePath), commitIsNew(sha, explicitBase, originRef));
+    // lives behind: code written after the task's done-flip commit cites finished work and
+    // refuses; the named task's DECLARED scope must cover every code file this commit touches.
+    const citation = citationRefusal(record, files.filter(isCodePath), citesFinishedWork(sha, footer));
     if (citation) { errors.push(`${short} (task ${footer}): ${citation.reason}\n      fix: ${citation.remedy}`); continue; }
   }
   return errors;
@@ -900,22 +913,20 @@ if (isEntry) {
   // refusal — a tier-wide exemption let config=NEW-base skip the audit entirely (an
   // adversarial replay proved the smuggle). With no anchor, skip visibly; never fall back to
   // the base-commit copy, which always predates the move and bricked detached clones forever.
-  // The remote-tip anchor serves two laws: the moved-base audit and the done-citation law's
-  // new-work discrimination (a commit already on the remote was judged under the law of its
-  // day; the pinned adoption base deliberately re-audits older settled history).
+  // The remote-tip anchor serves the moved-base audit: a base move is judged exactly once,
+  // from the OLD base (the remote tip's copy of .stallion-base). No anchor = visible skip,
+  // never a silent brick.
   const guardBranch = [currentBranch(), remoteHeadBranch()].find((c) => c && revParseOk(`origin/${c}`))
     ?? [currentBranch(), remoteHeadBranch()].find(Boolean) ?? "";
-  const originRef = revParseOk(`origin/${guardBranch}`) ? `origin/${guardBranch}` : null;
-  if (originRef) {
-    const oldBaseRequired = movedBaseVerdict(flags.base ?? gitConfig("stallion.push-base"), committedTextAt(originRef, ".stallion-base"), committedText(".stallion-base"));
+  if (revParseOk(`origin/${guardBranch}`)) {
+    const oldBaseRequired = movedBaseVerdict(flags.base ?? gitConfig("stallion.push-base"), committedTextAt(`origin/${guardBranch}`, ".stallion-base"), committedText(".stallion-base"));
     if (oldBaseRequired !== null) {
       die(`the adoption base moves in THIS push and is not being audited from the OLD base\n  rule: a base move is judged exactly once, from the old base\n  fix: git config stallion.push-base <old-base-sha>   — the EXACT value in origin's copy of .stallion-base, byte-for-byte — then push, then unset`);
     }
   } else {
     console.log("task-coverage: ~ moved-base check skipped — no remote tip anchor resolvable (no origin/<branch>, no origin/HEAD)");
-    if (!flags.base) console.log("task-coverage: ~ done-citation law skipped for the same reason — without an anchor or an explicit --base, range commits are judged as settled history (skip, never brick)");
   }
-  const errors = checkRange(base, Boolean(flags.base), originRef);
+  const errors = checkRange(base);
   if (errors.length > 0) {
     for (const e of errors) console.error(`task-coverage: ✖ ${e}`);
     die("CODE LANDED OUTSIDE THE LIFECYCLE — nothing was pushed. Record the task (task-state new), advance it, and carry 'task: <id>' in the commit message.");
