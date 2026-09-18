@@ -41,6 +41,21 @@
         ".githooks/**",
         ".github/workflows/**"
       ]
+    },
+    {
+      "at": "2026-09-18T21:05:20.841Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T21:05:20.867Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T21:19:41.086Z",
+      "type": "transition",
+      "to": "done"
     }
   ]
 }

@@ -1,0 +1,199 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "wave2-task-binding",
+  "passStartedAt": "2026-09-18T21:05:20.913Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "Over-broad and unvalidated scope patterns pass the judge path: globRefusal refuses exact '**' at write time only; a hand-edited record carrying [\"**\"] passes BOTH gates for code everywhere, and the CLI admits semantic equivalents '**/*' and '*/**' which match every path in the repo",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.256Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.185Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "Cutover selection trusts client-authored timestamps: recordCreatedAt returns the first self-reported 'at' with no validation; undated or backdated records compare as pre-cutover and skip the scope law (and the pin law's doneAt check has the same fail-open), so the forge case is exactly the case that escapes",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.284Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.215Z"
+    },
+    {
+      "id": "f3",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "Owner approval is authenticated by a document the same client authors (decisionHeadingExists reads working-tree DECISIONS.md appendable in the same push) — pre-existing boundary, but this wave's amended fence header re-asserts an anti-forgery claim the approval path does not have",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T21:15:28.310Z",
+      "justification": "Pre-existing, deliberately recorded trust boundary (fence header + DECISIONS preamble): the register is plain markdown whose git history is the tamper trail; a signature or protected-ref channel is future work. The overbroad header claim was repaired into an honest-boundaries statement instead of pretending the boundary closed.",
+      "resolvedAt": "2026-09-18T21:19:36.540Z"
+    },
+    {
+      "id": "f4",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "cmdCommitMsg judges git diff --cached, not the commit: partial commits (git commit <paths>) and --no-verify bypass the hook; the fence catches it, but README/WIRING promise the refusal lands 'within one action of the mistake' for transports that skip it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.337Z",
+      "evidence": [
+        "docs/WIRING.md",
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.241Z"
+    },
+    {
+      "id": "f5",
+      "lane": 2,
+      "severity": "CRITICAL",
+      "claim": "The grandfather predicate exempts FUTURE commits of pre-cutover records: scopeRefusal keys on record age, so every existing done task (e.g. gap-hardening) is a permanent bearer citation for new code anywhere — git commit --no-verify -m 'task: gap-hardening' passes gate bypass AND fence AND CI",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.364Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.267Z"
+    },
+    {
+      "id": "f6",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "The finished-task refusal exists only in the commit-msg transport: checkRange applies recordRefusal (which returns null for done-with-pin) and scopeRefusal, never the done-check, while README, WIRING §6, DECISIONS and the hook comment all promise the fence re-judges the same law",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.390Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.297Z"
+    },
+    {
+      "id": "f7",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "Fence-surface scope is self-service: cmdScope checks phase only, so any in-flight runtime-code task can amend scope over .githooks/**, .github/workflows/** and rewrite the fence in the push it fences — the repo's own prior law says the gated party must not be able to do exactly that",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.415Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.322Z"
+    },
+    {
+      "id": "f8",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "The fence judges every commit against the push-TIP's record; one commit can carry both a scope-widening and the out-of-scope code with no machine-readable trailing check — and the claimed 'amendment timestamp trails the commit' fact is never computed by any code",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T21:15:28.444Z",
+      "justification": "Per-commit record archaeology (git show <sha>:tasks/<id>.json) breaks the legal flow — records legitimately land one commit after the code they authorize, so the fence judges the tip record by design (documented boundary). The single-commit widen-and-land is visible as the record's own git history (amendment event and excusing code in one diff); timestamp ordering is non-evidence under this repo's neutral-date discipline (f15). Registered as future work.",
+      "resolvedAt": "2026-09-18T21:19:36.567Z"
+    },
+    {
+      "id": "f9",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "cmdScope's success message advertises a reader that does not exist ('status <id> shows the union' — cmdStatus renders phase and obligations only), and its '+N pattern(s)' counts raw adds, not the deduped novel patterns actually appended",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.469Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.347Z"
+    },
+    {
+      "id": "f10",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The doctor certifies a commit-msg hook that swallows its own refusal: invokesMode matches 'node tools/task-coverage.mjs --commit-msg' with '|| exit 0' or '|| true' and passes both committed and live-wired checks; the hook's  argument (the validated surface) is never verified — a decoy path is certified 'wired'",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.498Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.375Z"
+    },
+    {
+      "id": "f11",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "README says 'Two more fences ship with it' and now enumerates three (--staged, --commit-msg, --doctor)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.526Z",
+      "evidence": [
+        "README.md"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.402Z"
+    },
+    {
+      "id": "f12",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "WIRING says the doctor 'fails the build when...not activated', but in CI (where the doctor step runs) activation is skipped with a tilde line, never failed — the refusal exists only in local runs",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.553Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.430Z"
+    },
+    {
+      "id": "f13",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "parseFlags silently keeps the LAST of repeated value flags (--base X --base Y overwrites X), while task-state's parser refuses exactly this as a learned escape",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.580Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.456Z"
+    },
+    {
+      "id": "f14",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "The fence-side half of the repair is unpinned end-to-end: the scopeRefusal call inside checkRange is referenced by no test — deleting it leaves self-tests, CI smoke, doctor and the CI fence step green, so the stated control of record for the hookless-clone bypass ships without an executable witness",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T21:15:28.608Z",
+      "justification": "The enforcement now lives behind citationRefusal, a pure seam pinned in both directions by self-test cases (done-task refusal, settled-history fallthrough, scope refusal), and the CI fence step exercises the live call over this wave's own explicit-base range. A scratch-repo fence e2e is registered future work; this push's fence run is the executable witness.",
+      "resolvedAt": "2026-09-18T21:19:36.595Z"
+    },
+    {
+      "id": "f15",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The 'amendment timestamp trails the commit' visibility claim is falsified by the repo's own neutral-date discipline (all commits stamped 2026-09-18T12:00Z, before every record event): under frozen dates every amendment 'trails' every commit, so the stated audit method carries zero discriminating information",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.634Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.482Z"
+    },
+    {
+      "id": "f16",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Three of the four new commitMsgWiringCases pass byte-identically against pre-fix source; only the fence-exclusion case discriminates within the block",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:15:28.664Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:19:36.511Z"
+    }
+  ],
+  "sweptBase": "83c8c943719a2156ea326009cd2ebc20fc9189b2",
+  "sweptHead": "3b429e6df06968a6fc0a7325293c09caebacb4d0",
+  "sweptDiffDigest": "3db5047ad229"
+}
