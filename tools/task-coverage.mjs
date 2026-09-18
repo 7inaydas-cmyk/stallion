@@ -95,6 +95,21 @@ export function baseMovedInRange(fileAtRangeStart, fileAtHead) {
 }
 
 /**
+ * Pure: the moved-base law. A base move is audited EXACTLY ONCE, FROM THE OLD BASE — the
+ * remote tip's copy of .stallion-base. null = this push may proceed; "old-base" = the move is
+ * not being judged from the old base (no explicit base was supplied, or the supplied one is
+ * not the old value). With no remote-tip anchor there is no accusation (visible skip, never a
+ * silent brick: the base-commit fallback anchored on a commit that always predates the move).
+ */
+export function movedBaseVerdict(explicitBase, remoteTipBase, headBase) {
+  if (remoteTipBase === null) return null;
+  if (headBase === null) return "old-base"; // deleting the anchor is a move — never exempt
+  if (!baseMovedInRange(remoteTipBase, headBase)) return null;
+  if (typeof explicitBase === "string" && explicitBase.trim() === remoteTipBase.trim()) return null;
+  return "old-base";
+}
+
+/**
  * Pure: lane count via the ENFORCEMENT parser — the doctor must never re-implement the format
  * (an adversarial finding: two dialects of one law drift apart silently).
  */
@@ -209,6 +224,17 @@ function gitConfig(key) {
 function currentBranch() {
   try {
     return gitOut("branch", "--show-current").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** The branch origin points at by default — the anchor for detached checkouts (CI), where
+ *  branch --show-current is empty. */
+function remoteHeadBranch() {
+  try {
+    const ref = gitOut("symbolic-ref", "--short", "refs/remotes/origin/HEAD").trim();
+    return ref.startsWith("origin/") ? ref.slice("origin/".length) : "";
   } catch {
     return "";
   }
@@ -578,10 +604,17 @@ export function selfTest() {
     ["an adoption base moved inside the audited range is flagged", baseMovedInRange("aaa\n", "bbb\n")],
     ["an unchanged adoption base passes", !baseMovedInRange("aaa\n", "aaa\n")],
     ["a base file absent at range start passes (first adoption)", !baseMovedInRange(null, "aaa\n")],
+    ["an unmoved base needs no old-base audit", movedBaseVerdict(null, "old\n", "old\n") === null],
+    ["a moved base audited from the OLD base passes", movedBaseVerdict("old", "old\n", "new\n") === null],
+    ["a moved base audited from the NEW base is refused", movedBaseVerdict("new", "old\n", "new\n") === "old-base"],
+    ["a moved base with no explicit base is refused", movedBaseVerdict(null, "old\n", "new\n") === "old-base"],
+    ["no anchor, no accusation (detached clones skip visibly)", movedBaseVerdict(null, null, "new\n") === null],
+    ["deleting the anchor is a move, never exempt", movedBaseVerdict(null, "old\n", null) === "old-base"],
+    ["a short-sha spelling of the old base is refused (byte equality)", movedBaseVerdict("abc123", "abc123def456\n", "new\n") === "old-base"],
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 15 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -602,17 +635,20 @@ if (isEntry) {
   if (count === 0) {
     die(`base ${base} fences an empty range — ${base}..HEAD contains no commits\n  rule: a range that audits nothing is not coverage (the vacuous-base escape, refused)\n  fix: pin the base to an ancestor before HEAD: git rev-parse <earlier-rev> > .stallion-base && git commit`);
   }
-  if ((flags.base === undefined || flags.base === null) && gitConfig("stallion.push-base") === null) {
-    // Only the COMMITTED tier's self-resolution triggers the moved-base refusal: a base that
-    // differs from the remote tip means this push moves it, and that push must audit from the
-    // OLD base. The old base supplied EXPLICITLY (--base or the config tier) is that audit —
-    // refusing it made the sanctioned two-step unexecutable (an adversarial finding, live).
-    const branch = currentBranch();
-    const remoteTipBase = branch && revParseOk(`origin/${branch}`) ? committedTextAt(`origin/${branch}`, ".stallion-base") : committedTextAt(base, ".stallion-base");
-    const headBase = committedText(".stallion-base");
-    if (remoteTipBase !== null && headBase !== null && baseMovedInRange(remoteTipBase, headBase)) {
-      die(`the adoption base moves in THIS push (differs from the remote tip)\n  rule: the fence's baseline cannot be rewritten by the push it judges without the old range being audited\n  fix: push once with the OLD base explicit: git config stallion.push-base <old> (widen-only), push, then unset — after it lands, the new base takes over`);
+  // The moved-base law: a push that moves .stallion-base is judged exactly once, from the OLD
+  // base (the remote tip's copy). Only an explicit base EQUAL to the old value skips the
+  // refusal — a tier-wide exemption let config=NEW-base skip the audit entirely (an
+  // adversarial replay proved the smuggle). With no anchor, skip visibly; never fall back to
+  // the base-commit copy, which always predates the move and bricked detached clones forever.
+  const guardBranch = [currentBranch(), remoteHeadBranch()].find((c) => c && revParseOk(`origin/${c}`))
+    ?? [currentBranch(), remoteHeadBranch()].find(Boolean) ?? "";
+  if (revParseOk(`origin/${guardBranch}`)) {
+    const oldBaseRequired = movedBaseVerdict(flags.base ?? gitConfig("stallion.push-base"), committedTextAt(`origin/${guardBranch}`, ".stallion-base"), committedText(".stallion-base"));
+    if (oldBaseRequired !== null) {
+      die(`the adoption base moves in THIS push and is not being audited from the OLD base\n  rule: a base move is judged exactly once, from the old base\n  fix: git config stallion.push-base <old-base-sha>   — the EXACT value in origin's copy of .stallion-base, byte-for-byte — then push, then unset`);
     }
+  } else {
+    console.log("task-coverage: ~ moved-base check skipped — no remote tip anchor resolvable (no origin/<branch>, no origin/HEAD)");
   }
   const errors = checkRange(base);
   if (errors.length > 0) {
