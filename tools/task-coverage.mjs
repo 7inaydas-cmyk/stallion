@@ -602,12 +602,11 @@ if (isEntry) {
   if (count === 0) {
     die(`base ${base} fences an empty range — ${base}..HEAD contains no commits\n  rule: a range that audits nothing is not coverage (the vacuous-base escape, refused)\n  fix: pin the base to an ancestor before HEAD: git rev-parse <earlier-rev> > .stallion-base && git commit`);
   }
-  if (flags.base === undefined || flags.base === null) {
-    // The self-resolved tiers must refuse a baseline moved by the very push being judged. The
-    // honest anchor is the REMOTE TIP's copy of the file: a base move differs from origin until
-    // the move has landed (this push must then run with the old base explicit, once), and
-    // settles after — comparing against the base COMMIT instead bricked the fence forever,
-    // because the base commit always predates the move (an adversarial finding, proven live).
+  if ((flags.base === undefined || flags.base === null) && gitConfig("stallion.push-base") === null) {
+    // Only the COMMITTED tier's self-resolution triggers the moved-base refusal: a base that
+    // differs from the remote tip means this push moves it, and that push must audit from the
+    // OLD base. The old base supplied EXPLICITLY (--base or the config tier) is that audit —
+    // refusing it made the sanctioned two-step unexecutable (an adversarial finding, live).
     const branch = currentBranch();
     const remoteTipBase = branch && revParseOk(`origin/${branch}`) ? committedTextAt(`origin/${branch}`, ".stallion-base") : committedTextAt(base, ".stallion-base");
     const headBase = committedText(".stallion-base");
