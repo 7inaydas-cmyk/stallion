@@ -1,0 +1,45 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ci-adoption-base-fallback",
+  "title": "Committed .stallion-base so CI resolves a real range on the first push",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T13:46:11.532Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T13:46:11.556Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T13:46:11.583Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T13:46:20.669Z",
+      "type": "red-check",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ]
+    },
+    {
+      "at": "2026-09-18T13:47:15.326Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T14:09:47.718Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T14:09:47.744Z",
+      "type": "transition",
+      "to": "done"
+    }
+  ]
+}

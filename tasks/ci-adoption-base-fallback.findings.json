@@ -1,0 +1,279 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ci-adoption-base-fallback",
+  "passStartedAt": "2026-09-18T13:47:15.394Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 3,
+      "severity": "CRITICAL",
+      "claim": "task record for a footered code commit was untracked: the local fence reads the working tree and passed, but a CI clone would refuse the delivering push (lanes 3/4/5/7/8)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.543Z",
+      "evidence": [
+        "tasks/ci-adoption-base-fallback.json"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.122Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "CRITICAL",
+      "claim": "adoption base is client-authored from the audited HEAD and .stallion-base/.githooks/.github were not code paths: unfooted code plus a base bump could smuggle past the fence (lanes 1/8)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.570Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.149Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "HIGH",
+      "claim": "doctor CI check was self-certifying: the doctor's own step line or a --staged-only hook satisfied the wiring detectors (lanes 3/5/8)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.598Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.178Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "the committed-base tier shipped with zero live executions: local config shadowed it everywhere and fixtures were inert strings (lanes 4/7)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.625Z",
+      "evidence": [
+        ".github/workflows/selftest.yml"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.202Z"
+    },
+    {
+      "id": "f5",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "local git-config tier could shrink the fence below the committed base invisibly: the moved-base guard reads only the committed file, and the doctor blessed any non-empty range",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.650Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.226Z"
+    },
+    {
+      "id": "f6",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "a docs-only task at executing was a master key for code at both gates; unrelated and never-finishing tasks authorize anything (role-level, no tenancy)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.676Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.257Z"
+    },
+    {
+      "id": "f7",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "authorization is forgeable plain JSON: hand-written records and self-approvable DECISIONS.md headings pass shape checks (documented boundary class)",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T14:09:46.703Z",
+      "justification": "the plain-JSON trust boundary is documented law (WIRING: What is deliberately NOT enforced): records and registers are reviewable, git history is the tamper evidence, and cryptographic signatures are registered future work.",
+      "resolvedAt": "2026-09-18T14:09:47.618Z"
+    },
+    {
+      "id": "f8",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "doctor wiring detectors accepted an echo line or --base HEAD~1 as the fence: substring, not invocation",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.731Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.281Z"
+    },
+    {
+      "id": "f9",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "revParseOk accepted non-commits and relative refs; the committed base file was unvalidated (now strict 40-hex commit)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.759Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.306Z"
+    },
+    {
+      "id": "f10",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "empty --base value was silently swallowed instead of refused",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.783Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.330Z"
+    },
+    {
+      "id": "f11",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "rangeCount converted git failures into 0 and misreported them as a vacuous base, coaching an unnecessary base change",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.807Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.356Z"
+    },
+    {
+      "id": "f12",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "stale three-tier order in the committed pre-push hook and resolvePushBase docstring; one remedy omitted git commit",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.834Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.383Z"
+    },
+    {
+      "id": "f13",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "WIRING.md package.json template lacked the selftest script that AGENTS.md and CI reference",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.861Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.409Z"
+    },
+    {
+      "id": "f14",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "the local activation check was armed nowhere automated: CI skips it and no hook ran the doctor locally",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.884Z",
+      "evidence": [
+        ".githooks/pre-push"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.433Z"
+    },
+    {
+      "id": "f15",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "the CI delta step trusts github.event.before alone; history accepted by a shadowed local fence is never re-audited by it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.910Z",
+      "evidence": [
+        ".github/workflows/selftest.yml",
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.461Z"
+    },
+    {
+      "id": "f16",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "the RED pin was arity-only: the committed-vs-origin fixture passed under the pre-fix signature, proving only that a fourth argument existed",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:46.936Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        ".github/workflows/selftest.yml"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.488Z"
+    },
+    {
+      "id": "f17",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "CI=true visibly skips the activation checks: a client-set env remains the discriminator (documented compromise, clone config cannot travel)",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T14:09:46.965Z",
+      "justification": "clone-local config cannot travel to CI; the doctor visibly prints the skip and the push CI re-fences — the alternative (failing every CI run) rejects a state CI cannot observe.",
+      "resolvedAt": "2026-09-18T14:09:47.642Z"
+    },
+    {
+      "id": "f18",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "committedBase carried a dead try/catch around a non-throwing body",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:47.020Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.516Z"
+    },
+    {
+      "id": "f19",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "origin-tracking tier is unreachable in CI (detached HEAD): it is a local-clone convenience only",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:47.046Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.540Z"
+    },
+    {
+      "id": "f20",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "the wave's adversarial artifacts (bundles, register) were untracked, leaving the audit trail off-repo",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:47.072Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.567Z"
+    },
+    {
+      "id": "f21",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "no task-to-file tenancy: any in-flight task authorizes any staged code, and nothing expires a task parked at executing forever (registered future work)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:09:47.096Z",
+      "evidence": [
+        "adversarial/ci-adoption-base-fallback/lane-01-input-forgeability-trust-boundaries-that-believe-the-client.md"
+      ],
+      "resolvedAt": "2026-09-18T14:09:47.593Z"
+    },
+    {
+      "id": "f22",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "--staged combined with --doctor silently ran only the staged gate; the combination is now refused outright (this claim needed the --claim= form: the strict parser refuses dash-leading values)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T14:10:39.610Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T14:10:39.640Z"
+    },
+    {
+      "id": "f23",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "register correction: f21 cited a refute bundle as resolution evidence for the missing task-to-file tenancy, which is registered future work, not a repair — corrected here because resolutions are append-only",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T14:10:39.670Z",
+      "justification": "task-to-file binding is the registered task-commit binding future work; today the push gate demands a per-commit footer naming a specific valid record, and in-flight staleness is bounded by review of the register's git history.",
+      "resolvedAt": "2026-09-18T14:10:39.701Z"
+    }
+  ]
+}
