@@ -123,7 +123,9 @@ then let the new base take over — a base that moved inside its own audited ran
 
 (The zero-SHA of a new branch means no prior tip; with no `--base` the tool resolves the
 committed `.stallion-base` — a fallback to `origin/<default>` would equal HEAD and fence
-nothing.)
+nothing. The unconditional bare step earlier in the workflow is the backstop: the delta step
+above trusts `github.event.before`, while the bare step re-audits from the pinned base on
+every run.)
 
 Pull requests are not re-fenced, on purpose: every commit reaches the default branch through a
 push, and every push is fenced.

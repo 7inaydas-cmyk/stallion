@@ -104,14 +104,17 @@ export function checklistLaneCount(text) {
   return typeof text === "string" ? lanesFromChecklist(text).length : 0;
 }
 
-/** Pure: a live (non-comment) line invokes task-coverage in the given MODE — the doctor must
- *  not certify itself (an adversarial finding: the doctor's own step line satisfied the
- *  "CI re-runs task-coverage" check, and a --staged-only hook passed as a pre-push fence). */
+/** Pure: a live (non-comment) line actually INVOKES task-coverage in the given MODE — the
+ *  invocation must start the command (an `echo` mentioning the tool wires nothing), and the
+ *  doctor must not certify itself (an adversarial finding: its own step line satisfied the
+ *  CI-fence check, and a --staged-only hook passed as a pre-push fence). */
 export function invokesMode(text, mode) {
   if (typeof text !== "string") return false;
   return text.split("\n").some((l) => {
-    const t = l.trim();
-    if (t.length === 0 || t.startsWith("#") || !t.includes("task-coverage")) return false;
+    let t = l.trim();
+    if (t.length === 0 || t.startsWith("#")) return false;
+    t = t.replace(/^run:\s*/, "").replace(/^sh\s+-c\s+['"]/, "").replace(/'\s*$/, "");
+    if (!/^node\s+tools\/task-coverage\.mjs(\s|$)/.test(t)) return false;
     const doctor = t.includes("--doctor");
     const staged = t.includes("--staged");
     if (mode === "doctor") return doctor;
@@ -172,6 +175,7 @@ export function recordRefusal(record) {
   if (record.schema !== "stallion/task-state@1") return `unknown schema: ${String(record?.schema)}`;
   const classLaw = classRefusal(record);
   if (classLaw) return classLaw;
+  if (record.riskClass === "docs-only") return "risk class 'docs-only' writes docs, not code — a code change needs a runtime-code/protected/migration task";
   const phase = derivePhase(record.events ?? []);
   if (PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf("executing")) {
     return `task is '${phase}' — code landed before the machine authorized executing`;
@@ -385,9 +389,12 @@ function cmdDoctor() {
 
   const branch = currentBranch();
   const originCurrent = branch && revParseOk(`origin/${branch}`) ? `origin/${branch}` : null;
-  const doctorBase = pickBase(null, gitConfig("stallion.push-base"), committedBase(), originCurrent);
-  const baseSane = doctorBase !== null && revParseOk(doctorBase) && rangeCount(doctorBase) > 0;
-  check("push base resolves and fences a non-empty range", baseSane, "git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit   (an ancestor before HEAD; a base at HEAD audits nothing)");
+  const configBase = gitConfig("stallion.push-base");
+  const committedBaseValue = committedBase();
+  const doctorBase = pickBase(null, configBase, committedBaseValue, originCurrent);
+  const narrowing = configBase && committedBaseValue && configBase.trim() !== committedBaseValue && !isAncestorOrSelf(configBase, committedBaseValue);
+  const baseSane = doctorBase !== null && revParseOk(doctorBase) && rangeCount(doctorBase) > 0 && !narrowing;
+  check("push base resolves and fences a non-empty range (local overrides are widen-only)", baseSane, "git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit   (an ancestor before HEAD; a base at HEAD audits nothing; a local config newer than the committed base narrows the fence and is refused)");
 
   const register = committedText("docs/decisions/DECISIONS.md") ?? "";
   check("decisions register exists with entry headings", registerHeadingCount(register) > 0, "create docs/decisions/DECISIONS.md with at least one '## ' entry heading");
@@ -416,11 +423,28 @@ function cmdDoctor() {
 function resolvePushBase(explicit) {
   const branch = currentBranch();
   const originCurrent = branch && revParseOk(`origin/${branch}`) ? `origin/${branch}` : null;
-  const base = pickBase(explicit, gitConfig("stallion.push-base"), committedBase(), originCurrent);
+  const config = gitConfig("stallion.push-base");
+  const committed = committedBase();
+  const base = pickBase(explicit, config, committed, originCurrent);
   if (!base) {
-    die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit   (committed — CI resolves from it)\n       or: git config stallion.push-base <rev>   (local override)\n       or run with an explicit --base <rev>`);
+    die(`no resolvable push base — refusing rather than guessing a range\n  rule: a first push must not fail open\n  fix: git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit   (committed — CI resolves from it)\n       or: git config stallion.push-base <rev>   (local override, widen-only)\n       or run with an explicit --base <rev>`);
+  }
+  // A local override may only WIDEN the audit: a config base newer than the committed base
+  // narrows the fence below the repo's baseline, invisibly to any reviewer (an adversarial
+  // finding). Advancing the base is a deliberate edit of the committed file, two-step.
+  if (!explicit && config && committed && config.trim() !== committed && !isAncestorOrSelf(config, committed)) {
+    die(`local stallion.push-base (${config.trim()}) narrows the fence below the committed adoption base (${committed.slice(0, 8)})\n  rule: local overrides widen the audit or match it — never shrink it\n  fix: git config --unset stallion.push-base, or pin the older base: git config stallion.push-base ${committed}\n       to ADVANCE the adoption base, edit the committed .stallion-base and push once with --base <old>`);
   }
   return base;
+}
+
+function isAncestorOrSelf(rev, maybeDescendant) {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", rev, maybeDescendant], { cwd: ROOT, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Strict flags: --base takes a value (both --base x and --base=x, non-empty); --staged and
@@ -506,6 +530,7 @@ export function selfTest() {
     ["protected with a real decision authorizes", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-15 — ADOPTION: this repository runs its code through the task lifecycle" }])) === null],
     ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
     ["unknown risk class refused (hand-forged record)", recordRefusal(record("totally-made-up-class", ["planned", "executing"])) !== null],
+    ["docs-only cannot authorize code", recordRefusal(record("docs-only", ["planned", "executing"])) !== null],
     ["malformed record refused", recordRefusal(null) !== null],
     ["wrong schema refused", recordRefusal({ schema: "nope" }) !== null],
   ];
@@ -517,6 +542,7 @@ export function selfTest() {
     ["code staged with no tasks refuses and lists the code files", stagedRefusal(["apps/a.ts", "docs/x.md"], []).codeFiles?.length === 1],
     ["code staged under a planning-only task still refuses", stagedRefusal(["tools/x.mjs"], [record("planning-only", ["planned", "executing"])]) !== null],
     ["a done task does not keep the staged gate open", stagedRefusal(["apps/a.ts"], [record("runtime-code", ["planned", "executing", "verified", "adversarial", "done"])]) !== null],
+    ["a docs-only task does not keep the staged gate open", stagedRefusal(["apps/a.ts"], [record("docs-only", ["planned", "executing"])]) !== null],
   ];
   for (const [name, passes] of stagedCases) if (!passes) fail(`task-coverage: ${name}`);
 
@@ -524,6 +550,8 @@ export function selfTest() {
     ["lane count delegates to the enforcement parser", checklistLaneCount("### 1. A\nbody\n### 2. B\nbody") === 2],
     ["the fence detector matches a bare range-check step", invokesMode("      run: node tools/task-coverage.mjs --base \"$BASE\"", "fence")],
     ["the doctor's own step does not certify the fence", !invokesMode("      run: node tools/task-coverage.mjs --doctor", "fence")],
+    ["an echo line mentioning the tool wires nothing", !invokesMode("      run: echo node tools/task-coverage.mjs\n", "fence")],
+    ["a sh -c wrapped staged hook certifies staged (Claude Code form)", invokesMode("sh -c 'node tools/task-coverage.mjs --staged || exit 2'", "staged")],
     ["a --staged-only hook does not certify the fence", !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n", "fence")],
     ["the staged detector requires --staged on a live line", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n", "staged")],
     ["a commented-out pre-commit hook wires nothing", !invokesMode("#!/bin/sh\n# node tools/task-coverage.mjs --staged\nexit 0\n", "staged")],
@@ -543,7 +571,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 11 authorization + 5 staged + 7 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 12 authorization + 6 staged + 9 doctor + 8 base cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
