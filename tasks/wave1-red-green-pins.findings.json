@@ -1,0 +1,174 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "wave1-red-green-pins",
+  "passStartedAt": "2026-09-18T20:26:00.659Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 4,
+      "severity": "CRITICAL",
+      "claim": "killed, hung, or buffer-overflowing commands delivered no verdict yet were recorded as RED pins: real Node reports e.status null (never undefined) and the 1MB default maxBuffer turned passing verbose commands into fake REDs (lanes 1/4/6 proved it live)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.404Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.110Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "CRITICAL",
+      "claim": "grandfathered records stand as counterexamples and the fence never re-checked the pin law: gap-hardening sits at done with path-only evidence while the docs claim the arc is machine-verified",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.457Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.160Z"
+    },
+    {
+      "id": "f3",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "the done refusal named pin-exempt, which the done path ignores — an operator following the remedy stays blocked; only pin-retire unblocks and it was never named",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.509Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.209Z"
+    },
+    {
+      "id": "f4",
+      "lane": 6,
+      "severity": "HIGH",
+      "claim": "pin re-runs executed inside the task lock where a 300s pin outlives the 60s stale-breaker, gifting concurrent writers the lost-update bug the lock exists to prevent; pins also ran before cheap phase refusals",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.562Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.259Z"
+    },
+    {
+      "id": "f5",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "pin-retire and pin-exempt were self-granted in any phase, even after done, with one-character justifications",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.611Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.309Z"
+    },
+    {
+      "id": "f6",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "recorded pins were believed wholesale: forged exit-0 and killed-null exitCodes passed the verified gate",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.661Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.356Z"
+    },
+    {
+      "id": "f7",
+      "lane": 8,
+      "severity": "HIGH",
+      "claim": "the swept range pinned a moving alias (HEAD) and hashed the diff's stat shape, not its content; old registers carry no swept fields at all",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.711Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.401Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "HIGH",
+      "claim": "WIRING.md still taught the demoted path-only law and pin-exempt/pin-retire were documented nowhere",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.760Z",
+      "evidence": [
+        "docs/WIRING.md",
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.448Z"
+    },
+    {
+      "id": "f9",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "status/obligations reported done as unblocked without mentioning the pin re-runs that advance will perform",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.809Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.495Z"
+    },
+    {
+      "id": "f10",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "retired pins' evidence paths still fed the on-disk evidence check, an unremediable refusal path",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.858Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.545Z"
+    },
+    {
+      "id": "f11",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "the banner counted 9 remedy cases while enumerating 10",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:26:29.907Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:26:30.593Z"
+    },
+    {
+      "id": "f12",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "the 300s timeout kills only the sh child; background grandchildren survive as orphans",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:26:29.958Z",
+      "justification": "pins are test commands, not daemons; process-group kill on timeout is registered future work — the boundary is documented and the no-verdict refusal already fails closed.",
+      "resolvedAt": "2026-09-18T20:26:30.643Z"
+    },
+    {
+      "id": "f13",
+      "lane": 8,
+      "severity": "HIGH",
+      "claim": "the wave's only surviving pin is the tool's own self-test: the harness grading itself, circular for self-changes",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:26:30.009Z",
+      "justification": "harness self-changes can only pin their own battery; the pin did discriminate (exit 1 pre-fix, 0 post-fix) and Antitube tasks pin real suites. Circular-but-honest is the documented boundary.",
+      "resolvedAt": "2026-09-18T20:26:30.692Z"
+    },
+    {
+      "id": "f14",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "evidence paths accept absolute paths outside the repo and resolve cwd-first, so a same-named file anywhere validates",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:26:30.059Z",
+      "justification": "repo-confinement and cwd-ordering of evidence paths are the documented plain-trust boundary, shared with the RED-check law; tightening lands with issue #8's binding design.",
+      "resolvedAt": "2026-09-18T20:26:30.744Z"
+    }
+  ],
+  "sweptBase": "fc9262616ef18eb546fe5e6d9c0e41171cf62238",
+  "sweptHead": "9357bc595d609e51b559e7781d093b7d2048fba6",
+  "sweptDiffDigest": "cc269e3c24df"
+}

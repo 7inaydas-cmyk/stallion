@@ -1,0 +1,30 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "advance-adoption-base",
+  "title": "Deliberate adoption-base advance past the pre-pin-law records",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T20:27:14.296Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T20:27:14.349Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T20:27:14.396Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T20:27:14.447Z",
+      "type": "red-check",
+      "command": "node tools/task-coverage.mjs --base 9357bc5",
+      "exitCode": 1,
+      "outputDigest": "0c03053d3e61"
+    }
+  ]
+}

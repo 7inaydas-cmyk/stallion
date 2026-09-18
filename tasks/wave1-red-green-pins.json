@@ -1,0 +1,62 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "wave1-red-green-pins",
+  "title": "Machine-verified RED->GREEN pins; swept-range visibility on the pass marker",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T20:14:48.855Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T20:14:48.877Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T20:14:48.901Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T20:15:52.195Z",
+      "type": "red-check",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "c5a4837cecff",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/adversarial-runner.mjs"
+      ]
+    },
+    {
+      "at": "2026-09-18T20:16:46.718Z",
+      "type": "red-check",
+      "command": "sh -c 'exit 3'",
+      "exitCode": 3,
+      "outputDigest": "e3b0c44298fc"
+    },
+    {
+      "at": "2026-09-18T20:16:46.761Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T20:16:46.884Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T20:17:40.138Z",
+      "type": "pin-retire",
+      "command": "sh -c 'exit 3'",
+      "justification": "live gate demonstration of exit-code capture, not a real pin for this wave"
+    },
+    {
+      "at": "2026-09-18T20:26:30.902Z",
+      "type": "transition",
+      "to": "done"
+    }
+  ]
+}
