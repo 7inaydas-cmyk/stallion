@@ -38,9 +38,11 @@ remembered.
 - A task's code commits are bound by its DECLARED SCOPE: `scope <id> --add "tools/**,docs/*"`
   records the blast radius as append-only glob events (declared once the task is `planned`).
   The `commit-msg` gate refuses code staged outside it at commit time; the push fence re-judges
-  the range against the record — and a FINISHED task never authorizes new code at either
-  transport, discriminated by history: code written while the task was in flight stays
-  authorized, code landing after the task's done-flip commit refuses.
+  the range against the record — and a FINISHED task never authorizes new code. The commit-msg
+  gate applies that law unconditionally (the stricter transport); the fence discriminates
+  against the settled anchor (the remote tip, or an explicit --base): once the anchor's copy of
+  the record reads done, new citing commits refuse, while a task landing its own wave
+  authorizes the tail commits it was written under.
   The footer is a citation; the scope is the binding. Tasks created before
   2026-09-18T20:50:00.000Z are grandfathered for their settled commits (the same cutover
   pattern as the pin law); an undated or malformed creation stamp fails CLOSED, not open.

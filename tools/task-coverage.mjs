@@ -261,9 +261,11 @@ export function scopeRefusal(record, codeFiles) {
  * Pure: the full citation law — one seam for the commit-msg gate and the push fence, so the two
  * transports cannot drift (an adversarial finding found exactly that drift shipped). For a NEW
  * commit, a finished task never authorizes code (the stale-done-master-key law the staged gate
- * already lives under); re-judged history falls through to the scope law under its own day's
- * record. `isNewCommit` is the caller's transport fact: always true at commit-msg time; at the
- * fence, true for an explicitly-based range or a commit not already on the remote anchor.
+ * already lives under). `isNewCommit` is the caller's transport fact: always true at commit-msg
+ * time (the commit is being made NOW, against the working tree — deliberately the stricter
+ * transport); at the fence it is judged against the SETTLED ANCHOR, the one input outside this
+ * push, so a wave's own tail commits, written while the task was in flight, stay authorized
+ * (see isNewCitation / anchorRecordPhase).
  */
 export function citationRefusal(record, codeFiles, isNewCommit) {
   if (isNewCommit && derivePhase(record.events ?? []) === "done") {
@@ -418,38 +420,52 @@ function loadRecord(id) {
 }
 
 /**
- * The first commit where a task's record gained its done transition — the machine-visible
- * moment the task finished. History, not the working tree: the flip a pusher never commits
- * never happened as far as citation law can tell (the plain-JSON boundary the fence header
- * already records), and the record legitimately lands one commit after the code it authorizes.
+ * Pure: does this citation need to answer the done-law? The record's phase comes from the
+ * working tree; the ANCHOR PHASE is what the settled audit anchor (the explicit base, or
+ * origin/<branch> — the one input outside this push) knew about the task; `commitSettled` says
+ * the citing commit is at-or-behind the anchor (re-audited settled history, never accused).
+ * A task the anchor already showed as DONE is finished settled work: a citing commit new since
+ * that anchor is posthumous and refuses. A task first-landing at the anchor (or in flight
+ * there) is landing in THIS push — its tail commits were written in flight and stay
+ * authorized. No anchor skips the law (never a brick); an unreadable anchor copy fails closed.
  */
-function doneFlipSha(id) {
-  try {
-    const out = gitOut("log", "--reverse", "--format=%H", "-S", '"to": "done"', "--", `tasks/${id}.json`);
-    return out.trim().split("\n").filter(Boolean)[0] ?? null;
-  } catch {
-    return null;
-  }
+export function isNewCitation(recordPhase, anchorPhase, commitSettled) {
+  if (recordPhase !== "done") return true;
+  if (commitSettled) return false;
+  if (anchorPhase === "settled-done" || anchorPhase === "unreadable") return true;
+  return false; // first-landing, in-flight-there, no-anchor
 }
 
 /**
- * Was this citing commit written while the task was still in flight? Operational, not
- * timestamp-trusting: true unless the commit is an ancestor of (or IS) the commit that flipped
- * the task to done. Code written under an in-flight task stays authorized after the task
- * finishes (its own wave's tail commits are exactly this); code that lands AFTER the flip
- * cites finished work and refuses. With no committed flip the question is unanswerable from
- * history and the commit is judged as in-flight work (visible boundary, never a brick).
+ * The task's phase as the settled audit anchor knows it. Presence is checked with ls-tree
+ * (tree-only: survives shallow clones, where blobs of included trees are always present);
+ * content is read with one git show. Never pickaxe — byte-coupled detectors break on
+ * serialization (an adversarial finding proved the compact spelling matches nothing).
  */
-function citesFinishedWork(sha, id) {
-  const flip = doneFlipSha(id);
-  return flip !== null && !isAncestorOrSelf(sha, flip);
+function anchorRecordPhase(id, anchorRef) {
+  if (!anchorRef) return "no-anchor";
+  let listed;
+  try {
+    listed = gitOut("ls-tree", anchorRef, "--", `tasks/${id}.json`).trim();
+  } catch {
+    return "no-anchor";
+  }
+  if (listed === "") return "first-landing";
+  try {
+    const record = JSON.parse(gitOut("show", `${anchorRef}:tasks/${id}.json`));
+    return derivePhase(record.events ?? []) === "done" ? "settled-done" : "in-flight-there";
+  } catch {
+    return "unreadable";
+  }
 }
 
 /** The range check: every code commit in base..HEAD must carry an authorizing task footer. */
-function checkRange(base) {
+function checkRange(base, anchorRef = null) {
   const errors = [];
   const headSha = gitOut("rev-parse", "HEAD").trim();
   const commits = gitOut("rev-list", "--reverse", `${base}..HEAD`).trim().split("\n").filter(Boolean);
+  const anchorPhaseCache = new Map();
+  let anchorSkips = 0;
   for (const sha of commits) {
     // -m --first-parent: merges are diffed against their first parent. Plain `diff-tree -r` emits
     // NOTHING for a merge, which made every merge invisible — an evil merge could land code no
@@ -473,11 +489,27 @@ function checkRange(base) {
     const refusal = recordRefusal(record);
     if (refusal) { errors.push(`${short} (task ${footer}): ${refusal}`); continue; }
     // The binding half of issue #8, through the ONE citation seam the commit-msg gate also
-    // lives behind: code written after the task's done-flip commit cites finished work and
-    // refuses; the named task's DECLARED scope must cover every code file this commit touches.
-    const citation = citationRefusal(record, files.filter(isCodePath), citesFinishedWork(sha, footer));
+    // lives behind. The done-law is judged against the SETTLED ANCHOR (the one input outside
+    // this push): a task the anchor already showed done refuses new citing commits, while a
+    // task first-landing or in flight there authorizes its own tail. Commits at-or-behind the
+    // anchor are re-audited settled history and are never accused. The named task's DECLARED
+    // scope must cover every code file either way.
+    let isNew = true;
+    if (derivePhase(record.events ?? []) === "done") {
+      const settled = Boolean(anchorRef) && isAncestorOrSelf(sha, anchorRef);
+      const anchorPhase = anchorPhaseCache.get(footer) ?? anchorRecordPhase(footer, anchorRef);
+      anchorPhaseCache.set(footer, anchorPhase);
+      if (anchorPhase === "no-anchor" && !anchorRef) anchorSkips += 1;
+      isNew = isNewCitation("done", anchorPhase, settled);
+      if (anchorPhase === "unreadable" && !settled) {
+        errors.push(`${short} (task ${footer}): the audit anchor's copy of the record is unreadable — a gate that cannot read state must not pass`);
+        continue;
+      }
+    }
+    const citation = citationRefusal(record, files.filter(isCodePath), isNew);
     if (citation) { errors.push(`${short} (task ${footer}): ${citation.reason}\n      fix: ${citation.remedy}`); continue; }
   }
+  if (anchorSkips > 0) console.log(`task-coverage: ~ done-citation law skipped for ${anchorSkips} citing commit(s) — no audit anchor resolvable (detached clone, no origin/<branch>); skip, never brick`);
   return errors;
 }
 
@@ -873,20 +905,19 @@ export function selfTest() {
   ];
   for (const [name, passes] of citationCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  const commitMsgWiringCases = [
-    ["a commit-msg hook line certifies commit-msg mode", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 1\n", "commit-msg")],
-    ["a commit-msg line does not certify the fence", !invokesMode("node tools/task-coverage.mjs --commit-msg \"$1\"", "fence")],
-    ["a staged-only line does not certify commit-msg", !invokesMode("node tools/task-coverage.mjs --staged", "commit-msg")],
-    ["a commented-out commit-msg hook wires nothing", !invokesMode("# node tools/task-coverage.mjs --commit-msg \"$1\"\n", "commit-msg")],
-    ["a hook that swallows its own verdict wires nothing", !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 0\n", "commit-msg")],
-    ["'|| true' is a swallow, not a wiring", !invokesMode("node tools/task-coverage.mjs --staged || true\n", "staged")],
-    ["'|| exit 2' (the Claude Code translation) still certifies", invokesMode("sh -c 'node tools/task-coverage.mjs --staged || exit 2'", "staged")],
-    ["a commit-msg line validating a decoy path certifies nothing", !invokesMode("node tools/task-coverage.mjs --commit-msg .githooks/footer.txt\n", "commit-msg")],
-    ["a fence line that swallows its verdict certifies no fence", !invokesMode("node tools/task-coverage.mjs || exit 0\n", "fence")],
+  const anchorCases = [
+    ["a task settled-done at the anchor refuses a commit new since that anchor", isNewCitation("done", "settled-done", false) === true],
+    ["a task first-landing at the anchor authorizes its own tail commits", isNewCitation("done", "first-landing", false) === false],
+    ["a task in flight at the anchor authorizes its finishing push", isNewCitation("done", "in-flight-there", false) === false],
+    ["no anchor skips the done-law rather than bricking", isNewCitation("done", "no-anchor", false) === false],
+    ["an unreadable anchor copy fails closed", isNewCitation("done", "unreadable", false) === true],
+    ["a commit already settled at the anchor is re-audited, never accused", isNewCitation("done", "settled-done", true) === false],
+    ["an in-flight record never trips the done-law", isNewCitation("executing", "settled-done", false) === true],
+    ["an adversarial-phase record never trips the done-law", isNewCitation("adversarial", "first-landing", false) === true],
   ];
-  for (const [name, passes] of commitMsgWiringCases) if (!passes) fail(`task-coverage: ${name}`);
+  for (const [name, passes] of anchorCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 16 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -913,12 +944,13 @@ if (isEntry) {
   // refusal — a tier-wide exemption let config=NEW-base skip the audit entirely (an
   // adversarial replay proved the smuggle). With no anchor, skip visibly; never fall back to
   // the base-commit copy, which always predates the move and bricked detached clones forever.
-  // The remote-tip anchor serves the moved-base audit: a base move is judged exactly once,
-  // from the OLD base (the remote tip's copy of .stallion-base). No anchor = visible skip,
-  // never a silent brick.
+  // The audit anchor — the settled remote tip (or the explicit base a CI fence step supplies):
+  // the one input outside this push. It anchors BOTH the moved-base audit and the done-citation
+  // law. No anchor = visible skips, never silent bricks.
   const guardBranch = [currentBranch(), remoteHeadBranch()].find((c) => c && revParseOk(`origin/${c}`))
     ?? [currentBranch(), remoteHeadBranch()].find(Boolean) ?? "";
-  if (revParseOk(`origin/${guardBranch}`)) {
+  const originOk = revParseOk(`origin/${guardBranch}`);
+  if (originOk) {
     const oldBaseRequired = movedBaseVerdict(flags.base ?? gitConfig("stallion.push-base"), committedTextAt(`origin/${guardBranch}`, ".stallion-base"), committedText(".stallion-base"));
     if (oldBaseRequired !== null) {
       die(`the adoption base moves in THIS push and is not being audited from the OLD base\n  rule: a base move is judged exactly once, from the old base\n  fix: git config stallion.push-base <old-base-sha>   — the EXACT value in origin's copy of .stallion-base, byte-for-byte — then push, then unset`);
@@ -926,7 +958,8 @@ if (isEntry) {
   } else {
     console.log("task-coverage: ~ moved-base check skipped — no remote tip anchor resolvable (no origin/<branch>, no origin/HEAD)");
   }
-  const errors = checkRange(base);
+  const anchorRef = flags.base ?? (originOk ? `origin/${guardBranch}` : null);
+  const errors = checkRange(base, anchorRef);
   if (errors.length > 0) {
     for (const e of errors) console.error(`task-coverage: ✖ ${e}`);
     die("CODE LANDED OUTSIDE THE LIFECYCLE — nothing was pushed. Record the task (task-state new), advance it, and carry 'task: <id>' in the commit message.");
