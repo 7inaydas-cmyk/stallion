@@ -48,6 +48,18 @@
       "at": "2026-09-18T21:21:46.252Z",
       "type": "transition",
       "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T21:29:28.143Z",
+      "type": "red-check",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "075ae602ce49"
+    },
+    {
+      "at": "2026-09-18T21:30:49.219Z",
+      "type": "transition",
+      "to": "done"
     }
   ]
 }

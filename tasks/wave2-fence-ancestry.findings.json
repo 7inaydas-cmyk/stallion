@@ -1,0 +1,108 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "wave2-fence-ancestry",
+  "passStartedAt": "2026-09-18T21:21:38.841Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "CRITICAL",
+      "claim": "The done-flip detector is byte-coupled, not semantic: git log -S '\"to\": \"done\"' matches raw blob bytes — the compact spelling '\"to\":\"done\"' matches zero commits in real history (verified), a reordered or reformatted record hides its flip, any non-transition occurrence of the literal counts as a flip, and nothing pins the serializer's 2-space format to the fence's pattern",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.109Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.005Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "Null flip fails OPEN silently: doneFlipSha swallows git errors into null and citesFinishedWork treats null as in-flight — no committed flip, a swallowed error, or shallow history turns the done-law off with zero output, while the docstring claims a 'visible boundary' and the change deleted the one skip notice that used to exist",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.135Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.031Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "The discriminator consults only pusher-rewritable local history: rebasing a post-flip citing commit before the flip (or re-serializing the record) defeats the law at both the local fence and CI; the origin-recency design anchored on state outside the push and was removed",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.162Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.058Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The changed code has zero machine verification: doneFlipSha and citesFinishedWork are unexported and referenced by no test; the four citation cases pass literal booleans through the unchanged seam; inverting the ancestry direction passes every self-test — and the task's pin-exemption asserts 'pinned by the four citation-seam self-test cases', a coverage claim that is false",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.187Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.084Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "HIGH",
+      "claim": "Shallow clones silently disarm the law: git log -S over a truncated history returns empty with exit 0, so a typical shallow pre-push clone gets the done-citation law off by default; only this repo's CI fetch-depth: 0 saves the CI path, and the doctor certifies wiring, never liveness",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.217Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.110Z"
+    },
+    {
+      "id": "f6",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "Transport and doc drift: citationRefusal's docstring still documents the deleted remote-anchor design; a single commit carrying both code and the done-flip passes the fence but refuses the commit-msg gate; TASK-LIFECYCLE claims history discrimination 'at either transport' while the commit-msg gate is unconditional",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.244Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "docs/WIRING.md",
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.139Z"
+    },
+    {
+      "id": "f7",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "The pickaxe runs with default history simplification: in merge-shaped histories the commit that introduced the done string can be pruned from the traversal, dating the flip later than truth and shrinking the refusal window",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.271Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.164Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The self-test banner claims '16 authorization' cases but authCases enumerates 15 — a hand-maintained count wrong on the battery the wave's evidence leans on",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T21:29:09.300Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T21:30:44.190Z"
+    }
+  ],
+  "sweptBase": "deebe13dd72433c88609947b530523dca618f039",
+  "sweptHead": "0781e754f68d1e74cead08ea5ed4b8a47f519ed2",
+  "sweptDiffDigest": "1456cd7e1d93"
+}
