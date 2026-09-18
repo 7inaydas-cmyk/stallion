@@ -1,0 +1,45 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "narrow-base-exemption",
+  "title": "Moved-base exemption is value-narrow: only the OLD base skips the guard; no fallback brick in detached clones",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T20:42:48.830Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T20:42:48.884Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T20:42:48.935Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T20:43:00.976Z",
+      "type": "red-check",
+      "command": "sh -c 'git config --unset stallion.push-base 2>/dev/null; git checkout --detach -q && { node tools/task-coverage.mjs; s=$?; git checkout -q main; exit $s; }'",
+      "exitCode": 1,
+      "outputDigest": "50ea508841b4"
+    },
+    {
+      "at": "2026-09-18T20:43:47.741Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T20:49:43.580Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T20:49:43.797Z",
+      "type": "transition",
+      "to": "done"
+    }
+  ]
+}

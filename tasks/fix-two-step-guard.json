@@ -1,0 +1,45 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "fix-two-step-guard",
+  "title": "Moved-base guard must not fire on the config tier - the explicit old-base push is the sanctioned route",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-18T20:35:38.490Z",
+      "type": "created",
+      "riskClass": "runtime-code"
+    },
+    {
+      "at": "2026-09-18T20:35:38.542Z",
+      "type": "transition",
+      "to": "planned"
+    },
+    {
+      "at": "2026-09-18T20:35:38.594Z",
+      "type": "transition",
+      "to": "executing"
+    },
+    {
+      "at": "2026-09-18T20:35:38.652Z",
+      "type": "red-check",
+      "command": "sh -c 'git config stallion.push-base 64ec30d52838476f06b9cafc940d51e6c7980941 && node tools/task-coverage.mjs'",
+      "exitCode": 1,
+      "outputDigest": "50ea508841b4"
+    },
+    {
+      "at": "2026-09-18T20:36:04.020Z",
+      "type": "transition",
+      "to": "verified"
+    },
+    {
+      "at": "2026-09-18T20:36:19.156Z",
+      "type": "transition",
+      "to": "adversarial"
+    },
+    {
+      "at": "2026-09-18T20:36:19.462Z",
+      "type": "transition",
+      "to": "done"
+    }
+  ]
+}

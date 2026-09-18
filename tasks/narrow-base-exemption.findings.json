@@ -1,0 +1,54 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "narrow-base-exemption",
+  "passStartedAt": "2026-09-18T20:44:24.090Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "the first push of a new branch skipped the guard entirely (no origin/<branch> yet): the anchor fallback consulted origin/HEAD only when detached, so a branch-shape smuggle audited from the NEW base",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:49:43.121Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:49:43.328Z"
+    },
+    {
+      "id": "f2",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "deleting .stallion-base was exempt from the old-base audit (headBase null read as no accusation); the anchor ordering and byte-equality semantics were unpinned",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:49:43.178Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:49:43.380Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "the trust anchor is client-writable state: origin tracking refs and origin/HEAD are updatable in-clone, and CI checkout sets no origin/HEAD",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:49:43.228Z",
+      "justification": "remote-tracking refs are plain-trust state, the documented boundary of the plain-JSON register world; the git history of .stallion-base is the tamper evidence, and the server-pinned CI delta step re-judges existing-branch pushes.",
+      "resolvedAt": "2026-09-18T20:49:43.431Z"
+    },
+    {
+      "id": "f4",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "a stale origin/HEAD anchors the verdict on the wrong branch; the CI --base event.before sha can never equal the old base VALUE, so a compliant move would die on runners that do set origin/HEAD",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:49:43.280Z",
+      "justification": "stale origin/HEAD is the set-head -a discipline (future doctor check); the CI shape concern is real and registered — runner-anchored verdicts defer to the server-pinned event.before range, and new-branch first pushes remain the documented boundary until task-commit binding (issue #8).",
+      "resolvedAt": "2026-09-18T20:49:43.480Z"
+    }
+  ],
+  "sweptBase": "4714db61072ba68956cf3ea1689243096edf6b85",
+  "sweptHead": "fee5130ab19e2602aab2e4fa1b037b176984f46a",
+  "sweptDiffDigest": "ce869079dcdf"
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "fix-two-step-guard",
+  "passStartedAt": "2026-09-18T20:36:19.055Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 2,
+      "severity": "CRITICAL",
+      "claim": "the tier-wide config exemption re-opened the one-step moved-base smuggle: config set to the NEW base skipped the guard, judging the move zero times from the old range (replayed live)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:43:58.030Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:43:58.231Z"
+    },
+    {
+      "id": "f2",
+      "lane": 6,
+      "severity": "CRITICAL",
+      "claim": "the detached-HEAD fallback anchored on the base commit's copy, which always predates the move — every CI clone would brick forever after a base advance landed",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:43:58.080Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:43:58.330Z"
+    },
+    {
+      "id": "f3",
+      "lane": 8,
+      "severity": "HIGH",
+      "claim": "the authoring clone sat in the exempted state: a pin command installed the config and nothing enforced the unset — a sticky off-switch",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:43:58.132Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "tasks/narrow-base-exemption.json"
+      ],
+      "resolvedAt": "2026-09-18T20:43:58.379Z"
+    },
+    {
+      "id": "f4",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "the changed predicate had zero automated coverage; the register was empty because the dispatch step was skipped",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-18T20:43:58.183Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-18T20:43:58.428Z"
+    },
+    {
+      "id": "f5",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "register correction: f1 was resolved with evidence 'fee5130' — a commit hash typed where a path belongs; the intended evidence is tools/task-coverage.mjs at commit fee5130. Verdict on this DONE task will fail on the phantom path; the correction is recorded here because resolutions are append-only",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-18T20:44:23.926Z",
+      "justification": "the phantom evidence path in f1 cannot be edited out of an append-only register; the done gate passed before the typo and verdict-on-done is advisory. The error itself is the tamper trail.",
+      "resolvedAt": "2026-09-18T20:44:23.996Z"
+    }
+  ],
+  "sweptBase": "86a4b645156a6cf6fe0d7a82e98b71a886a789f4",
+  "sweptHead": "4714db61072ba68956cf3ea1689243096edf6b85",
+  "sweptDiffDigest": "84edb1d462e0"
+}
