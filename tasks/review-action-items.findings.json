@@ -1,0 +1,48 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-action-items",
+  "passStartedAt": "2026-09-19T08:47:25.818Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "the new wiring self-test cases read the plugin manifest unconditionally — a vendored tree without the plugin crashes the battery on ENOENT instead of judging",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T08:48:14.405Z",
+      "proof": "vendor task-coverage.mjs alone into a scratch tree and run --self-test: readFileSync throws, exit nonzero, the whole battery fails for a missing optional component",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs doctorcases before the repair",
+      "resolvedAt": "2026-09-19T08:49:11.877Z"
+    },
+    {
+      "id": "f2",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "the review's batteryGreen-defaults-true judgement call: evaluateTransition's facts.batteryGreen defaults true, so a caller who forgets to run the battery gets green",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T08:48:14.444Z",
+      "evidence": "tools/task-state.mjs evaluateTransition facts destructure",
+      "dedupKey": "tools/task-state.mjs evaluatetransition facts destructure",
+      "justification": "the default is load-bearing for the advisory paths: obligations() and status deliberately call the pure judge WITHOUT fs facts — a default-false batteryGreen would make every status read report a battery obligation status never ran; the enforced path (cmdAdvance) always supplies the real fact, and the guard note documents the seam",
+      "resolvedAt": "2026-09-19T08:49:11.909Z"
+    },
+    {
+      "id": "f3",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "the doctor's new wiring check fails in any tree that vendors the harness without the plugin — a port-time decision the check currently makes unilaterally",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T08:48:14.485Z",
+      "evidence": "tools/task-coverage.mjs cmdDoctor pluginManifest null branch",
+      "dedupKey": "tools/task-coverage.mjs cmddoctor pluginmanifest null branch",
+      "justification": "the check's null-branch message already names the tension (plugin gone while its law is a battery member); whether a vendored tree ships the plugin is the port's decision to make loudly, and the self-test now tolerates absence with a visible skip while the doctor refuses it — the port confronts the choice instead of silently passing",
+      "resolvedAt": "2026-09-19T08:49:11.943Z"
+    }
+  ],
+  "sweptBase": "6c8ffa79343141d9d8e18eaf3b1c65519e2771b5",
+  "sweptHead": "941fcad1489bd143eddb2cb85c4554c9988c4e8c",
+  "sweptDiffDigest": "3ee0609cbcd2"
+}

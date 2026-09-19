@@ -1,0 +1,86 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-action-items",
+  "title": "the two-axis review's action items: the battery law sees every dispatch spelling, the doctor sees the plugin's wiring, and the judgement calls",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T08:44:36.932Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "881f558a2d1f46847a09efd7391b53145291437992b7c41487a9a8cee309c5ac"
+    },
+    {
+      "at": "2026-09-19T08:44:36.968Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "881f558a2d1f46847a09efd7391b53145291437992b7c41487a9a8cee309c5ac",
+      "entry_hash": "b4143c33731b847426b6861dd2ba6e1351534b6f900c742fcd705b2b0ab5b840"
+    },
+    {
+      "at": "2026-09-19T08:44:37.003Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "b4143c33731b847426b6861dd2ba6e1351534b6f900c742fcd705b2b0ab5b840",
+      "entry_hash": "4345a2d75f9e74718a2550e42d5380468672a2cdbb182e5e7aa169bf3b6866c0"
+    },
+    {
+      "at": "2026-09-19T08:44:37.036Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "4345a2d75f9e74718a2550e42d5380468672a2cdbb182e5e7aa169bf3b6866c0",
+      "entry_hash": "c016c163055b375158accafe1fc599bdbe9512dbad0fd46052a29e1a9bce6918"
+    },
+    {
+      "at": "2026-09-19T08:44:44.894Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; python3 -c \"\nimport json\np = \\\"package.json\\\"\npkg = json.load(open(p))\npkg[\\\"scripts\\\"][\\\"selftest\\\"] = pkg[\\\"scripts\\\"][\\\"selftest\\\"].replace(\\\"node tools/task-gate.mjs --self-test\\\", \\\"\\\")\njson.dump(pkg, open(p, \\\"w\\\"), indent=2); open(p, \\\"a\\\").write(\\\"\\n\\\")\n\"; git add package.json; git commit -qm \"sabotage: drop task-gate from the battery\"; node tools/task-coverage.mjs --doctor > /tmp/doc.out 2>&1; grep -q \"task-gate.mjs --self-test\" /tmp/doc.out",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 4,
+      "parent_hash": "c016c163055b375158accafe1fc599bdbe9512dbad0fd46052a29e1a9bce6918",
+      "entry_hash": "4b8b3f950f1fc59e341b3829e5e6b0ea2002cfe05c50c506ce54e19245fc8721"
+    },
+    {
+      "at": "2026-09-19T08:44:45.118Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; python3 -c \"\nimport json\np = \\\"tools/zcode-plugin/hooks/hooks.json\\\"\nm = json.load(open(p))\nm[\\\"hooks\\\"][\\\"PreToolUse\\\"][0][\\\"matcher\\\"] = \\\"NoSuchTool\\\"\njson.dump(m, open(p, \\\"w\\\"), indent=2); open(p, \\\"a\\\").write(\\\"\\n\\\")\n\"; git add -A; git commit -qm \"sabotage: the authoring gate no longer matches any edit tool\"; node tools/task-coverage.mjs --doctor > /tmp/doc2.out 2>&1; grep -qi \"plugin\" /tmp/doc2.out",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 5,
+      "parent_hash": "4b8b3f950f1fc59e341b3829e5e6b0ea2002cfe05c50c506ce54e19245fc8721",
+      "entry_hash": "eacd1a75fd5494febf28518b3b7599c5971c25c977a5360705ece39cc0b74c6e"
+    },
+    {
+      "at": "2026-09-19T08:47:25.754Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "eacd1a75fd5494febf28518b3b7599c5971c25c977a5360705ece39cc0b74c6e",
+      "entry_hash": "e33858b6063762dacf4c9f210bfa8062d52366fa6a35b0f06972cfb32c104c0d"
+    },
+    {
+      "at": "2026-09-19T08:49:12.009Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 7,
+      "parent_hash": "e33858b6063762dacf4c9f210bfa8062d52366fa6a35b0f06972cfb32c104c0d",
+      "entry_hash": "adaa3ed50b94e0b694a353a408e9e0a2139ea666a78dc3e9c6a9fab66a78e329"
+    },
+    {
+      "at": "2026-09-19T08:49:12.355Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 8,
+      "parent_hash": "adaa3ed50b94e0b694a353a408e9e0a2139ea666a78dc3e9c6a9fab66a78e329",
+      "entry_hash": "9ffaab05dec849351ae3c4195be7d075ae7b5fd267b9036c1bd590e4d37fe9fa"
+    }
+  ]
+}
