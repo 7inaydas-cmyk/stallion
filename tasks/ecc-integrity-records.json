@@ -1,0 +1,113 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ecc-integrity-records",
+  "title": "Hash-chained records + refute-with-proof contract (Closes #12, Closes #13)",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T02:49:14.426Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "760455b2e560762020cf9f455f98ef9dbea1fd127f5098dfc85128fbd5c0b746"
+    },
+    {
+      "at": "2026-09-19T02:49:14.457Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "760455b2e560762020cf9f455f98ef9dbea1fd127f5098dfc85128fbd5c0b746",
+      "entry_hash": "213ba9e5f656b9a5f1e031478af7bb0c4dcb97d885efa94becdbd79f621920ab"
+    },
+    {
+      "at": "2026-09-19T02:49:14.485Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "213ba9e5f656b9a5f1e031478af7bb0c4dcb97d885efa94becdbd79f621920ab",
+      "entry_hash": "eda39001cc91b4cfb01f39275f84bdcd77b6c4320b9d7075ab6f9a55d2cdb78d"
+    },
+    {
+      "at": "2026-09-19T02:49:14.510Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "eda39001cc91b4cfb01f39275f84bdcd77b6c4320b9d7075ab6f9a55d2cdb78d",
+      "entry_hash": "4dd84502488a8f495d8a8d0f667e51b86cbc0d58be1a914d72c323b16cc8a64c"
+    },
+    {
+      "at": "2026-09-19T02:50:24.835Z",
+      "type": "red-check",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "73cd710603c1",
+      "seq": 4,
+      "parent_hash": "4dd84502488a8f495d8a8d0f667e51b86cbc0d58be1a914d72c323b16cc8a64c",
+      "entry_hash": "44a883ab1dcde011bc026e6c4c9637dd1ed1aa528e83250729bfc0ad12c21e14"
+    },
+    {
+      "at": "2026-09-19T02:50:24.893Z",
+      "type": "red-check",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9265a3afa9c1",
+      "seq": 5,
+      "parent_hash": "44a883ab1dcde011bc026e6c4c9637dd1ed1aa528e83250729bfc0ad12c21e14",
+      "entry_hash": "cc95db0cc16cd83ff46f3c3220a0d7639344190502f57eed9756289f68b1afb2"
+    },
+    {
+      "at": "2026-09-19T02:50:50.112Z",
+      "type": "red-check",
+      "command": "node tools/task-findings.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "4c9442ad621d",
+      "seq": 6,
+      "parent_hash": "cc95db0cc16cd83ff46f3c3220a0d7639344190502f57eed9756289f68b1afb2",
+      "entry_hash": "52156b47a7d098e59478f6e19487e2a9951c919a0430407ca062f0c41fbfd941"
+    },
+    {
+      "at": "2026-09-19T02:50:50.164Z",
+      "type": "red-check",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ccb64657da19",
+      "seq": 7,
+      "parent_hash": "52156b47a7d098e59478f6e19487e2a9951c919a0430407ca062f0c41fbfd941",
+      "entry_hash": "0c7619983c775965baf528777a7ed6c6a8a2b5ce7bf067f2406926cf8ad51ab1"
+    },
+    {
+      "at": "2026-09-19T02:54:56.998Z",
+      "type": "chain-adopt",
+      "seq": 8,
+      "parent_hash": "0c7619983c775965baf528777a7ed6c6a8a2b5ce7bf067f2406926cf8ad51ab1",
+      "entry_hash": "e8b592d51054b41e2d462b213b07b70e115ed9e2b55c0ece9955a72bf015573e"
+    },
+    {
+      "at": "2026-09-19T02:57:10.802Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 9,
+      "parent_hash": "e8b592d51054b41e2d462b213b07b70e115ed9e2b55c0ece9955a72bf015573e",
+      "entry_hash": "4e85a2331abe97e9ad6c511fc8de339aa966c9a017d109ccf5cabe81b06f5aa6"
+    },
+    {
+      "at": "2026-09-19T02:57:10.829Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 10,
+      "parent_hash": "4e85a2331abe97e9ad6c511fc8de339aa966c9a017d109ccf5cabe81b06f5aa6",
+      "entry_hash": "69a56350517eaee7db137c15e9ae5f12109d2ba0d35acf1294842406ef0f5cfd"
+    },
+    {
+      "at": "2026-09-19T03:12:15.790Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 11,
+      "parent_hash": "69a56350517eaee7db137c15e9ae5f12109d2ba0d35acf1294842406ef0f5cfd",
+      "entry_hash": "be3315a5953206426103d6a0bb4e48ad34d95da4cd97f66f150d6991a583dbba"
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ecc-integrity-records",
+  "passStartedAt": "2026-09-19T02:57:10.873Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "adopt-chain launders arbitrary forged post-cutover history: no window bound and no legality validation — the gated party can hand-forge a record (fake scope, shape-only pins, transitions), run adopt-chain, and the fence then trusts the stamped chain; the window constraint exists only in prose",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.282Z",
+      "proof": "Hand-write tasks/x.json post-cutover with forged events (scope over target files, red-check with exitCode 1 — hasValidPin is shape-only, transitions to executing), unstamped. recordRefusal's chain clause refuses it ('chain broken or unadopted') — that refusal is the law's entire value. Run adopt-chain: recordMustChain=true, not done, no entry_hash — all guards pass, the forged list is stamped into a valid chain plus a chain-adopt marker, chainError=null forever after, and the fence authorizes the code. Guards missed: adoption checks no window (prose only), replays no transitions, cross-checks no pins.",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.807Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "The proof law fails OPEN on the exact stamp class every other cutover fails closed on: the proof clause compares f.recordedAt lexicographically with no strict parse — a CRITICAL finding with recordedAt deleted, non-string, or offset-spelled ('2026-09-18T23:00:00.000-05:00' = 04:00Z post-cutover) validates without proof",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.308Z",
+      "proof": "Hand-edit tasks/<id>.findings.json adding a CRITICAL finding with recordedAt omitted: undefined >= PROOF_CUTOVER is false, validateFindings returns null, and the done gate treats the proof-less blocker as clean-input. recordMustChain and isGrandfatheredScope regex-parse and fail closed on the same class; the proof clause does not.",
+      "evidence": [
+        "tools/task-findings.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.835Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The dispatch contract demands an evidence field per finding but the recorder has no --evidence flag and appendFinding persists none — parseArgs silently accepts and discards it, so UNRESOLVED findings land in the permanent register without the file:line grounding the protocol promises (dead wiring at the seam this diff edited)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.340Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.863Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "README overclaims the chain law as universal: 'every event is hash-chained... a hand edit breaks the chain' — 9 of 10 shipped records are pre-cutover and unchained, hand-edits to them break nothing, and a backdated created-stamp grandfathers a forged record out of the chain, scope, and pin laws at once",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T03:09:10.369Z",
+      "justification": "The backdated well-formed stamp is the pre-existing, documented plain-JSON trust boundary (every cutover law shares the predicate): the counterweight is git history plus — now — the chain for every post-cutover record, so the forgery window is exactly the grandfathered set, which no new law can retroactively bind. A first-git-appearance anchor is registered future work (the stallion #11 family). The README wording now states the edge instead of overclaiming.",
+      "resolvedAt": "2026-09-19T03:12:06.010Z"
+    },
+    {
+      "id": "f5",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "The proof cutover is a wall-clock time bomb in the self-test fixtures: appendFinding stamps recordedAt at run time, and the fixtures append HIGH findings without proof — green only before 2026-09-19T03:00Z and permanently red after (verified live at 03:07Z: npm run selftest fails), so the fix commit's 'all GREEN now' was false at its own timestamp and CI goes red on push",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.397Z",
+      "proof": "Run npm run selftest at any t >= 03:00Z (CI does, on push): selfTestAppendResolve calls appendFinding with severity HIGH and no proof; recordedAt=new Date().toISOString() >= PROOF_CUTOVER; shapeError returns 'finding f1: HIGH owes a proof'; the fixture's fail('appendFinding refused a good finding') fires; task-findings --self-test exits 1 and the chain aborts the battery. Guards missed: fixtures relied on wall-clock grandfathering that expired before commit time; nothing pins fixture stamps.",
+      "evidence": [
+        "tools/task-findings.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.893Z"
+    },
+    {
+      "id": "f6",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "adopt-chain violates the file's own lost-update invariant: it reads and judges OUTSIDE the lock and its mutateJson callback discards the locked text — a concurrent red-check append is silently erased while both commands exit 0",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.425Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.921Z"
+    },
+    {
+      "id": "f7",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The wave's verification arc is anchored to an untracked record: the four RED pins, the adoption, and the tamper probe are evidenced only by tasks/ecc-integrity-records.json (git status '??') and session output — no checkout reproduces the pre-fix RED (the intermediate tree was never committed), and the keyless chain proves nothing about append time before first commit",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T03:09:10.452Z",
+      "justification": "Records commit at done by this repo's norm, so mid-flight verification state is inherently session-anchored; the durable evidence is the pins' exit codes and digests plus the register, and the pre-fix RED is reproducible from the session log (the test cases are in the register's swept range). Committing records earlier is a process note for the next wave, not a code repair.",
+      "resolvedAt": "2026-09-19T03:12:06.043Z"
+    },
+    {
+      "id": "f8",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The stored proof is write-only: verdict prints claim/severity/lane but never the proof, so the maintainer deciding resolve-vs-wont-fix must open raw JSON; the field the law exists to force has no reader",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.481Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.949Z"
+    },
+    {
+      "id": "f9",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "task-coverage's banner claims 15 authorization cases; the array now enumerates 18 — the count drift this harness's own header names",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:09:10.509Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:12:05.975Z"
+    },
+    {
+      "id": "f10",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "The proof requirement checks non-emptiness only — '--proof x' passes CLI and schema, so the concrete-scenario obligation stays prompt-enforced while advertised as schema-enforced",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T03:09:10.538Z",
+      "justification": "Non-emptiness is the schema's bar — the same class as every free-text justification the register already carries (wont-fix reasons, pin-exemption reasons). Forcing proof SUBSTANCE machine-wise would mean parsing English; the substance bar stays in the dispatch contract where the refutation protocol lives.",
+      "resolvedAt": "2026-09-19T03:12:06.076Z"
+    }
+  ],
+  "sweptBase": "034731dfb33930894078cfd144337c2ec31af064",
+  "sweptHead": "fa4071c3163ca464b12f49d41cd57c5f27322523",
+  "sweptDiffDigest": "a5d1eb82eb6d"
+}
