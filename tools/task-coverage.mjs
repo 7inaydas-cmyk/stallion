@@ -1050,11 +1050,21 @@ export function selfTest() {
     ["dispatch detection covers indexOf", dispatchesSelfTest('if (argv.indexOf("--self-test") !== -1) x();')],
     ["a bare mention inside a written string is NOT a member (bench/setup.mjs)", !dispatchesSelfTest('writeFileSync(p, "node tools/task-findings.mjs --self-test && node tools/task-gate.mjs --self-test")')],
     ["the real task-gate.mjs source dispatches (the regression the review caught)", dispatchesSelfTest(readFileSync(new URL("./task-gate.mjs", import.meta.url), "utf8"))],
-    ["the plugin manifest as shipped passes the wiring judge", pluginWiringRefusal(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")) === null],
-    ["a matcher covering no edit tool refuses", (() => { const m = JSON.parse(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")); m.hooks.PreToolUse[0].matcher = "NoSuchTool"; return pluginWiringRefusal(m) !== null; })()],
-    ["a missing banner event refuses", (() => { const m = JSON.parse(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")); delete m.hooks.UserPromptSubmit; return pluginWiringRefusal(m) !== null; })()],
-    ["an unparseable manifest refuses", pluginWiringRefusal("{ nope") !== null],
-    ["a gate script nothing dispatches refuses", (() => { const m = JSON.parse(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")); m.hooks.PreToolUse[0].hooks[0].args = ["${ZCODE_PLUGIN_ROOT}/hooks/somewhere-else.mjs"]; return pluginWiringRefusal(m) !== null; })()],
+    ...(() => {
+      // In THIS tree the plugin is law and its manifest is judged; a vendored harness without
+      // the plugin skips the four manifest cases with a visible note instead of crashing the
+      // battery on ENOENT (a sweep caught the unconditional read breaking exactly that port).
+      const manifestUrl = new URL("./zcode-plugin/hooks/hooks.json", import.meta.url);
+      if (!existsSync(manifestUrl)) return [["(plugin absent in this tree — its four wiring cases skip visibly)", true]];
+      const manifest = readFileSync(manifestUrl, "utf8");
+      return [
+        ["the plugin manifest as shipped passes the wiring judge", pluginWiringRefusal(manifest) === null],
+        ["a matcher covering no edit tool refuses", (() => { const m = JSON.parse(manifest); m.hooks.PreToolUse[0].matcher = "NoSuchTool"; return pluginWiringRefusal(m) !== null; })()],
+        ["a missing banner event refuses", (() => { const m = JSON.parse(manifest); delete m.hooks.UserPromptSubmit; return pluginWiringRefusal(m) !== null; })()],
+        ["a gate script nothing dispatches refuses", (() => { const m = JSON.parse(manifest); m.hooks.PreToolUse[0].hooks[0].args = ["${ZCODE_PLUGIN_ROOT}/hooks/somewhere-else.mjs"]; return pluginWiringRefusal(m) !== null; })()],
+        ["an unparseable manifest refuses", pluginWiringRefusal("{ nope") !== null],
+      ];
+    })(),
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
 
