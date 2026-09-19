@@ -1,0 +1,77 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "drift-derivations",
+  "title": "issue #20: WORKSPACE_PHASES and the plugin's authorizing window derive from PHASES, never re-typed",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T08:22:40.511Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "6126f7e56e88b055d986e89d014eda0a79cdc184d58361028bdd067caf00a686"
+    },
+    {
+      "at": "2026-09-19T08:22:40.546Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "6126f7e56e88b055d986e89d014eda0a79cdc184d58361028bdd067caf00a686",
+      "entry_hash": "7ef8ae6f1a28ca9e7ca444103a7b710f866babc06c8e289b6ad40195ab8d6c27"
+    },
+    {
+      "at": "2026-09-19T08:22:40.581Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-workspace.mjs",
+        "tools/zcode-plugin/**"
+      ],
+      "seq": 2,
+      "parent_hash": "7ef8ae6f1a28ca9e7ca444103a7b710f866babc06c8e289b6ad40195ab8d6c27",
+      "entry_hash": "4b1c2649a37625bd90caad92ef908234fa4b274e5320d7944ab3b5faea44c7fa"
+    },
+    {
+      "at": "2026-09-19T08:22:40.613Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "4b1c2649a37625bd90caad92ef908234fa4b274e5320d7944ab3b5faea44c7fa",
+      "entry_hash": "100da35d5087ed9a4eccf81877905bfab69e49d47215571675407740b24d11e3"
+    },
+    {
+      "at": "2026-09-19T08:22:40.646Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); cp -r tools \"$D/tools\"; python3 - \"$D\" <<PYEOF\nimport sys\np = sys.argv[1] + \"/tools/task-state.mjs\"\ns = open(p).read()\nold = \"export const PHASES = [\\\"intake\\\", \\\"planned\\\", \\\"executing\\\", \\\"verified\\\", \\\"adversarial\\\", \\\"done\\\"];\"\nnew = \"export const PHASES = [\\\"intake\\\", \\\"planned\\\", \\\"executing\\\", \\\"verified\\\", \\\"adversarial\\\", \\\"shipping\\\", \\\"done\\\"];\"\nassert old in s\nopen(p, \"w\").write(s.replace(old, new, 1))\nPYEOF\ncd \"$D\" && node --input-type=module -e \"\nconst ws = await import(\\\"./tools/task-workspace.mjs\\\");\nconst st = await import(\\\"./tools/task-state.mjs\\\");\nconst gl = await import(\\\"./tools/zcode-plugin/lib/gate-law.mjs\\\");\nconst rec = { schema: \\\"stallion/task-state@1\\\", id: \\\"t\\\", riskClass: \\\"runtime-code\\\", events: [{ type: \\\"transition\\\", to: \\\"shipping\\\" }] };\nconst wsOk = ws.canAddWorkspace(rec, false).ok;\nconst law = { root: \\\"/x\\\", shape: \\\"stallion\\\", coverage: { isCodePath: (p) => p.startsWith(\\\"tools/\\\"), recordRefusal: () => null, scopeRefusal: (r, f) => r.scope && r.scope[0] && f[0].startsWith(r.scope[0].replace(\\\"/**\\\", \\\"\\\")) ? null : { reason: \\\"out\\\" }, citationRefusal: () => null }, state: { PHASES: st.PHASES, derivePhase: (ev) => ev.at(-1)?.to ?? \\\"intake\\\", scopeOf: (r) => r.scope ?? [] } };\nconst gate = gl.authoringDecision({ filePath: \\\"/x/tools/a.mjs\\\", cwd: \\\"/x\\\" }, law, [{ ...rec, scope: [\\\"tools/**\\\"] }]);\nif (!wsOk) { console.error(\\\"workspace seam did not follow the mutated PHASES\\\"); process.exit(1); }\nif (gate.decision !== \\\"allow\\\") { console.error(\\\"gate seam did not follow the mutated PHASES\\\"); process.exit(1); }\nconsole.log(\\\"both seams follow the mutated PHASES\\\");\n\"",
+      "exitCode": 1,
+      "outputDigest": "8f588d62d2b1",
+      "seq": 4,
+      "parent_hash": "100da35d5087ed9a4eccf81877905bfab69e49d47215571675407740b24d11e3",
+      "entry_hash": "6359ccfa58bf1ad201edd0d84005d56158af94787f865d122fd4856c6b7f0f05"
+    },
+    {
+      "at": "2026-09-19T08:23:56.860Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "6359ccfa58bf1ad201edd0d84005d56158af94787f865d122fd4856c6b7f0f05",
+      "entry_hash": "2ca2129c939ba7f122214cd9ed89d6aa81333a75c1667df791c58622041ddfb3"
+    },
+    {
+      "at": "2026-09-19T08:24:23.063Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "2ca2129c939ba7f122214cd9ed89d6aa81333a75c1667df791c58622041ddfb3",
+      "entry_hash": "a8fcafbf9a82e5261f8cdefb5f0967f537e3c1a227bd351bbd8939770446a705"
+    },
+    {
+      "at": "2026-09-19T08:24:23.162Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "a8fcafbf9a82e5261f8cdefb5f0967f537e3c1a227bd351bbd8939770446a705",
+      "entry_hash": "fdbeefe5463f4478675ace3f6657e50e1f54376ec308be07f5df3f5e79511a42"
+    }
+  ]
+}
