@@ -732,18 +732,26 @@ function cmdDoctor() {
     selftestScript = "";
   }
   // The tool list is DERIVED from the tree (every tools/*.mjs that offers a --self-test), so the
-  // check cannot go stale when a seventh tool appears: the battery must run them all.
+  // check cannot go stale when a seventh tool appears: the battery must run them all. An
+  // UNREADABLE tools directory fails the check — a gate that cannot read state must not pass
+  // (the same law the staged gate lives under), never an empty-list vacuous pass.
+  let toolsListingError = null;
   const selfTestingTools = (() => {
     try {
       return readdirSync(`${ROOT}tools`).filter((f) => f.endsWith(".mjs") && readFileSync(`${ROOT}tools/${f}`, "utf8").includes("--self-test"));
-    } catch {
-      return [];
+    } catch (e) {
+      toolsListingError = String(e.message).split("\n")[0];
+      return null;
     }
   })();
-  const notRun = missingSelfTests(selftestScript, selfTestingTools);
-  check("the selftest battery runs every self-testing tool in tools/", notRun.length === 0, notRun.length > 0
-    ? `add to the selftest SCRIPT in package.json: ${notRun.map((f) => `node tools/${f} --self-test`).join(" && ")} — a self-test the battery never runs is a silent skip (issue #16)`
-    : "add every tools/*.mjs that defines a --self-test to the selftest SCRIPT in package.json — a string elsewhere in the file wires nothing");
+  const notRun = selfTestingTools === null ? null : missingSelfTests(selftestScript, selfTestingTools);
+  check(
+    "the selftest battery runs every self-testing tool in tools/",
+    notRun !== null && notRun.length === 0,
+    notRun !== null && notRun.length > 0
+      ? `add to the selftest SCRIPT in package.json: ${notRun.map((f) => `node tools/${f} --self-test`).join(" && ")} — a self-test the battery never runs is a silent skip (issue #16)`
+      : `cannot list tools/ to derive the battery's members (${toolsListingError}) — a gate that cannot read state must not pass`,
+  );
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
   check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
