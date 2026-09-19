@@ -62,6 +62,17 @@ export const CHAIN_CUTOVER = "2026-09-19T02:45:00.000Z";
  *  this may EVER be adopted. The bound is what keeps adopt-chain from laundering later
  *  forgeries — it exists for records born inside the implementation window, and only those. */
 export const ADOPT_WINDOW_END = "2026-09-19T03:10:00.000Z";
+/** Pins recorded from this instant MUST carry --expect assertion evidence (the lane-7 finding:
+ *  an optional flag leaves the uncollectable-red escape open at the hasValidPin seam — a
+ *  MODULE_NOT_FOUND exit verified a code task the day after the wave that promised to cure it).
+ *  Pins recorded before the cutover are grandfathered; the law binds new events. */
+export const PIN_EXPECT_CUTOVER = "2026-09-20T00:00:00.000Z";
+
+function pinCarriesExpectLaw(p) {
+  const at = typeof p.at === "string" ? p.at : "";
+  return p.expect !== undefined || (at !== "" && Date.parse(at) < Date.parse(PIN_EXPECT_CUTOVER));
+}
+
 export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
 /** The taxonomy is defined HERE and imported by every other tool (issue #1): one law, no drift. */
@@ -168,12 +179,12 @@ function redCheckEvidence(record) {
  *  justification no longer counts and no longer re-runs at done. */
 export function hasValidPin(record) {
   const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
-  return record.events.some((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0);
+  return record.events.some((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0 && pinCarriesExpectLaw(e));
 }
 
 function commandPins(record) {
   const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
-  return record.events.filter((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0);
+  return record.events.filter((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0 && pinCarriesExpectLaw(e));
 }
 
 export function hasPinExemption(record) {
@@ -593,6 +604,9 @@ function cmdRedCheck(args) {
       }
       event.expect = expect;
     }
+    if (expect === null && Date.now() >= Date.parse(PIN_EXPECT_CUTOVER)) {
+      die(`REFUSED — a command pin without --expect no longer records (pin-expect cutover ${PIN_EXPECT_CUTOVER})\n  rule: an uncollectable run red-pins nothing — the pattern is the proof the failure is an assertion failure, and the author names it for their own runner\n  fix: red-check ${id} --command "<cmd>" --expect "<a line the check prints only when it ran and failed>" (structural pins use their own refusal text)`);
+    }
     event.command = command;
     event.exitCode = run.exitCode;
     event.outputDigest = outputDigest(run.output);
@@ -766,16 +780,18 @@ export function selfTest() {
     ["migration without approval refused", !evaluateTransition({ ...at(base, "planned"), riskClass: "migration" }, null, "executing", true).ok],
     ["verified without red-check refused", !evaluateTransition(at(executing, "executing"), null, "verified", true).ok],
     ["a path-only red-check no longer verifies a code task", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }] }, null, "verified", true).ok],
-    ["a command pin verifies a code task", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true).ok],
+    ["a command pin verifies a code task", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", at: "2026-09-19T00:00:00.000Z", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true).ok],
     ["a pin carrying a satisfied --expect stays a valid pin", hasValidPin({ ...base, events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", expect: "Tests.*failed", exitCode: 1, outputDigest: "abc" }] })],
+    ["a post-cutover pin WITHOUT expect does not verify (the seam the optional flag left open)", !hasValidPin({ ...base, events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", at: "2026-09-21T00:00:00.000Z", exitCode: 1, outputDigest: "abc" }] })],
+    ["a pre-cutover pin without expect stays valid (grandfathered)", hasValidPin({ ...base, events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", at: "2026-09-19T00:00:00.000Z", exitCode: 1, outputDigest: "abc" }] })],
     ["--expect is satisfied by an assertion-failure line", expectationRefusal("Tests.*failed", "Test Files  1 failed (1)\n      Tests  3 failed | 9 passed (12)") === null],
     ["--expect refuses the uncollectable shape (nonzero exit, no tests ran)", expectationRefusal("Tests.*failed", "Test Files  1 failed (1)\n      Tests  no tests\n Failed to resolve import") !== null],
     ["--expect refuses an invalid pattern with its own reason", expectationRefusal("[unclosed", "anything") !== null],
     ["a recorded pin exemption substitutes for the command pin", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }, { type: "pin-exemption", justification: "cannot re-run in this env" }] }, null, "verified", true).ok],
     ["a forged pin with exit 0 is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "true", exitCode: 0, outputDigest: "x" }] }, null, "verified", true).ok],
     ["a killed pin (null exit) is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "hang", exitCode: null, outputDigest: "x" }] }, null, "verified", true).ok],
-    ["a red battery blocks verified even WITH a valid pin (the discriminating form)", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, { batteryGreen: false }).ok],
-    ["a green battery lets verified proceed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, { batteryGreen: true }).ok],
+    ["a red battery blocks verified even WITH a valid pin (the discriminating form)", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", at: "2026-09-19T00:00:00.000Z", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, { batteryGreen: false }).ok],
+    ["a green battery lets verified proceed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", at: "2026-09-19T00:00:00.000Z", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, { batteryGreen: true }).ok],
     ["verified with vanished evidence refused", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["gone.test.ts"] }] }, null, "verified", false).ok],
     ["done without findings register refused", !evaluateTransition(adversarial, null, "done", true).ok],
     ["done with UNRESOLVED finding refused", !evaluateTransition(adversarial, dirtyFindings, "done", true).ok],
@@ -824,7 +840,7 @@ export function selfTest() {
         schema: TASK_SCHEMA, id: "t", riskClass: "runtime-code",
         events: [
           { type: "created", at: "2026-09-19T05:00:00.000Z" },
-          { type: "red-check", command: "npm test", exitCode: 1, outputDigest: "d" },
+          { type: "red-check", command: "npm test", at: "2026-09-19T05:01:00.000Z", exitCode: 1, outputDigest: "d" },
           { type: "pin-retire", command: "bad", justification: "retired because the command hung" },
         ],
       }, {

@@ -46,6 +46,13 @@ const STATE_DIR = `${ROOT}tasks`;
 const DECISIONS = `${ROOT}docs/decisions/DECISIONS.md`;
 const CHECKLIST = `${ROOT}docs/ADVERSARIAL-CHECKLIST.md`;
 const CODE_TREES = ["apps/", "packages/", "tools/", "deploy/"];
+/** The commit where docs/gates/** became fence surface (2026-09-20 merge wave). Commits BEFORE
+ *  this sha are judged with docs/gates as NON-code — the law they were written under. A new
+ *  classification that retroactively outlaws settled history makes its own range unshippable (an
+ *  adversarial CRITICAL: the wave's own footer-less docs commit predated its own fence-surface
+ *  law), and the repo's answer to a law changing mid-history is the same cutover pattern the pin,
+ *  scope, and chain laws use: grandfather what settled under the law of its day. */
+export const FENCE_SURFACE_CUTOVER_COMMIT = "484df9daebace7148e491b9ded1ae33697890f25";
 const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".mts", ".cts", ".css"]);
 const CODE_NAMES = new Set(["Dockerfile", "Caddyfile"]); // no-extension executables under the four trees
 
@@ -425,6 +432,13 @@ export function recordRefusal(record) {
   return null;
 }
 
+
+/** Pure: the docs/gates files that count as code for a commit given when it lands relative to the
+ *  fence-surface cutover. Pre-cutover commits keep the classification of their day. */
+export function fenceSurfaceFiles(files, preCutover) {
+  return preCutover ? files.filter((f) => !f.startsWith("docs/gates/")) : files;
+}
+
 function gitOut(...args) {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
 }
@@ -583,7 +597,7 @@ function checkRange(base, anchorRef = null) {
   const anchorPhaseCache = new Map();
   let anchorSkips = 0;
   for (const sha of commits) {
-    const files = filesIntroducedBy(sha);
+    const files = fenceSurfaceFiles(filesIntroducedBy(sha), commitPrecedes(sha, FENCE_SURFACE_CUTOVER_COMMIT));
     if (!files.some(isCodePath)) continue;
     const message = gitOut("log", "-1", "--format=%B", sha);
     const footer = taskFooterOf(message);
@@ -982,6 +996,11 @@ function resolvePushBase(explicit) {
   return base;
 }
 
+/** Is sha STRICTLY before the cutover commit (an ancestor, not the commit itself)? */
+function commitPrecedes(sha, cutoverSha) {
+  return sha !== cutoverSha && isAncestorOrSelf(sha, cutoverSha);
+}
+
 function isAncestorOrSelf(rev, maybeDescendant) {
   try {
     execFileSync("git", ["merge-base", "--is-ancestor", rev, maybeDescendant], { cwd: ROOT, stdio: "ignore" });
@@ -1038,7 +1057,7 @@ export function selfTest() {
     riskClass,
     events: [
       { type: "created", at: "2026-09-17T00:00:00.000Z" },
-      { type: "red-check", command: "npm test -- the-pin.test.ts", exitCode: 1, outputDigest: "abc" },
+      { type: "red-check", command: "npm test -- the-pin.test.ts", at: "2026-09-19T00:00:00.000Z", exitCode: 1, outputDigest: "abc" },
       ...phases.map((to) => ({ type: "transition", to })),
       ...extraEvents,
     ],
@@ -1064,6 +1083,8 @@ export function selfTest() {
     ["committed hooks are code (they ARE the fence)", isCodePath(".githooks/pre-push")],
     ["CI workflows are code (they carry the fence)", isCodePath(".github/workflows/selftest.yml")],
     ["gate configs are code (they ARE the fence's law — an adversarial finding)", isCodePath("docs/gates/complexity.json")],
+    ["pre-cutover commits keep the law of their day: docs/gates files are not code for them", fenceSurfaceFiles(["docs/gates/x.json", "tools/a.mjs"], true).join() === "tools/a.mjs"],
+    ["post-cutover commits see docs/gates as fence surface", fenceSurfaceFiles(["docs/gates/x.json", "tools/a.mjs"], false).length === 2],
     ["every gate config path is fence surface", isCodePath("docs/gates/gate-registry.json") && isCodePath("docs/gates/debt-register.md")],
     ["docs under .github are not code", !isCodePath(".github/ISSUE_TEMPLATE.md")],
   ];

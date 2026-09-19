@@ -1,14 +1,17 @@
 {
-  "$comment": "The guard-reach registry, read by tools/guard-reach.mjs — which guards have PROVEN (not assumed) that they see a newly-added file in the corpus they police. Law (ported from the Antitube harness, where on 2026-08-28 remote-string-lint reported '4 remote-command script(s), no local expansion' and exited 0 on a repo carrying the exact defect: its corpus was a hand-maintained four-file list and deploy/migrate-live.sh had never been added). Each entry plants a GENUINE violation of THAT guard alone — in the obvious place a new file of its kind would live — and requires the guard to FAIL naming the probe file; a clean baseline run, an unstaged-then-staged attempt, and a crash-vs-catch distinction are all part of the proof. Observed reach modes (disk vs index) are written by the tool to docs/gates/guard-reach-modes.json; a disk->index downgrade fails. APPEND-ONLY IN SPIRIT: stallion is vendored, and a host repo adds ITS guards here. The entry bar: a probe that fires TODAY with a green baseline — a guard that cannot be probed honestly belongs under notRegistered with its reason, never faked.",
+  "$comment": "The guard-reach registry, read by tools/guard-reach.mjs \u2014 which guards have PROVEN (not assumed) that they see a newly-added file in the corpus they police. Law (ported from the Antitube harness, where on 2026-08-28 remote-string-lint reported '4 remote-command script(s), no local expansion' and exited 0 on a repo carrying the exact defect: its corpus was a hand-maintained four-file list and deploy/migrate-live.sh had never been added). Each entry plants a GENUINE violation of THAT guard alone \u2014 in the obvious place a new file of its kind would live \u2014 and requires the guard to FAIL naming the probe file; a clean baseline run, an unstaged-then-staged attempt, and a crash-vs-catch distinction are all part of the proof. Observed reach modes (disk vs index) are written by the tool to docs/gates/guard-reach-modes.json; a disk->index downgrade fails. APPEND-ONLY IN SPIRIT: stallion is vendored, and a host repo adds ITS guards here. The entry bar: a probe that fires TODAY with a green baseline \u2014 a guard that cannot be probed honestly belongs under notRegistered with its reason, never faked.",
   "guards": [
     {
       "name": "task-coverage-commit-msg",
       "script": "tools/task-coverage.mjs",
-      "args": ["--commit-msg", "README.md"],
+      "args": [
+        "--commit-msg",
+        "README.md"
+      ],
       "probe": "tools/zz-guard-reach-probe.mjs",
       "content": [
         "#!/usr/bin/env node",
-        "// guard-reach probe — a new tool staged for commit outside the task lifecycle.",
+        "// guard-reach probe \u2014 a new tool staged for commit outside the task lifecycle.",
         "import { execFileSync } from \"node:child_process\";",
         "",
         "export const porcelainLineCount = () =>",
@@ -22,7 +25,7 @@
       "script": "tools/test-lint.mjs",
       "probe": "tools/zz-guard-reach-probe.test.mjs",
       "content": [
-        "// guard-reach probe — a new test file whose assertion compares a value to itself.",
+        "// guard-reach probe \u2014 a new test file whose assertion compares a value to itself.",
         "// test-lint is textual: the expect(X).toBe(X) shape is what it polices, whatever the runner.",
         "import { describe, expect, it } from \"vitest\";",
         "",
@@ -41,7 +44,7 @@
       "probe": "zz-guard-reach-probe.mjs",
       "content": [
         "#!/usr/bin/env node",
-        "// guard-reach probe — a new root-level utility, in a tree no gate in the reach map names.",
+        "// guard-reach probe \u2014 a new root-level utility, in a tree no gate in the reach map names.",
         "import { execFileSync } from \"node:child_process\";",
         "",
         "export const commitCount = () =>",
@@ -49,24 +52,66 @@
         ""
       ],
       "why": "a new tracked source file that no declared gate can see"
+    },
+    {
+      "name": "complexity-gate-new-file",
+      "script": "tools/complexity-gate.mjs",
+      "args": [],
+      "probe": "tools/zz-guard-reach-complexity.mjs",
+      "content": [
+        "// guard-reach probe \u2014 a born-convoluted function in a brand-new tool file.",
+        "// Ten decision points: the ratchet must refuse it naming this file.",
+        "export function zzProbeReach(a) {",
+        "  if (a === 1) return 1;",
+        "  if (a === 2) return 2;",
+        "  if (a === 3) return 3;",
+        "  if (a === 4) return 4;",
+        "  if (a === 5) return 5;",
+        "  if (a === 6) return 6;",
+        "  if (a === 7) return 7;",
+        "  if (a === 8) return 8;",
+        "  if (a === 9) return 9;",
+        "  if (a === 10) return 10;",
+        "  return 0;",
+        "}",
+        ""
+      ],
+      "why": "a brand-new tool file whose only function is born over the threshold (ten branches) \u2014 the ratchet must refuse it naming the file; probeability demonstrated by the lane-7/8 adversarial pass"
+    },
+    {
+      "name": "remote-string-lint-deploy",
+      "script": "tools/remote-string-lint.mjs",
+      "args": [],
+      "probe": "deploy/zz-guard-reach-remote.sh",
+      "content": [
+        "#!/bin/sh",
+        "# guard-reach probe \u2014 the founding-incident defect: a $( ) expansion inside a multi-line",
+        "# double-quoted remote command block. The opener must end the line (a one-line --command",
+        "# opens and closes without forming a block) and the expansion sits INSIDE it.",
+        "gcloud compute ssh probe --command \"",
+        "  echo $(hostname) deployed",
+        "\"",
+        ""
+      ],
+      "why": "a new deploy script carrying the founding-incident defect (local expansion inside a remote command string) \u2014 the lint must see it; this is the guard whose own corpus blindness created guard-reach, demonstrated probeable by the lane-7/8 adversarial pass"
     }
   ],
   "notRegistered": [
     {
       "name": "task-coverage-staged",
-      "reason": "the staged gate is OPEN BY DESIGN while any task is at executing/verified/adversarial — a live task in the shared tree makes its honest probe (code staged with no task in flight) rightly pass, so its result would depend on task state, not on reach; the index-reading seam it shares (git diff --cached) is proven instead by task-coverage-commit-msg"
+      "reason": "the staged gate is OPEN BY DESIGN while any task is at executing/verified/adversarial \u2014 a live task in the shared tree makes its honest probe (code staged with no task in flight) rightly pass, so its result would depend on task state, not on reach; the index-reading seam it shares (git diff --cached) is proven instead by task-coverage-commit-msg"
     },
     {
       "name": "task-coverage-doctor",
-      "reason": "its battery check refuses while any self-testing tools/**/*.mjs on disk is absent from the committed package.json selftest script — during a port wave the baseline is red, and an already-red guard is INCONCLUSIVE, never reachable; register once the baseline is green"
+      "reason": "its battery check refuses while any self-testing tools/**/*.mjs on disk is absent from the committed package.json selftest script \u2014 during a port wave the baseline is red, and an already-red guard is INCONCLUSIVE, never reachable; register once the baseline is green"
     },
     {
       "name": "task-coverage-fence",
-      "reason": "the bare range check judges COMMITTED history (rev-list base..HEAD) — tree-to-tree, so neither the working tree nor the index is ever consulted and a planted file is invisible BY CONSTRUCTION; proving its reach needs a synthetic commit in a scratch worktree, a separate instrument, recorded here rather than faked"
+      "reason": "the bare range check judges COMMITTED history (rev-list base..HEAD) \u2014 tree-to-tree, so neither the working tree nor the index is ever consulted and a planted file is invisible BY CONSTRUCTION; proving its reach needs a synthetic commit in a scratch worktree, a separate instrument, recorded here rather than faked"
     },
     {
       "name": "task-gate",
-      "reason": "judges ARGUMENTS (--edit/--bash intervention demands), not a file corpus — nothing planted on disk or in the index changes its verdict"
+      "reason": "judges ARGUMENTS (--edit/--bash intervention demands), not a file corpus \u2014 nothing planted on disk or in the index changes its verdict"
     },
     {
       "name": "task-findings",
@@ -82,7 +127,7 @@
     },
     {
       "name": "adversarial-runner",
-      "reason": "judges one task's diff against the checklist lanes — per-task, not corpus-walking"
+      "reason": "judges one task's diff against the checklist lanes \u2014 per-task, not corpus-walking"
     },
     {
       "name": "pathspec",
@@ -90,11 +135,27 @@
     },
     {
       "name": "detached-head-guard",
-      "reason": "refuses a git commit made while HEAD is detached — judges repo state at act time, no file corpus"
+      "reason": "refuses a git commit made while HEAD is detached \u2014 judges repo state at act time, no file corpus"
     },
     {
       "name": "debt-gate",
       "reason": "reads one fixed register (docs/gates/debt-register.md); a probe would have to EDIT an existing file, and this tool's law is about NEW files in a growing corpus"
+    },
+    {
+      "name": "reader-existence",
+      "reason": "an honest probe would have to EDIT an existing accepted-finding row or contract config (the sweep judges the live tree against its baseline); the same reason debt-gate carries verbatim"
+    },
+    {
+      "name": "doc-reconcile",
+      "reason": "an honest probe would have to EDIT a registered claim or its bound code (the gate re-proves bindings against the live tree); debt-gate's recorded reason, verbatim"
+    },
+    {
+      "name": "gate-registry",
+      "reason": "the registry is itself the declaration this gate checks; a probe would stage a registry it is not declared in \u2014 self-referential, and its OWN invocation is drift-checked by every run it makes"
+    },
+    {
+      "name": "guard-reach",
+      "reason": "the meta-guard cannot probe itself: its probe would run itself, whose self-test already runs first; the other registered guards' reach IS its live proof"
     }
   ]
 }

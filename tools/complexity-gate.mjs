@@ -56,7 +56,18 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import ts from "typescript";
+// The compiler is the OPTIONAL peer dependency (see package.json): a missing typescript must
+// refuse with a fix line naming the two honest exits, not crash the battery with a bare
+// ERR_MODULE_NOT_FOUND (an adversarial finding: the static import made the battery unrunnable
+// in any fresh clone).
+let ts;
+try {
+  ts = await import("typescript");
+} catch {
+  console.error("complexity-gate: the TypeScript compiler is not installed — the ratchet cannot count what it cannot parse");
+  console.error("  fix: npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate and drop its battery line and docs/gates/complexity*.json");
+  process.exit(1);
+}
 import { matches } from "./pathspec.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));

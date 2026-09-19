@@ -279,5 +279,6 @@ function main() {
  */
 const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
-  process.exit(main());
+  const verdict = main();
+  process.exit(verdict === 0 && process.exitCode !== undefined ? process.exitCode : verdict);;
 }

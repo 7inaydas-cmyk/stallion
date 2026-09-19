@@ -3,6 +3,8 @@
   "modes": {
     "task-coverage-commit-msg": "index",
     "test-lint": "index",
-    "gate-coverage": "index"
+    "gate-coverage": "index",
+    "complexity-gate-new-file": "disk",
+    "remote-string-lint-deploy": "disk"
   }
 }

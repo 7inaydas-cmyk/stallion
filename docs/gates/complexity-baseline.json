@@ -38,13 +38,13 @@
       "complexity": 23
     },
     {
-      "file": "tools/task-coverage.mjs",
-      "name": "parseFlags",
-      "complexity": 20
-    },
-    {
       "file": "tools/task-state.mjs",
       "name": "cmdRedCheck",
+      "complexity": 22
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "parseFlags",
       "complexity": 20
     },
     {
@@ -84,7 +84,7 @@
     },
     {
       "file": "tools/task-coverage.mjs",
-      "name": "<anonymous>:145",
+      "name": "<anonymous>:152",
       "complexity": 14
     },
     {
@@ -161,6 +161,11 @@
       "file": "tools/zcode-plugin/lib/gate-law.mjs",
       "name": "parseEditPayload",
       "complexity": 11
+    },
+    {
+      "file": "tools/gate-registry.mjs",
+      "name": "selfTestFixtures",
+      "complexity": 10
     },
     {
       "file": "tools/bench/grade.mjs",

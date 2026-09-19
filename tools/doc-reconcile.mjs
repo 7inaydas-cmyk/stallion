@@ -62,6 +62,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { matches } from "./pathspec.mjs";
 
@@ -499,4 +500,5 @@ function main() {
   return 0;
 }
 
-process.exit(main());
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isEntry) process.exit(main());

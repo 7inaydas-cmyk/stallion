@@ -124,14 +124,25 @@ function missingErrors(gates, transportTexts) {
 }
 
 /** Direction 2: a transport carrying an invocation registered nowhere — a shadow gate. Visits
- *  EVERY transport, not just ones that already carry a declared gate: a transport carrying
- *  nothing but shadows is exactly the one nobody is watching. */
+ *  EVERY transport, and BOTH shapes: a DECLARED invocation appearing where it is not declared,
+ *  and a WHOLLY-unregistered invocation (an adversarial finding: the first draft swept only
+ *  declared invocations, so wiring a new gate into pre-push without registering it — the exact
+ *  multi-surface drift this tool exists for — stayed green). */
 function shadowErrors(gates, transportTexts) {
   const errors = [];
   for (const [transport, text] of Object.entries(transportTexts)) {
     for (const gate of gates) {
       if (!gate.transports.includes(transport) && carries(text, gate.invocation)) {
         errors.push(`${TRANSPORTS[transport]} carries '${gate.invocation}' but gate '${gate.id}' does not declare the ${transport} transport — an undeclared invocation is a shadow gate`);
+      }
+    }
+    const seenUnregistered = new Set();
+    for (const m of text.matchAll(/node\s+(tools\/[\w./-]+\.mjs)(?!\s*--)/g)) {
+      const invocation = `node ${m[1]}`;
+      const declared = gates.some((gate) => gate.invocation === invocation || gate.invocation.startsWith(`${invocation} `));
+      if (!declared && !seenUnregistered.has(invocation)) {
+        seenUnregistered.add(invocation);
+        errors.push(`${TRANSPORTS[transport]} invokes '${invocation}' which no gate declares — register it (docs/gates/gate-registry.json) or remove the invocation; an unregistered gate is a shadow gate`);
       }
     }
   }
@@ -154,6 +165,8 @@ function selfTestFixtures(fail) {
   // fixture puts the bare invocation's TEXT inside a flag-suffixed command in a transport the
   // bare gate does NOT declare — the collision the first draft reported.
   const suffixed = { ...good, battery: "node tools/a.mjs --self-test && node tools/b.mjs --self-test" };
+  const unregistered = { ...good, "pre-commit": "node tools/a.mjs || exit 1\nnode tools/brand-new-gate.mjs || exit 1" };
+  if (checkDeclarations(gates, unregistered).length !== 1 || !checkDeclarations(gates, unregistered)[0].includes("brand-new-gate")) fail("a wholly-unregistered invocation in a transport was invisible to the shadow sweep");
   if (checkDeclarations(gates, suffixed).length !== 0) fail("a flag-suffixed spelling was reported as carrying the bare invocation");
   // The registry's own config must be honest against the real tree right now.
   const live = checkDeclarations(loadRegistry(), Object.fromEntries(Object.keys(TRANSPORTS).map((t) => [t, transportText(t)])));
