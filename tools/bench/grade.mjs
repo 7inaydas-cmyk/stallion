@@ -10,10 +10,11 @@
  *                              one test, and every task has a spec/seed/tests. A grader that
  *                              cannot fail is not a grader.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { TASKS, taskById } from "./tasks.mjs";
 
 function runSuite(testCode, runDir) {
@@ -23,12 +24,13 @@ function runSuite(testCode, runDir) {
     const out = execFileSync("node", ["--test", "--test-reporter=tap", file], { cwd: runDir, encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] });
     return tally(out);
   } catch (e) {
-    // node --test exits nonzero when any test fails — the TAP output still counts. But a
-    // KILLED run (timeout/signal) has no verdict: a grader that cannot read state must not
-    // pass (a sweep caught the empty-tally fail-open).
-    const killed = e.killed === true || (typeof e.signal === "string" && e.signal !== "SIGTERM" ? true : e.killed === true);
+    // node --test exits nonzero when any test fails — the TAP output still counts. But a run
+    // that never delivered a verdict (timeout, signal, spawn failure) or produced no tally is a
+    // REFUSAL, not a grade: a grader that cannot read state must not pass (a sweep caught the
+    // empty-tally fail-open; this task made the killed half live instead of computed-and-dropped).
+    const killed = e.killed === true || (typeof e.signal === "string" && e.signal.length > 0);
     const result = tally(`${e.stdout ?? ""}${e.stderr ?? ""}`);
-    if (e.code === "ENOENT" || result.total === 0) return { passed: 0, failed: 1, total: 1, ungradable: true };
+    if (killed || e.code === "ENOENT" || result.total === 0) return { passed: 0, failed: 1, total: 1, ungradable: true };
     return result;
   }
 }
@@ -79,7 +81,7 @@ function selfTest() {
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

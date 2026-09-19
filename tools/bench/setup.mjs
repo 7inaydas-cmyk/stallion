@@ -9,9 +9,9 @@
  *  staged + commit-msg gates wired via core.hooksPath, the tasks/ state dir) and the AGENTS.md
  *  law stanza — exactly the adoption path docs/WIRING.md prescribes. CONTROL gets none of it:
  *  a plain repo. The only difference between arms is the harness. */
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { taskById } from "./tasks.mjs";
 
 const STALLION_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -43,13 +43,15 @@ function setup(arm, taskId, dir) {
   if (!task) throw new Error(`unknown task: ${taskId}`);
   if (arm !== "treatment" && arm !== "control") throw new Error(`unknown arm: ${arm}`);
   mkdirSync(`${dir}/apps/lib`, { recursive: true });
-  // ONE module name across spec, visible test, seed, and hidden grader (a sweep caught all
-  // four disagreeing for the feature tasks — spec-faithful work graded against a stub).
+  // ONE module name across spec, visible test, seed, hidden grader, AND the npm test script
+  // (a sweep caught all four disagreeing for the feature tasks — spec-faithful work graded
+  // against a stub; then scripts.test still naming taskId while the file is <module>.test.mjs,
+  // leaving `npm test` pointing at nothing for chunk-generator and csv-fields).
   writeFileSync(`${dir}/apps/lib/${task.module}.mjs`, task.seed);
-  writeFileSync(`${dir}/apps/lib/${task.module}.test.mjs`, task.visibleTest.replace(`./${task.module}.mjs`, `./${task.module}.mjs`));
+  writeFileSync(`${dir}/apps/lib/${task.module}.test.mjs`, task.visibleTest);
   // The selftest script the AGENTS law mandates must exist on day one (a sweep caught the
   // stanza pointing at a missing script — a remediation tax billed to the wrong arm).
-  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${taskId}.test.mjs`, selftest: `node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-gate.mjs --self-test` } }, null, 2)}\n`);
+  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${task.module}.test.mjs`, selftest: `node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-gate.mjs --self-test` } }, null, 2)}\n`);
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "bench@localhost");
   git(dir, "config", "user.name", `bench-${arm}`);
@@ -86,7 +88,7 @@ function setup(arm, taskId, dir) {
   console.log(`${arm}/${taskId}: sandbox ready at ${dir}`);
 }
 
-const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const [arm, taskId, dir] = process.argv.slice(2);
   if (!arm || !taskId || !dir) {
