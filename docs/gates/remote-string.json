@@ -1,0 +1,6 @@
+{
+  "_comment": "Corpus config for tools/remote-string-lint.mjs. 'walk' is a pathspec glob matched against repo-relative paths. 'minScripts'/'minDispatchers' are floors that prove the walk is LOOKING: below them, 'found nothing' reads as a broken walk instead of an empty repo, and the gate fails loudly rather than quietly scanning less. They are 0 here because this repo has no deploy scripts yet; the moment deploy/ scripts exist, raise both to the real counts (a floor below the corpus cannot catch a broken walk, and 0 never can).",
+  "walk": "deploy/**/*.sh",
+  "minScripts": 0,
+  "minDispatchers": 0
+}
