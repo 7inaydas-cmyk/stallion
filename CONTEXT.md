@@ -39,6 +39,27 @@ refuses with a demand for concrete facts, and the retry proceeds. Bypass flags a
 refused always; they are law, not questions.
 _Avoid_: confirmation prompt, speed bump.
 
+**Authoring gate**:
+The edit-time transport: the ZCode plugin's PreToolUse hook that denies a code edit
+unless an in-flight, scoped task covers the file. It imports the law from the repo's
+own vendored harness, so it judges with the same functions as the staged gate and
+the push fence. Distinct from the fact gate: the fact gate asks once at an act, the
+authoring gate refuses every uncovered edit.
+_Avoid_: calling it a linter, or the fact gate.
+
+**Turn banner**:
+The SessionStart/UserPromptSubmit hook that re-injects the live task state (task,
+phase, scope, next command) every prompt. The transport cure for instruction decay.
+Fails open: advisory context must never brick a session.
+_Avoid_: calling it a reminder or a system prompt.
+
+**Agreement matrix**:
+The battery contract test that drives one fixture set through all three transports
+(staged gate, citation seam, authoring gate) against the real law and asserts the
+relations that must hold. Drift between transports becomes a failing battery, not a
+discovered behavior.
+_Avoid_: calling it a lint or a snapshot.
+
 **Adoption base**:
 The pinned revision where the push fence starts auditing, committed as `.stallion-base` so
 CI clones can resolve it. History before it is grandfathered; a base that fences an empty

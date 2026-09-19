@@ -178,6 +178,19 @@ shell parser and not a security boundary; the push fence is the control for what
 remote. Extending the quoting model is deliberately incremental: every sweep finds one more
 spelling, and the honest answer is the fence, not an arms race.
 
+### The edit-time transport: the ZCode plugin
+
+One transport earlier than all of the above: `tools/zcode-plugin/` is a ZCode plugin whose
+PreToolUse authoring gate DENIES a code edit unless an in-flight, scoped task covers the file,
+judged by THIS repo's own vendored harness functions (both the stallion and the
+`tools/harness/` layouts are auto-detected), plus a turn banner that re-injects the task state
+every prompt. Install and verification steps live in `tools/zcode-plugin/README.md`; the
+doctor checks its hook manifest is present and wired (a matcher covering no edit tool, a
+missing banner event, or a gate nothing dispatches all refuse), and the battery runs its law
+checks (`gate-law`, `agreement-check`) alongside every tool. In runtimes without a hook
+system, this transport simply does not exist there — the staged, message, and push transports
+below are the control.
+
 ## 8. The push control
 
 `.githooks/pre-push`:

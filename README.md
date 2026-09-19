@@ -65,8 +65,18 @@ no `task:` footer, names an unknown or finished task, or stages code outside tha
 DECLARED SCOPE. Scope globs are recorded on the task record
 (`task-state scope <id> --add "tools/**"`) and re-judged by the push fence, so a hookless
 clone is still fenced. `--doctor` checks the wiring itself. It fails when the hooks, the CI
-step, the push base, or a register is missing, so a clone that quietly lost its fence cannot
-pretend to have one.
+step, the push base, a register, or the enforcement plugin's hook manifest is missing or
+de-fanged, so a clone that quietly lost its fence cannot pretend to have one.
+
+Two more things ship in the tree. `tools/zcode-plugin/` is the enforcement plugin for ZCode:
+a PreToolUse authoring gate that denies a code edit unless an in-flight, scoped task covers
+the file (the law imported from the repo's own vendored harness, so it cannot drift from the
+staged gate and the fence), and a turn banner that re-injects the task state every prompt,
+which is the cure for agents that stop invoking the lifecycle after a few turns. The
+transport-agreement check in its lib runs one fixture matrix through all three transports
+and fails if they ever disagree. `tools/bench/` is the two-arm benchmark kit that measured
+the harness on real code work; its methodology and the confound it disclosed are in
+`docs/research/2026-09-19-code-work-benchmark.md`.
 
 ## Why refusal instead of convention
 
