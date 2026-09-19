@@ -444,9 +444,11 @@ function acquireLock(lock) {
     } catch {
       try {
         if (existsSync(lock) && statSync(lock).mtimeMs < Date.now() - 60_000) rmSync(lock, { force: true }); // stale writer
-      } catch {
+      } catch (e) {
         // The lock vanished between exists and stat — a live CI crash under concurrent writers:
         // it is not stale, it is GONE, and the racer simply tries again on the next attempt.
+        // Only the vanishing is tolerated; every other failure stays loud.
+        if (e?.code !== "ENOENT") throw e;
       }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
     }
