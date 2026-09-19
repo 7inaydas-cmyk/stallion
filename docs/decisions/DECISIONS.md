@@ -45,3 +45,14 @@ edited repo's own task-state at decision time, as the plugin does). Rationale: t
 copies (the workspace drafting window, the plugin's authorizing window) were live drift seeds
 (issue #20); a taxonomy change must flow through one seam, not N copies. Anchors ("planned",
 "executing", "done") are law stated once; the set is a slice.
+
+## 2026-09-19 — THE BATTERY LAW'S SPELLING SET: three idioms, exactly
+
+Supersedes, additively, the "in any dispatch spelling" clause of the battery-law entry above
+(the entry stands as written for its day). The membership predicate recognizes exactly three
+dispatch idioms: `.includes("--self-test")`, `.indexOf("--self-test")`, and
+`=== "--self-test"`. A second review caught the equality arm admitting loose `==` and the tail
+of `!==` — a negated test is not a dispatch — and the register's prose claiming "any spelling"
+while the predicate recognized three. A tree that dispatches a self-test in a spelling outside
+this set has found a wiring bug: fix the dispatcher, or extend the predicate deliberately with
+a pin — never widen prose past what the machine checks.

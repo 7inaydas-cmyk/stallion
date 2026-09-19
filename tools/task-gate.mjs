@@ -382,12 +382,11 @@ export function selfTest() {
     ["re-pointing core.hooksPath is a bypass", bypassRefusal("git -c core.hooksPath=/x commit -m y") !== null],
     ["plain commit is not a bypass", bypassRefusal('git commit -m "real message"') === null],
     ["git push --no-verify is a bypass (it skips the pre-push fence)", bypassRefusal("git push --no-verify origin main") !== null],
-    ["destructive asks once per session ACROSS danger classes (the dispatch law, not just same-key semantics)", (() => {
-      const keyForAmend = destructiveTarget();
-      const keyForRm = destructiveTarget();
-      const d1 = gateDecision({ entries: {} }, keyForAmend, "F1", 1000);
-      const d2 = gateDecision(d1.next, keyForRm, "F2", 2000);
-      return keyForAmend === keyForRm && d1.refuse && !d2.refuse && bashFactDemand("rm -rf x", "recursive forced delete").includes("recursive forced delete");
+    ["destructive asks once per session regardless of the command's danger class (the dispatch law, not just same-key semantics)", (() => {
+      const key = destructiveTarget(); // ONE key for every destructive spelling — the danger class is not an input to the target
+      const first = gateDecision({ entries: {} }, key, "F1: forced amend", 1000);
+      const second = gateDecision(first.next, key, "F2: recursive delete", 2000);
+      return first.refuse && !second.refuse && bashFactDemand("rm -rf x", "recursive forced delete").includes("recursive forced delete");
     })()],
     ["a SINGLE-TOKEN quoted flag IS the flag (the shell strips those quotes)", bypassRefusal("git commit '--no-verify' -m x") !== null],
     ["a quoted -c hooksPath value is still a re-point", bypassRefusal("git -c 'core.hooksPath=/tmp/x' commit -m y") !== null],

@@ -186,10 +186,10 @@ judged by THIS repo's own vendored harness functions (both the stallion and the
 `tools/harness/` layouts are auto-detected), plus a turn banner that re-injects the task state
 every prompt. Install and verification steps live in `tools/zcode-plugin/README.md`; the
 doctor checks its hook manifest is present and wired (a matcher covering no edit tool, a
-missing banner event, or a gate nothing dispatches all refuse), and the battery runs its law
-checks (`gate-law`, `agreement-check`) alongside every tool. In runtimes without a hook
-system, this transport simply does not exist there — the staged, message, and push transports
-below are the control.
+missing banner event, a gate nothing dispatches, or a registered hook script missing from disk
+all refuse), and the battery runs its law checks (`gate-law`, `agreement-check`) alongside
+every tool. In runtimes without a hook system, this transport simply does not exist there —
+the staged, message, and push transports below are the control.
 
 ## 8. The push control
 

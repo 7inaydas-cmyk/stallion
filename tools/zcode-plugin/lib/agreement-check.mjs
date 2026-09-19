@@ -112,7 +112,7 @@ export async function checkAgreement(verbose = false) {
   if (coveredCount === 0) fail("no fixture exercised the scope-covered half of relation 2");
   if (uncoveredActiveCount === 0) fail("no fixture exercised the scope-uncovered half of relation 2");
   if (verbose) console.log(`agreement matrix: ${checked} fixtures (${activeCount} active, ${coveredCount} covered, ${uncoveredActiveCount} uncovered-active) through the real law at ${law.root}`);
-  return { failures, checked, activeCount, coveredCount, uncoveredActiveCount };
+  return { failures, checked }; // the counts are this test's own non-vacuity facts, not API — no caller reads them
 }
 
 export async function selfTest() {
