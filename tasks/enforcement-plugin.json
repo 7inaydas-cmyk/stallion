@@ -1,0 +1,96 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "enforcement-plugin",
+  "title": "the ZCode enforcement plugin: authoring gate + banner, law sourced from each repo's vendored harness",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T07:10:07.676Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "cc80026ccd9e866df5266214a03a9890ff080c43688dc8662d2f475e12c63f1a"
+    },
+    {
+      "at": "2026-09-19T07:10:07.723Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "cc80026ccd9e866df5266214a03a9890ff080c43688dc8662d2f475e12c63f1a",
+      "entry_hash": "67c0c8d62e89e2cffdff772d29dc3529c080ebb98f03dbaa11000a2f15bcadb5"
+    },
+    {
+      "at": "2026-09-19T07:10:07.765Z",
+      "type": "scope",
+      "patterns": [
+        "tools/zcode-plugin/**"
+      ],
+      "seq": 2,
+      "parent_hash": "67c0c8d62e89e2cffdff772d29dc3529c080ebb98f03dbaa11000a2f15bcadb5",
+      "entry_hash": "c5caeff04ceed1ac846f6ad22b59a434a350468975393732f8f784e126f89c53"
+    },
+    {
+      "at": "2026-09-19T07:10:07.810Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "c5caeff04ceed1ac846f6ad22b59a434a350468975393732f8f784e126f89c53",
+      "entry_hash": "e28ca222a5bdff9e3d871026ca114ee7c24085137e12d8027120b8938b624abf"
+    },
+    {
+      "at": "2026-09-19T07:10:07.847Z",
+      "type": "red-check",
+      "command": "npm run selftest 2>&1 | grep -F \"zcode-plugin gate-law self-test: OK\"",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 4,
+      "parent_hash": "e28ca222a5bdff9e3d871026ca114ee7c24085137e12d8027120b8938b624abf",
+      "entry_hash": "a46f142a1125401919be6d11315e8a94f152d5d26c38ce1ef0a2922989a782bf"
+    },
+    {
+      "at": "2026-09-19T07:10:09.292Z",
+      "type": "red-check",
+      "command": "printf \"%s\" \"{\\\"tool_name\\\":\\\"Edit\\\",\\\"cwd\\\":\\\"/home/excelsior/Desktop/stallion\\\",\\\"tool_input\\\":{\\\"file_path\\\":\\\"/home/excelsior/Desktop/stallion/tools/task-gate.mjs\\\"}}\" | node tools/zcode-plugin/hooks/authoring-gate.mjs; RC=$?; test \"$RC\" -eq 2",
+      "exitCode": 1,
+      "outputDigest": "0f6bdb41060a",
+      "seq": 5,
+      "parent_hash": "a46f142a1125401919be6d11315e8a94f152d5d26c38ce1ef0a2922989a782bf",
+      "entry_hash": "ad10f4fe28124cf98122b1f7114b78a1af3491256e058e100eff0e386c28ff32"
+    },
+    {
+      "at": "2026-09-19T07:12:56.355Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "ad10f4fe28124cf98122b1f7114b78a1af3491256e058e100eff0e386c28ff32",
+      "entry_hash": "14554df6aa78af787ad74e029fb55f9cbd0aa5b2a00193e8dd17b9f9adc38dd7"
+    },
+    {
+      "at": "2026-09-19T07:15:01.121Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-coverage.mjs"
+      ],
+      "seq": 7,
+      "parent_hash": "14554df6aa78af787ad74e029fb55f9cbd0aa5b2a00193e8dd17b9f9adc38dd7",
+      "entry_hash": "47fd7a9f4c54dab733976d9ead3355253fc5b13ad1b02a84a484cfe4da983a99"
+    },
+    {
+      "at": "2026-09-19T07:15:01.457Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "47fd7a9f4c54dab733976d9ead3355253fc5b13ad1b02a84a484cfe4da983a99",
+      "entry_hash": "c0ea36e1246536b46eee3c3541504048fd30814a16fa50f11a2e2b8b96718936"
+    },
+    {
+      "at": "2026-09-19T07:15:02.634Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "c0ea36e1246536b46eee3c3541504048fd30814a16fa50f11a2e2b8b96718936",
+      "entry_hash": "5449cbfd20e69ebeb8ace4ce986399d502f809e6151ac676e660d08abaef0d09"
+    }
+  ]
+}

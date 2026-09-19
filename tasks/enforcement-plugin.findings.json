@@ -1,0 +1,49 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "enforcement-plugin",
+  "passStartedAt": "2026-09-19T07:15:01.396Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "the doctor's derived battery check scans only top-level tools/*.mjs, so nested battery members (tools/bench/grade.mjs, tools/zcode-plugin/lib/gate-law.mjs) are invisible to it — removing either from package.json's selftest would pass the doctor, the exact silent-skip class issue #16 closed",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T07:13:36.817Z",
+      "proof": "delete 'node tools/zcode-plugin/lib/gate-law.mjs --self-test' from the battery script: doctor still passes (nested file never listed), battery loses the plugin's law coverage silently",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs cmddoctor readdirsync(tools) non-recursive vs package.json selftest with 8 members",
+      "resolvedAt": "2026-09-19T07:15:01.274Z"
+    },
+    {
+      "id": "f2",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "the banner's additionalContext JSON shape cannot be validated outside the client; fail-open means a runner schema drift silently no-ops the banner while the gate keeps working",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T07:13:36.853Z",
+      "evidence": "tools/zcode-plugin/hooks/banner.mjs catch-and-exit-0; the strict hook-output schema is documented but not machine-checkable here",
+      "dedupKey": "tools/zcode-plugin/hooks/banner.mjs catch-and-exit-0; the strict hook-output schema is documented but not machine-checkable here",
+      "justification": "the banner is advisory context by design and fails open; its JSON shape can only be validated by the client runner that consumes it — the README registers the boundary and the gate's exit-code channel is unaffected",
+      "resolvedAt": "2026-09-19T07:15:01.312Z"
+    },
+    {
+      "id": "f3",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "the gate trusts the runner-supplied cwd as its walk-up start — a lying payload could point at a different harness repo and borrow ITS tasks",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T07:13:36.887Z",
+      "evidence": "tools/zcode-plugin/hooks/authoring-gate.mjs uses payload.cwd before any validation",
+      "dedupKey": "tools/zcode-plugin/hooks/authoring-gate.mjs uses payload.cwd before any validation",
+      "justification": "the hook payload is the runner's own trust boundary; the staged gate and push fence re-judge every edit against the repo's own ROOT at commit and push time, so a lying cwd buys nothing that survives the next transport",
+      "resolvedAt": "2026-09-19T07:15:01.345Z"
+    }
+  ],
+  "sweptBase": "1e0d172b429a934f2d971d73f6a7fe9a4bfe163e",
+  "sweptHead": "33b27e466b99ef6432e28b6c472d54a9a517dd1c",
+  "sweptDiffDigest": "5cb56468d14a"
+}
