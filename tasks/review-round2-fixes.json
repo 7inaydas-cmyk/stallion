@@ -1,0 +1,171 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-round2-fixes",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T09:23:45.842Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "e01456d15f69e8a35e7198c0647f9b6acdb4c89d6abe36cd8c6f63cecaffe018"
+    },
+    {
+      "at": "2026-09-19T09:23:45.873Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "e01456d15f69e8a35e7198c0647f9b6acdb4c89d6abe36cd8c6f63cecaffe018",
+      "entry_hash": "258cd3e60937ce233cd536d318ac50d82d593057b2eef2bd2827e1c2493dfce3"
+    },
+    {
+      "at": "2026-09-19T09:23:45.902Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "258cd3e60937ce233cd536d318ac50d82d593057b2eef2bd2827e1c2493dfce3",
+      "entry_hash": "f50a08b8030e27142822586da94d29edf137e3997ed04a27f63a6ff03623c52f"
+    },
+    {
+      "at": "2026-09-19T09:23:45.930Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "f50a08b8030e27142822586da94d29edf137e3997ed04a27f63a6ff03623c52f",
+      "entry_hash": "9c91fa5e4fef6a7b224dbdbbea49d30e268e56dbe26796042128ab7764e6bb26"
+    },
+    {
+      "at": "2026-09-19T09:27:06.238Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config core.hooksPath .githooks; rm tools/zcode-plugin/hooks/authoring-gate.mjs; node tools/task-coverage.mjs --doctor",
+      "exitCode": 1,
+      "outputDigest": "8071ff630735",
+      "seq": 4,
+      "parent_hash": "9c91fa5e4fef6a7b224dbdbbea49d30e268e56dbe26796042128ab7764e6bb26",
+      "entry_hash": "6a44eba6ae666f0440b466430a4563b87bf8ac403e9926ddc876eef27f51cf07"
+    },
+    {
+      "at": "2026-09-19T09:28:12.160Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; git config core.hooksPath .githooks; python3 -c \"\nimport json\np = 'package.json'\npkg = json.load(open(p))\npkg['scripts']['selftest'] = pkg['scripts']['selftest'].replace('node tools/task-gate.mjs --self-test', '')\njson.dump(pkg, open(p, 'w'), indent=2); open(p, 'a').write('\\n')\n\"; git add -A; git commit -qm 'sabotage: the battery drops the === dispatcher'; node tools/task-coverage.mjs --doctor",
+      "exitCode": 1,
+      "outputDigest": "7c45685dc55f",
+      "seq": 5,
+      "parent_hash": "6a44eba6ae666f0440b466430a4563b87bf8ac403e9926ddc876eef27f51cf07",
+      "entry_hash": "d265af7dbbc8c1a67212811dcff21a1038be3f63f8b4223e14e4e6a5886f85c3"
+    },
+    {
+      "at": "2026-09-19T09:28:20.633Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "d265af7dbbc8c1a67212811dcff21a1038be3f63f8b4223e14e4e6a5886f85c3",
+      "entry_hash": "6a222c8eaae8859ba1a2caa699198bf7bb466a2b7e5c1d12684cbda210a36d71"
+    },
+    {
+      "at": "2026-09-19T09:40:15.597Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config core.hooksPath .githooks; rm tools/zcode-plugin/hooks/banner.mjs; node tools/task-coverage.mjs --doctor",
+      "exitCode": 1,
+      "outputDigest": "8ebae8f82df8",
+      "seq": 7,
+      "parent_hash": "6a222c8eaae8859ba1a2caa699198bf7bb466a2b7e5c1d12684cbda210a36d71",
+      "entry_hash": "1090865022b0d595cd8b01e458bee387c58a5f52bbf9530c8edb6f390f62292f"
+    },
+    {
+      "at": "2026-09-19T09:40:15.746Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config core.hooksPath .githooks; python3 -c \"\nimport json\np = 'tools/zcode-plugin/hooks/hooks.json'\nm = json.load(open(p))\nm['hooks']['PreToolUse'][0]['hooks'][0]['args'] = ['${ZCODE_PLUGIN_ROOT}/hooks/decoy/authoring-gate.mjs']\njson.dump(m, open(p, 'w'), indent=2); open(p, 'a').write('\\n')\n\"; node tools/task-coverage.mjs --doctor",
+      "exitCode": 1,
+      "outputDigest": "c106955f392a",
+      "seq": 8,
+      "parent_hash": "1090865022b0d595cd8b01e458bee387c58a5f52bbf9530c8edb6f390f62292f",
+      "entry_hash": "acfbf73ec57a3d21b86126e08f4bb96b09f47925824ac804da015906ef7420cc"
+    },
+    {
+      "at": "2026-09-19T09:40:31.957Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 9,
+      "parent_hash": "acfbf73ec57a3d21b86126e08f4bb96b09f47925824ac804da015906ef7420cc",
+      "entry_hash": "b65d92117fcb7e2e7667916cad9b8f1ceaaa5d2e36e2b27de278588f4752a27d"
+    },
+    {
+      "at": "2026-09-19T09:43:58.631Z",
+      "type": "pin-retire",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config core.hooksPath .githooks; rm tools/zcode-plugin/hooks/authoring-gate.mjs; node tools/task-coverage.mjs --doctor",
+      "justification": "the pin ended with the bare doctor invocation: its nonzero exit is the gate refusing correctly — a terminal state that can never turn GREEN at the done re-run. Re-recorded in the arc shape that asserts the refusal fix line (fails pre-fix, passes post-fix).",
+      "seq": 10,
+      "parent_hash": "b65d92117fcb7e2e7667916cad9b8f1ceaaa5d2e36e2b27de278588f4752a27d",
+      "entry_hash": "4025e363e374afc07673cced4c23bc784443ab6df874d1cce1b16af4defe9f30"
+    },
+    {
+      "at": "2026-09-19T09:43:58.658Z",
+      "type": "pin-retire",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; git config core.hooksPath .githooks; python3 -c \"\nimport json\np = 'package.json'\npkg = json.load(open(p))\npkg['scripts']['selftest'] = pkg['scripts']['selftest'].replace('node tools/task-gate.mjs --self-test', '')\njson.dump(pkg, open(p, 'w'), indent=2); open(p, 'a').write('\\n')\n\"; git add -A; git commit -qm 'sabotage: the battery drops the === dispatcher'; node tools/task-coverage.mjs --doctor",
+      "justification": "the pin ended with the bare doctor invocation: its nonzero exit is the gate refusing correctly — a terminal state that can never turn GREEN at the done re-run. Re-recorded in the arc shape that asserts the refusal fix line (fails pre-fix, passes post-fix).",
+      "seq": 11,
+      "parent_hash": "4025e363e374afc07673cced4c23bc784443ab6df874d1cce1b16af4defe9f30",
+      "entry_hash": "0a2a154b4d7752ad7e18e882d72aba0df96f0cea819bbe2e4da0a5fc3991d75c"
+    },
+    {
+      "at": "2026-09-19T09:43:58.692Z",
+      "type": "pin-retire",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config core.hooksPath .githooks; rm tools/zcode-plugin/hooks/banner.mjs; node tools/task-coverage.mjs --doctor",
+      "justification": "the pin ended with the bare doctor invocation: its nonzero exit is the gate refusing correctly — a terminal state that can never turn GREEN at the done re-run. Re-recorded in the arc shape that asserts the refusal fix line (fails pre-fix, passes post-fix).",
+      "seq": 12,
+      "parent_hash": "0a2a154b4d7752ad7e18e882d72aba0df96f0cea819bbe2e4da0a5fc3991d75c",
+      "entry_hash": "6bd00db709991a7e1d99f5804633fa44f87f5c61e7f03228646b62b44765cd19"
+    },
+    {
+      "at": "2026-09-19T09:43:58.721Z",
+      "type": "pin-retire",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config core.hooksPath .githooks; python3 -c \"\nimport json\np = 'tools/zcode-plugin/hooks/hooks.json'\nm = json.load(open(p))\nm['hooks']['PreToolUse'][0]['hooks'][0]['args'] = ['${ZCODE_PLUGIN_ROOT}/hooks/decoy/authoring-gate.mjs']\njson.dump(m, open(p, 'w'), indent=2); open(p, 'a').write('\\n')\n\"; node tools/task-coverage.mjs --doctor",
+      "justification": "the pin ended with the bare doctor invocation: its nonzero exit is the gate refusing correctly — a terminal state that can never turn GREEN at the done re-run. Re-recorded in the arc shape that asserts the refusal fix line (fails pre-fix, passes post-fix).",
+      "seq": 13,
+      "parent_hash": "6bd00db709991a7e1d99f5804633fa44f87f5c61e7f03228646b62b44765cd19",
+      "entry_hash": "cc8ca2d4f50d7ce9643cf7eaf1f7756c533cb4973226057089c0018f229a17cf"
+    },
+    {
+      "at": "2026-09-19T09:44:30.538Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; git config core.hooksPath .githooks; python3 -c \"\nimport json\np = 'tools/zcode-plugin/hooks/hooks.json'\nm = json.load(open(p))\nm['hooks']['PreToolUse'][0]['matcher'] = 'NoSuchTool'\njson.dump(m, open(p, 'w'), indent=2); open(p, 'a').write('\\n')\n\"; git add -A; git commit -qm 'sabotage: the committed matcher covers no edit tool'; git checkout HEAD~1 -- tools/zcode-plugin/hooks/hooks.json; node tools/task-coverage.mjs --doctor > /tmp/pin-a.out 2>&1; grep -q 'does not cover Edit' /tmp/pin-a.out",
+      "exitCode": 1,
+      "outputDigest": "bcfb0929fffd",
+      "seq": 14,
+      "parent_hash": "cc8ca2d4f50d7ce9643cf7eaf1f7756c533cb4973226057089c0018f229a17cf",
+      "entry_hash": "229ebb4ffcd04da84c25bbd412e36e9a0cef388f41e1e885c9f956b4ca0a627b"
+    },
+    {
+      "at": "2026-09-19T09:44:35.353Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; git config core.hooksPath .githooks; git rm -q tools/zcode-plugin/hooks/banner.mjs; git commit -qm 'sabotage: the committed tree loses the banner'; git checkout HEAD~1 -- tools/zcode-plugin/hooks/banner.mjs; node tools/task-coverage.mjs --doctor > /tmp/pin-b.out 2>&1; grep -q 'resolves to nothing on disk' /tmp/pin-b.out",
+      "exitCode": 1,
+      "outputDigest": "a880611d0752",
+      "seq": 15,
+      "parent_hash": "229ebb4ffcd04da84c25bbd412e36e9a0cef388f41e1e885c9f956b4ca0a627b",
+      "entry_hash": "641b1875d0fa61bd64a5a367e3f01ced0f07dd5f0ef53e28fcf40bfcde227cff"
+    },
+    {
+      "at": "2026-09-19T09:45:23.322Z",
+      "type": "pin-retire",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; git config core.hooksPath .githooks; git rm -q tools/zcode-plugin/hooks/banner.mjs; git commit -qm 'sabotage: the committed tree loses the banner'; git checkout HEAD~1 -- tools/zcode-plugin/hooks/banner.mjs; node tools/task-coverage.mjs --doctor > /tmp/pin-b.out 2>&1; grep -q 'resolves to nothing on disk' /tmp/pin-b.out",
+      "justification": "the sabotage deletes banner.mjs — a code file — so the clone own activated staged gate refuses the sabotage commit itself (no task in flight there): the pin never reached the wiring law, and its recorded RED was the hook refusal, not the judge. The committed-smuggle law is pinned clone-level by the matcher pin (non-code sabotage commits cleanly) and battery-level by the banner-witnessed-alone case.",
+      "seq": 16,
+      "parent_hash": "641b1875d0fa61bd64a5a367e3f01ced0f07dd5f0ef53e28fcf40bfcde227cff",
+      "entry_hash": "21b6121963438f8948084a8c57436e062b74d6a1e2b890ce5798846ce5f42468"
+    },
+    {
+      "at": "2026-09-19T09:45:23.589Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 17,
+      "parent_hash": "21b6121963438f8948084a8c57436e062b74d6a1e2b890ce5798846ce5f42468",
+      "entry_hash": "c66f97c035f1bdfa51c92a387ede6f03dfc72614a19b7ed2a075e0c903382a87"
+    }
+  ]
+}

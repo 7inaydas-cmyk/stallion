@@ -1,0 +1,66 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-round2-fixes",
+  "passStartedAt": "2026-09-19T09:28:27.784Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "the doctor's script-existence predicate checks a BASENAME against the fixed hooks dir while hookInvokes matches by substring, so a manifest re-pointed to ${ZCODE_PLUGIN_ROOT}/hooks/decoy/authoring-gate.mjs passes both probes while the dispatch ENOENTs at fire time — the predicate is a double for the runtime's path resolution and diverges exactly where production breaks",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T09:37:52.984Z",
+      "proof": "one-line edit re-points hooks.json args to the decoy path while the real scripts stay on disk: pluginWiringRefusal returned null (reproduced live with the doctor's exact predicate) and the doctor prints its pass line while every hook invocation ENOENTs; no pin covers the re-point shape",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:183,853",
+      "resolvedAt": "2026-09-19T09:40:20.707Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "the matcher-omitted early return (pre.matcher === undefined => null) fires before the banner-event loop and the banner disk check, so a matcher-omitted manifest with banner.mjs deleted passes the judge — docs/WIRING.md's 'a registered hook script missing from disk ... all refuse' is conditional, not unconditional",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T09:38:01.902Z",
+      "proof": "delete the matcher key from hooks.json and rm banner.mjs (reproduced in a clone of d2674f9): the doctor prints its pass line while the banner is registered to fire at nothing; no self-test case combines matcher omission with a missing script",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:205-222",
+      "resolvedAt": "2026-09-19T09:40:20.735Z"
+    },
+    {
+      "id": "f3",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "the same early return makes the new banner.mjs on-disk check unreachable on the matcher-omitted path and skips the SessionStart/UserPromptSubmit wiring law — the judge returns pass without running half its clauses on exactly the de-fanged-registration state it exists to judge",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T09:38:01.930Z",
+      "proof": "manifest with PreToolUse dispatching authoring-gate.mjs, no matcher, no banner events: judge returns null at the early return; blast radius bounded (the gate's disk check sits before it, the banner is advisory) hence MEDIUM",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:208",
+      "resolvedAt": "2026-09-19T09:40:20.762Z"
+    },
+    {
+      "id": "f4",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "the script-existence pins cannot witness either disk check individually: the () => false battery case collapses at whichever check survives, and the recorded clone pin deletes only authoring-gate.mjs — the banner.mjs half of the fix is unpinned, so a one-line regression deleting either check stays green everywhere",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T09:38:01.964Z",
+      "proof": "mutant run with the banner check alone deleted (and with the gate check alone deleted) passes all 27 doctor cases; discriminating inputs (predicate false only for banner.mjs, or only for authoring-gate.mjs) are refused by the real judge but appear in no shipped pin",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:1084,207,221",
+      "resolvedAt": "2026-09-19T09:40:20.789Z"
+    }
+  ],
+  "sweptBase": "acac5670bc0bb2ba6155edbc5ee9fb2516e73d1b",
+  "sweptHead": "d2674f9e0fff2c2192ebc5931dcdb2f63b6844ce",
+  "sweptDiffDigest": "e80eae06505a"
+}
