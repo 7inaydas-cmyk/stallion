@@ -47,208 +47,286 @@
       "lane": 3,
       "severity": "HIGH",
       "claim": "guard-reach's proof artifacts are consumed by nothing: the registry and observed-modes ratchet are read only in main(), and no transport invokes the bare tool — the battery runs --self-test, which by design never reads the live registry. 'PROVEN to reach' silently becomes false and nothing fires; demonstrated by mutating a registered guard's script to a nonexistent file: self-test green, doctor green",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:20:31.815Z",
       "proof": "any registered guard renamed or its output shape changed: fixtures still pass, modes snapshot keeps asserting stale reach, no automated surface runs the real plant-run-classify loop",
-      "evidence": "tools/guard-reach.mjs:671-673,594",
-      "dedupKey": "tools/guard-reach.mjs:671-673,594"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:671-673,594",
+      "resolvedAt": "2026-09-19T20:33:20.336Z"
     },
     {
       "id": "f5",
       "lane": 3,
       "severity": "MEDIUM",
       "claim": "guard-reach.json violates its own registry law: remote-string-lint, complexity-gate, reader-existence, doc-reconcile, and gate-registry appear in neither guards nor notRegistered — and remote-string-lint (the founding-incident guard) is demonstrably probeable today",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:20:31.847Z",
       "proof": "planted deploy/zz-probe.sh with the founding-incident defect: remote-string-lint exited 1 naming the file — it meets the registry's entry bar and is registered nowhere; a future corpus-narrowing regression would be caught for every OTHER guard but not the one whose blindness created guard-reach",
-      "evidence": "docs/gates/guard-reach.json",
-      "dedupKey": "docs/gates/guard-reach.json"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "docs/gates/guard-reach.json",
+      "resolvedAt": "2026-09-19T20:33:20.365Z"
     },
     {
       "id": "f6",
       "lane": 3,
       "severity": "MEDIUM",
       "claim": "debt-gate's overdue clock fails nothing: no transport invokes the bare tool, so the register's promise ('fails when an OPEN row is past its budget') is delivered by nothing — the same unwired-live-verdict shape holds for reader-existence, gate-coverage, doc-reconcile, and test-lint's bare runs",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:20:31.877Z",
       "proof": "the first real OPEN row goes overdue: debt-gate would exit 1 if run, but no hook, CI step, battery member, or doctor check executes it; replaying the exact 168-commit decay its own header cites",
-      "evidence": "tools/debt-gate.mjs:127-161",
-      "dedupKey": "tools/debt-gate.mjs:127-161"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "tools/debt-gate.mjs:127-161",
+      "resolvedAt": "2026-09-19T20:33:20.394Z"
     },
     {
       "id": "f7",
       "lane": 4,
       "severity": "HIGH",
       "claim": "the selftest battery is unrunnable in any fresh clone: complexity-gate imports typescript unconditionally, node_modules is gitignored, and CI has no install step — proven in a fresh clone, the battery dies at member 5 of 20 with ERR_MODULE_NOT_FOUND, making every CI run red and advance-verified impossible outside this sandbox. WIRING's 'skipping that gate costs nothing else' is false: no skip mechanism exists and the doctor refuses a battery that omits the tool",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:20:31.909Z",
       "proof": "CI checkout is node_modules-free; setup-node installs Node, not packages; npm run selftest crashes at complexity-gate — the declared CI gate is red on every push; a dependency-free vendor cannot run the battery at all",
-      "evidence": "tools/complexity-gate.mjs:59,.github/workflows/selftest.yml",
-      "dedupKey": "tools/complexity-gate.mjs:59,.github/workflows/selftest.yml"
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "README.md",
+        ".github/workflows/selftest.yml"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:59,.github/workflows/selftest.yml",
+      "resolvedAt": "2026-09-19T20:33:20.570Z"
     },
     {
       "id": "f8",
       "lane": 4,
       "severity": "MEDIUM",
       "claim": "guard-reach is tested only against manufactured doubles after ship: the battery member runs fixture guards in a temp dir while the REAL registered guards are exercised only in the never-run main(); the doubles cannot diverge-detect the real guards",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:20:31.941Z",
       "proof": "task-coverage's refusal output changes shape or test-lint's discovery narrows: fixtures still pass, modes snapshot keeps asserting reach that no longer holds",
-      "evidence": "tools/guard-reach.mjs:486-571",
-      "dedupKey": "tools/guard-reach.mjs:486-571"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:486-571",
+      "resolvedAt": "2026-09-19T20:33:20.426Z"
     },
     {
       "id": "f9",
       "lane": 5,
       "severity": "HIGH",
       "claim": "the SEMANTIC half of 'fails closed when config is missing or malformed' is unreachable for five gates: malformed-but-parseable configs go green everywhere — doctor JSON.parses only, battery runs fixture-only self-tests by the tools' own design, and the refusing loaders fire only via bare CLI entries no transport invokes",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.100Z",
       "proof": "emptied coverage.json gates[] by hand: doctor all-green, gate-coverage self-test OK; the vacuity refusal exists in code but is wired to nothing",
-      "evidence": "tools/gate-coverage.mjs:101-102,tools/task-coverage.mjs:783-799",
-      "dedupKey": "tools/gate-coverage.mjs:101-102,tools/task-coverage.mjs:783-799"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "tools/gate-coverage.mjs:101-102,tools/task-coverage.mjs:783-799",
+      "resolvedAt": "2026-09-19T20:33:20.453Z"
     },
     {
       "id": "f10",
       "lane": 5,
       "severity": "HIGH",
       "claim": "the live law of the census/sweep/claims/probe gates is exercised by NO transport while WIRING §11 asserts it in the present tense — the documented control exists only as prose; a runtime dependencies block could land and the registered dependency-free claim would be false with nothing failing anywhere",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.128Z",
       "proof": "grep across all transports: only --self-test invocations exist; hand-ran every live gate (all pass today — configs honest, nothing schedules their re-proof). The tool's own founding failure replaying on the tool",
-      "evidence": "docs/WIRING.md:285,297",
-      "dedupKey": "docs/wiring.md:285,297"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "docs/wiring.md:285,297",
+      "resolvedAt": "2026-09-19T20:33:20.481Z"
     },
     {
       "id": "f11",
       "lane": 5,
       "severity": "MEDIUM",
       "claim": "gate-registry's shadow direction cannot see a WHOLLY-unregistered invocation: shadowErrors iterates only declared gates, so wiring a new gate into pre-push without registering it — the exact multi-surface drift the tool was ported to catch — stays green",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.158Z",
       "proof": "executed checkDeclarations with an unregistered invocation in a transport: no error names it",
-      "evidence": "tools/gate-registry.mjs:129-139",
-      "dedupKey": "tools/gate-registry.mjs:129-139"
+      "evidence": [
+        "tools/gate-registry.mjs",
+        "docs/gates/gate-registry.json"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:129-139",
+      "resolvedAt": "2026-09-19T20:33:20.626Z"
     },
     {
       "id": "f12",
       "lane": 5,
       "severity": "MEDIUM",
       "claim": "README still claims 'no dependencies', falsified by the wave (typescript devDep + static import in a hardcoded battery member); no doc-claim anchors the README sentence",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.186Z",
       "proof": "a dependency-free vendor checkout cannot run the battery at all — ERR_MODULE_NOT_FOUND at member 5",
-      "evidence": "README.md:4",
-      "dedupKey": "readme.md:4"
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "README.md",
+        ".github/workflows/selftest.yml"
+      ],
+      "dedupKey": "readme.md:4",
+      "resolvedAt": "2026-09-19T20:33:20.600Z"
     },
     {
       "id": "f13",
       "lane": 5,
       "severity": "LOW",
       "claim": "WIRING's mapping table over-claims --expect ('binds assertion evidence to every new pin') — it is optional and unenforced downstream; pins without it remain the accepted weaker form",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.212Z",
-      "evidence": "docs/WIRING.md:316,tools/task-state.mjs",
-      "dedupKey": "docs/wiring.md:316,tools/task-state.mjs"
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/wiring.md:316,tools/task-state.mjs",
+      "resolvedAt": "2026-09-19T20:33:20.738Z"
     },
     {
       "id": "f14",
       "lane": 6,
       "severity": "HIGH",
       "claim": "guard-reach's live machinery — planted probes, crash-vs-report distinction, disk-to-index mode ratchet — is scheduled by nothing: the entry block exits before main() on --self-test, the only invocation anywhere; a control built to catch controls that never fire, that itself never fires",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.240Z",
       "proof": "hand-run confirms the live path works and self-cleans; the deadness is wiring, not breakage — registered guards regressing to seeing fewer files keeps every automated surface green",
-      "evidence": "tools/guard-reach.mjs:669-675",
-      "dedupKey": "tools/guard-reach.mjs:669-675"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:669-675",
+      "resolvedAt": "2026-09-19T20:33:20.510Z"
     },
     {
       "id": "f15",
       "lane": 6,
       "severity": "MEDIUM",
       "claim": "test-lint swallows an unresolvable corpus path: expandPaths sets exitCode 2 but process.exit(main()) overwrites it with 0 when no blocking findings — a typo'd corpus lints nothing and exits green",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.268Z",
       "proof": "executed against /no/such/path: error printed, exit 0",
-      "evidence": "tools/test-lint.mjs:69-77,280-283",
-      "dedupKey": "tools/test-lint.mjs:69-77,280-283"
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:69-77,280-283",
+      "resolvedAt": "2026-09-19T20:33:20.653Z"
     },
     {
       "id": "f16",
       "lane": 6,
       "severity": "LOW",
       "claim": "doc-reconcile is the only wave tool without an entry-module guard: importing it executes the CLI and exits — the exact control-disabled-by-import failure every sibling documents against",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:21:43.298Z",
       "proof": "executed import(): the live run fired and the importer never continued",
-      "evidence": "tools/doc-reconcile.mjs:502",
-      "dedupKey": "tools/doc-reconcile.mjs:502"
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:502",
+      "resolvedAt": "2026-09-19T20:33:20.684Z"
     },
     {
       "id": "f17",
       "lane": 7,
       "severity": "HIGH",
       "claim": "the wave's own mandatory-GREEN pin is still RED at HEAD: the defang pin's grep asserts the fence names docs/gates/complexity.json, but the no-footer refusal never names files (file-naming lives on the citation path, reached only when a footer IS present) — the repair's GREEN was asserted, never byte-verified",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:24:47.523Z",
       "proof": "verbatim re-run in a fresh clone: fence refuses (correct in substance) without the filename; done can never re-run this pin green",
-      "evidence": "tasks/harness-merge-wave1.json",
-      "dedupKey": "tasks/harness-merge-wave1.json"
+      "evidence": [
+        "tasks/harness-merge-wave1.json"
+      ],
+      "dedupKey": "tasks/harness-merge-wave1.json",
+      "resolvedAt": "2026-09-19T20:33:20.821Z"
     },
     {
       "id": "f18",
       "lane": 7,
       "severity": "HIGH",
       "claim": "expect is an optional side flag and the real seam — hasValidPin accepting ANY nonzero-integer exit — was not touched: an uncollectable run still records a valid RED pin and verifies a code task, exactly the escape the af4fd70 commit message claims to cure",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:24:59.865Z",
       "proof": "scratch clone: red-check --command 'node tools/definitely-absent.mjs' (MODULE_NOT_FOUND) records a valid pin and advances to verified; only the --expect form is refused",
-      "evidence": "tools/task-state.mjs:169-176,574-605",
-      "dedupKey": "tools/task-state.mjs:169-176,574-605"
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:169-176,574-605",
+      "resolvedAt": "2026-09-19T20:33:20.710Z"
     },
     {
       "id": "f19",
       "lane": 7,
       "severity": "MEDIUM",
       "claim": "the stripComments repair at the doctor's battery-membership walk is pinned by nothing: reverting the call site to the unstripped read leaves the whole battery green — both new self-test cases apply the strip at test level, not on the production path",
-      "status": "UNRESOLVED",
+      "status": "WONT-FIX",
       "recordedAt": "2026-09-19T20:24:59.898Z",
       "proof": "sed-reverted the call site in a clone: npm run selftest exit 0",
       "evidence": "tools/task-coverage.mjs",
-      "dedupKey": "tools/task-coverage.mjs"
+      "dedupKey": "tools/task-coverage.mjs",
+      "justification": "Accurate and registered as future work: pinning the doctor's walk requires a fixture-tree driver (the self-test cases apply the strip at test level, so a call-site revert leaves them green). The honest driver is a doctor run against a planted comment-only file — the shape guard-reach probes take — and belongs in the harness follow-up wave, not smuggled into this repair. The strip itself is correct and the call site is now fenced code (docs/gates/** + tools/** both demand a footer to touch).",
+      "resolvedAt": "2026-09-19T20:33:20.850Z"
     },
     {
       "id": "f20",
       "lane": 8,
       "severity": "CRITICAL",
       "claim": "the swept range fails its own push fence at HEAD: 484df9d reclassified docs/gates as fence surface, retroactively outlawing the wave's own earlier footer-less commit 0a6dede (docs/gates/doc-claims.json landed under the old law) — the wave is unshippable past the pre-push hook and CI it ships; the new law and the pre-law artifact shipped in the same range with nothing reconciling them",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:24:59.927Z",
       "proof": "fresh clone, fence --base f502259: exit 1, 0a6dede flagged; pushing triggers the same refusal in pre-push and CI",
-      "evidence": "tools/task-coverage.mjs:62-66",
-      "dedupKey": "tools/task-coverage.mjs:62-66"
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:62-66",
+      "resolvedAt": "2026-09-19T20:33:20.795Z"
     },
     {
       "id": "f21",
       "lane": 8,
       "severity": "HIGH",
       "claim": "ten gates ported, zero live invocations: every new gate's enforcement run is hand-run only while WIRING blesses the non-wiring as a vendor choice — demonstrated twice: an overdue OPEN debt row and a gutted accepted-findings baseline both leave npm run selftest at exit 0",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:24:59.955Z",
       "proof": "debt-register PD-0 flipped OPEN/next-1: live debt-gate exit 1, battery exit 0; reader-existence row deleted: live gate FAILED, battery exit 0",
-      "evidence": "package.json:13",
-      "dedupKey": "package.json:13"
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "package.json",
+        "docs/gates/guard-reach.json"
+      ],
+      "dedupKey": "package.json:13",
+      "resolvedAt": "2026-09-19T20:33:20.541Z"
     },
     {
       "id": "f22",
       "lane": 8,
       "severity": "HIGH",
       "claim": "WIRING's mapping table asserts --expect binds assertion evidence to every new pin while the code makes it optional — the artifact asserts a control the code does not provide, shipped in the same wave",
-      "status": "UNRESOLVED",
+      "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:24:59.984Z",
       "proof": "pin without expect records and verifies identically; nothing enforces the sentence",
-      "evidence": "docs/WIRING.md:316",
-      "dedupKey": "docs/wiring.md:316"
+      "evidence": [
+        "docs/WIRING.md",
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "docs/wiring.md:316",
+      "resolvedAt": "2026-09-19T20:33:20.766Z"
     }
   ],
   "sweptBase": "f502259d30c585aad5efc3809cd36cd7397b9cf2",

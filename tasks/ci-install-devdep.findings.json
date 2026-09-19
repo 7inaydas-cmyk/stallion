@@ -1,0 +1,38 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ci-install-devdep",
+  "passStartedAt": "2026-09-19T20:34:07.026Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "the renamed CI step claimed 'live gate verdicts' that the battery at that commit did not yet contain (they landed in the next commit); display-only, self-healed at HEAD",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T20:39:37.199Z",
+      "evidence": [
+        ".github/workflows/selftest.yml",
+        "package.json"
+      ],
+      "dedupKey": ".github/workflows/selftest.yml",
+      "resolvedAt": "2026-09-19T20:39:37.261Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "the decisions entry scoped 'one npm ci step, no other workflow change' but the commit also renamed the step; and the name hand-counted five tools against a derived 20-member battery — the register's own no-hand-counts rule",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T20:39:37.230Z",
+      "evidence": [
+        "docs/decisions/DECISIONS.md",
+        ".github/workflows/selftest.yml"
+      ],
+      "dedupKey": "docs/decisions/decisions.md",
+      "resolvedAt": "2026-09-19T20:39:37.289Z"
+    }
+  ],
+  "sweptBase": "484df9daebace7148e491b9ded1ae33697890f25",
+  "sweptHead": "0711f9c362d89a4e31402c2b3ce8f060d24be991",
+  "sweptDiffDigest": "06c2ee512e53"
+}

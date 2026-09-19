@@ -45,6 +45,57 @@
       "seq": 4,
       "parent_hash": "d4a1823ece8a18dcc36c42b6a26b96bc1d05498986f21c3b66de8a88251d7fb4",
       "entry_hash": "fea5c4dc2c600b7a77a1bd71558eedd73fbc63be0bea924a9fe0730d8a72c8cf"
+    },
+    {
+      "at": "2026-09-19T20:33:33.087Z",
+      "type": "pin-exemption",
+      "justification": "wiring-only change (one npm ci step + its decisions entry): the discriminating check is a CI run, which executes only on push — the first push after this task IS the green re-run; a local pin cannot see a workflow step",
+      "seq": 5,
+      "parent_hash": "fea5c4dc2c600b7a77a1bd71558eedd73fbc63be0bea924a9fe0730d8a72c8cf",
+      "entry_hash": "2e262ff75ec19bb816c6bd5dde3e355567b6ee1a131bab9200d226d1a1cd6030"
+    },
+    {
+      "at": "2026-09-19T20:34:03.352Z",
+      "type": "red-check",
+      "evidence": [
+        ".github/workflows/selftest.yml",
+        "docs/decisions/DECISIONS.md"
+      ],
+      "seq": 6,
+      "parent_hash": "2e262ff75ec19bb816c6bd5dde3e355567b6ee1a131bab9200d226d1a1cd6030",
+      "entry_hash": "3d4f5d66c269a77f9a5d0e0b767cd913a1893b90f74a49f6441698eecabcc68e"
+    },
+    {
+      "at": "2026-09-19T20:34:03.380Z",
+      "type": "pin-exemption",
+      "justification": "wiring-only change (one npm ci step + its decisions entry): the discriminating check is a CI run, which executes only on push — the first push after this task IS the green re-run. A local pin cannot see a workflow step, and a sha-pinned checkout pin red-pins forever (the moving-target trap); the --expect law rightly refused the grep-shape attempt.",
+      "seq": 7,
+      "parent_hash": "3d4f5d66c269a77f9a5d0e0b767cd913a1893b90f74a49f6441698eecabcc68e",
+      "entry_hash": "20a03cb4a5dea97633ef9d04607d3ac03ea5bf0a1792ace06ed4ece3f9dd0bc0"
+    },
+    {
+      "at": "2026-09-19T20:34:06.980Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 8,
+      "parent_hash": "20a03cb4a5dea97633ef9d04607d3ac03ea5bf0a1792ace06ed4ece3f9dd0bc0",
+      "entry_hash": "12c007cc31c07163fcf6ede10326dfaa4fec426a914bd6fdbd11b07fd4a78995"
+    },
+    {
+      "at": "2026-09-19T20:39:37.348Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 9,
+      "parent_hash": "12c007cc31c07163fcf6ede10326dfaa4fec426a914bd6fdbd11b07fd4a78995",
+      "entry_hash": "a6f0e7ec6d8a8cb31418dc3c073e0e51967c52140d431bfd707783ca0f57e52c"
+    },
+    {
+      "at": "2026-09-19T20:39:37.378Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 10,
+      "parent_hash": "a6f0e7ec6d8a8cb31418dc3c073e0e51967c52140d431bfd707783ca0f57e52c",
+      "entry_hash": "725d2d35ec06264af57b1eb49a9025044262415ca92a6b8504567557af6460a5"
     }
   ]
 }

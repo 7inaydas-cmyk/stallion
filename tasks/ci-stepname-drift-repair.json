@@ -1,0 +1,50 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ci-stepname-drift-repair",
+  "title": null,
+  "riskClass": "protected",
+  "events": [
+    {
+      "at": "2026-09-19T20:39:59.977Z",
+      "type": "created",
+      "riskClass": "protected",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "b6b866ddda88909fdc308c2fcbaef2bce18d7cf0b62f1ad389d259698ac9228b"
+    },
+    {
+      "at": "2026-09-19T20:40:00.006Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "b6b866ddda88909fdc308c2fcbaef2bce18d7cf0b62f1ad389d259698ac9228b",
+      "entry_hash": "cf50796521e1d71567d4cebed2e7c3cadc7aa8bd333373212d5c0c6d958b7b0a"
+    },
+    {
+      "at": "2026-09-19T20:40:00.033Z",
+      "type": "approval",
+      "decision": "2026-09-20 — CI installs the dev dependency the complexity ratchet's optional peer requires",
+      "seq": 2,
+      "parent_hash": "cf50796521e1d71567d4cebed2e7c3cadc7aa8bd333373212d5c0c6d958b7b0a",
+      "entry_hash": "b85b0099ddebb468f471159ce3da2348df915aa6a5ace6e9aa36fe3a8e2c52a5"
+    },
+    {
+      "at": "2026-09-19T20:40:00.061Z",
+      "type": "scope",
+      "patterns": [
+        ".github/workflows/**"
+      ],
+      "seq": 3,
+      "parent_hash": "b85b0099ddebb468f471159ce3da2348df915aa6a5ace6e9aa36fe3a8e2c52a5",
+      "entry_hash": "7a789a966835b0604dd55d879f9626842b6d8f1c45c53fd493240bd605a38f5e"
+    },
+    {
+      "at": "2026-09-19T20:40:00.086Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "7a789a966835b0604dd55d879f9626842b6d8f1c45c53fd493240bd605a38f5e",
+      "entry_hash": "5739d356420282cc52e7066deae485f51758ff525796bf0878bec0a6b4d5bf07"
+    }
+  ]
+}

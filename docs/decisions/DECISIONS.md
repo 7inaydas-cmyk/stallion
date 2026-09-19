@@ -66,3 +66,9 @@ import died at member 5 with ERR_MODULE_NOT_FOUND). The gate now refuses cleanly
 compiler is absent, but CI's checkout carries no node_modules, so the battery would refuse on
 every push until CI installs. Authorized: one `npm ci` step in .github/workflows/selftest.yml
 ahead of the battery — dev-time only, no runtime dependency, no other workflow change.
+
+**Additive correction (2026-09-20, same session).** The authorized commit also rewrote the
+battery step's display name alongside adding npm ci — beyond the "no other workflow change" this
+entry scoped. The rename is hereby acknowledged rather than rewritten out of history; the step
+name now carries no hand-maintained count (the battery's membership is derived by law, and a
+"Five tool" count in a 20-member battery was the register's own rule violated).
