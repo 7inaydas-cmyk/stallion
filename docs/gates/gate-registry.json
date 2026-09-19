@@ -1,0 +1,35 @@
+{
+  "_readme": "Stallion's gate invocations, declared ONCE. Each gate names the invocation text and the transports that must carry it; tools/gate-registry.mjs greps the real transport files for both directions of drift — a declared gate missing from a transport, and a transport carrying an invocation the registry does not declare (a shadow gate). Vendors: this is the stallion seed; add your own gates and transports honestly.",
+  "gates": [
+    {
+      "id": "staged-gate",
+      "invocation": "node tools/task-coverage.mjs --staged",
+      "transports": ["pre-commit"],
+      "why": "refuses code staged while no task is in flight — the earliest transport, one action from the mistake"
+    },
+    {
+      "id": "commit-msg-binding-gate",
+      "invocation": "node tools/task-coverage.mjs --commit-msg",
+      "transports": ["commit-msg", "ci"],
+      "why": "the footer must name an in-flight task whose declared scope covers the staged code; CI's probe re-proves it refuses"
+    },
+    {
+      "id": "push-fence",
+      "invocation": "node tools/task-coverage.mjs",
+      "transports": ["pre-push", "ci", "battery"],
+      "why": "every code commit in the push range carries an authorizing task record — the control clones cannot opt out of; the battery transport is the package.json `task-coverage` alias, a bare runnable spelling of the same command"
+    },
+    {
+      "id": "wiring-doctor",
+      "invocation": "node tools/task-coverage.mjs --doctor",
+      "transports": ["pre-push", "ci"],
+      "why": "the gate for the gate: an unwired clone refuses to push until it is wired"
+    },
+    {
+      "id": "selftest-battery",
+      "invocation": "npm run selftest",
+      "transports": ["ci"],
+      "why": "the whole battery — every self-testing tool in tools/ — on every push"
+    }
+  ]
+}
