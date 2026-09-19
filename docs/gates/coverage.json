@@ -1,0 +1,16 @@
+{
+  "$comment": "The gate reach map, read by tools/gate-coverage.mjs — which static gate is POINTED AT which tracked source file. The law (ported from the Antitube harness, where on 2026-08-12 three of six dead controls were healthy gates nobody had pointed at the code): reach is checked here, never assumed. Specs use the pathspec dialect (tools/pathspec.mjs): 'a/**' is the directory and everything beneath it, '**' spans zero or more segments, '*' stays inside one segment. Every gate states in 'sees' what actually runs — a name and a spec without the command behind them is how a fake gate slips in. 'exempt' entries each need a reason about the file; 'it is inconvenient' is not one.",
+  "gates": [
+    {
+      "name": "selftest-battery",
+      "spec": "tools/**/*.mjs",
+      "sees": "npm run selftest dispatches every tools .mjs that offers a --self-test, and task-coverage's doctor derives that membership by READING every tools/**/*.mjs in the tree (dispatchesSelfTest), refusing any dispatcher the battery omits (issue #16) — so no tools .mjs lands unread, and the moment one dispatches it must be run."
+    },
+    {
+      "name": "push-fence",
+      "spec": [".githooks/**", ".github/workflows/**"],
+      "sees": "tools/task-coverage.mjs counts the hooks and the CI workflow as CODE (isCodePath: 'committed hooks are code — they ARE the fence'): every commit touching them needs an in-flight task footer within declared scope, re-judged at push time and in CI. The fence equally binds tools/** code; the battery is declared the gate for that tree because it runs the code, not just binds it."
+    }
+  ],
+  "exempt": []
+}
