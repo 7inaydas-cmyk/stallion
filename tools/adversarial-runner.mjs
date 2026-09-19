@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, appendFinding, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
 import { evidencePathIsFile } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -240,6 +240,9 @@ function cmdRecord(args) {
   // collides with the sibling writer that already appended.
   const next = mutateJson(findingsPath(id), (text) => {
     const register = parseRegisterForWrite(text, id);
+    const dup = duplicateEvidenceOf(register, { claim: args.claim, ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
+    if (dup) die(`finding ${dup} already carries this normalized evidence — resolution lanes are not spent twice on one escape (ECC's dedup-before-verify)
+  fix: resolve/wont-fix ${dup}, or record a DISTINCT escape with its own evidence`);
     const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...(typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {}), ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
     if (typeof appended === "string") die(appended);
     return appended;

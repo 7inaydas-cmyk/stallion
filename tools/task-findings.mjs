@@ -219,6 +219,17 @@ export function selfTestFindings(fail) {
   selfTestResolveEvidence(fail);
   selfTestChain(fail);
   selfTestProofLaw(fail);
+  selfTestDedup(fail);
+}
+
+function selfTestDedup(fail) {
+  const base = emptyFindings("t");
+  const first = appendFinding(base, { id: "f1", lane: 1, severity: "MEDIUM", claim: "first", evidence: "tools/a.mjs:1", proof: "fixture" });
+  if (typeof first === "string") { fail(`task-findings: dedup fixture refused (${first})`); return; }
+  if (duplicateEvidenceOf(first, { evidence: "  Tools/A.mjs:1  " }) !== "f1") fail("task-findings: normalized evidence must collide across case and whitespace");
+  if (duplicateEvidenceOf(first, { evidence: "tools/a.mjs:2" }) !== null) fail("task-findings: distinct evidence must not collide");
+  if (duplicateEvidenceOf(first, { claim: "Tools/A.MJS:1" }) !== "f1") fail("task-findings: with no evidence field, the normalized claim is the dedup key");
+  if (duplicateEvidenceOf(first, {}) !== null) fail("task-findings: an empty finding collides with nothing");
 }
 
 function selfTestChain(fail) {
@@ -245,6 +256,25 @@ function selfTestProofLaw(fail) {
   if (!owesProof({ severity: "CRITICAL", recordedAt: 123 })) fail("task-findings: a non-string recordedAt owes a proof (fail closed)");
   if (!owesProof({ severity: "CRITICAL", recordedAt: "2026-09-18T23:00:00.000-05:00" })) fail("task-findings: an offset-spelled post-cutover stamp owes a proof (fail closed)");
   if (owesProof({ severity: "CRITICAL", recordedAt: "2026-09-17T00:00:00.000Z" })) fail("task-findings: a strict-Z pre-cutover stamp is grandfathered");
+}
+
+/** The dedup key (ECC's orch-review lesson: dedup on normalized EVIDENCE, not titles or
+ *  line-adjacent claims — 11 raw findings collapsed to 4 unique halves verifier spend). */
+export function normalizedEvidenceOf(finding) {
+  const key = typeof finding?.evidence === "string" && finding.evidence.trim() ? finding.evidence : typeof finding?.claim === "string" ? finding.claim : "";
+  return key.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Pure: does a candidate finding duplicate one already in the register? Returns the existing
+ *  finding's id on collision, null when distinct — the recorder refuses the collision instead
+ *  of spending resolution lanes on the same escape twice. */
+export function duplicateEvidenceOf(register, candidate) {
+  const key = normalizedEvidenceOf(candidate);
+  if (!key) return null;
+  for (const f of register?.findings ?? []) {
+    if (normalizedEvidenceOf(f) === key) return f.id;
+  }
+  return null;
 }
 
 /**
@@ -439,7 +469,7 @@ if (isEntry && process.argv.includes("--self-test")) {
     const failures = [];
     selfTestFindings((m) => failures.push(m));
     await selfTestConcurrentWriters((m) => failures.push(m));
-    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation + 9 chain + 8 proof cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
+    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation + 9 chain + 8 proof + 4 dedup cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
     process.exit(failures.length === 0 ? 0 : 1);
   })();
 }

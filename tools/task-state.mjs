@@ -34,7 +34,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson } from "./task-findings.mjs";
+import { aggregateFindings, chainError, chainStampEvents, duplicateEvidenceOf, loadFindings, missingResolveEvidence, mutateJson } from "./task-findings.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -208,7 +208,10 @@ function executionGuard(record) {
 
 const NON_CODE_CLASSES = new Set(["planning-only", "docs-only", "experiment"]);
 
-function verificationGuard(record, _findings, evidenceOnDisk) {
+function verificationGuard(record, _findings, evidenceOnDisk, _resolveMissing = [], _green = [], batteryGreen = true) {
+  if (!batteryGreen) {
+    return { reason: "the selftest battery is not green — verification runs the whole battery at the phase boundary (ECC's stop-time batching: checks once at the boundary, not per edit)", remedy: "npm run selftest   — fix every failing tool, then advance" };
+  }
   const evidence = redCheckEvidence(record);
   const pins = commandPins(record);
   const needsPin = !NON_CODE_CLASSES.has(record.riskClass);
@@ -285,7 +288,7 @@ const TRANSITION_GUARDS = {
  * caller re-verifies, so this stays testable with synthetic records.
  * Returns { ok: true } or { ok: false, reason } — the reason is the law being invoked.
  */
-export function evaluateTransition(record, findings, target, evidenceOnDisk, resolveEvidenceMissing = [], greenFailures = []) {
+export function evaluateTransition(record, findings, target, evidenceOnDisk, resolveEvidenceMissing = [], greenFailures = [], batteryGreen = true) {
   if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record", remedy: "start a real one: node tools/task-state.mjs new <id> --risk-class <class>" };
   if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}`, remedy: `phases are exactly: ${PHASES.join(", ")}` };
   const current = derivePhase(record.events);
@@ -296,7 +299,7 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, res
   }
   const guard = TRANSITION_GUARDS[`${current}->${target}`];
   if (guard) {
-    const refusal = guard(record, findings, evidenceOnDisk, resolveEvidenceMissing, greenFailures);
+    const refusal = guard(record, findings, evidenceOnDisk, resolveEvidenceMissing, greenFailures, batteryGreen);
     if (refusal) return { ok: false, reason: refusal.reason, remedy: refusal.remedy };
   }
   return { ok: true };
@@ -314,6 +317,38 @@ export function obligations(record, findings, evidenceOnDisk) {
     return [`advance to ${target} is unblocked`, `done will re-run ${commandPins(record).length} command pin(s) — each must pass`];
   }
   return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason, `fix: ${verdict.remedy}`];
+}
+
+/**
+ * Pure: the evidence-graded handoff (ECC's save-session shape, machine-generated from the
+ * record and register): WORKED with evidence (green pins, resolved findings), FAILED with the
+ * exact reason (wont-fix justifications, retired pins — "'threw X because Y' is useful;
+ * 'didn't work' is not"), NOT TRIED (unresolved findings, unmet obligations). No free text
+ * enters it that the tools did not already require somewhere.
+ */
+export function handoffReport(record, findings) {
+  const pins = commandPins(record);
+  const retired = record.events.filter((e) => e.type === "pin-retire");
+  const resolved = (findings?.findings ?? []).filter((f) => f.status === "RESOLVED");
+  const wont = (findings?.findings ?? []).filter((f) => f.status === "WONT-FIX");
+  const unresolved = (findings?.findings ?? []).filter((f) => f.status === "UNRESOLVED");
+  const obligationsLeft = obligations(record, findings, true).filter((o) => !o.startsWith("advance to"));
+  const lines = [
+    `# Handoff — ${record.id} (${derivePhase(record.events)}, ${record.riskClass})`,
+    "",
+    "## WORKED (with evidence)",
+    ...(pins.length > 0 ? pins.map((p) => `- pin GREEN at done: ${JSON.stringify(p.command)} (exit ${p.exitCode}, digest ${p.outputDigest})`) : ["- (no command pins recorded)"]),
+    ...resolved.map((f) => `- finding ${f.id} RESOLVED — ${(f.evidence ?? []).join(", ")}`),
+    "",
+    "## FAILED (exact reasons)",
+    ...retired.map((e) => `- pin retired (${JSON.stringify(e.command)}): ${e.justification}`),
+    ...wont.map((f) => `- finding ${f.id} WONT-FIX: ${f.justification}`),
+    "",
+    "## NOT TRIED",
+    ...unresolved.map((f) => `- finding ${f.id} (${f.severity}): ${f.claim}`),
+    ...obligationsLeft.map((o) => `- obligation: ${o}`),
+  ];
+  return lines.join("\n");
 }
 
 class Refused extends Error {}
@@ -550,6 +585,17 @@ function cmdAdvance(args) {
   // may run minutes, and the lock's stale-breaker would gift concurrent writers a lost update
   // (an adversarial finding — the exact bug the lock exists to prevent).
   let greenFailures = [];
+  // The verified boundary runs the WHOLE battery once (ECC's stop-time batching): checks land
+  // at the phase boundary, not per edit — and a red tool blocks the phase, not the commit.
+  let batteryGreen = true;
+  let batteryOutput = "";
+  if (target === "verified" && derivePhase(loadTask(id).events) === "executing") {
+    const run = runPinCommand("npm run selftest");
+    if (run.exitCode !== 0) {
+      batteryGreen = false;
+      batteryOutput = run.output.split("\n").filter((l) => /FAILED|Error/.test(l)).slice(0, 3).join(" | ");
+    }
+  }
   if (target === "done" && derivePhase(loadTask(id).events) === "adversarial") {
     const pins = commandPins(loadTask(id));
     for (const pin of pins) {
@@ -562,7 +608,7 @@ function cmdAdvance(args) {
     if (!ok) die(error);
     if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
     const resolveMissing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
-    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), resolveMissing, greenFailures);
+    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), resolveMissing, greenFailures, batteryGreen);
     if (!verdict.ok) die(`REFUSED — ${verdict.reason}\n  fix: ${verdict.remedy}`);
     from = derivePhase(record.events);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "transition", to: target }] };
@@ -573,6 +619,16 @@ function cmdAdvance(args) {
 function statusObligations(record) {
   const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
   return obligations(record, ok ? register : null, redCheckEvidence(record).every(evidencePathIsFile));
+}
+
+function cmdHandoff(args) {
+  const id = args._[0];
+  if (!id) die("usage: handoff <id>");
+  const record = loadTask(id);
+  const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
+  if (!ok) die(error);
+  if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
+  console.log(handoffReport(record, ok ? register : null));
 }
 
 function cmdStatus(args) {
@@ -653,6 +709,8 @@ export function selfTest() {
     ["a recorded pin exemption substitutes for the command pin", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }, { type: "pin-exemption", justification: "cannot re-run in this env" }] }, null, "verified", true).ok],
     ["a forged pin with exit 0 is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "true", exitCode: 0, outputDigest: "x" }] }, null, "verified", true).ok],
     ["a killed pin (null exit) is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "hang", exitCode: null, outputDigest: "x" }] }, null, "verified", true).ok],
+    ["a red battery blocks verified at the boundary", !evaluateTransition(at(executing, "executing"), null, "verified", true, [], [], false).ok],
+    ["a green battery lets verified proceed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, [], [], true).ok],
     ["verified with vanished evidence refused", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["gone.test.ts"] }] }, null, "verified", false).ok],
     ["done without findings register refused", !evaluateTransition(adversarial, null, "done", true).ok],
     ["done with UNRESOLVED finding refused", !evaluateTransition(adversarial, dirtyFindings, "done", true).ok],
@@ -696,6 +754,23 @@ export function selfTest() {
     ["recordCreatedAt is empty for an undated record", recordCreatedAt({ events: [{ type: "created" }] }) === ""],
     ["the scope law cut over after the pin law did", SCOPE_LAW_CUTOVER >= PIN_LAW_CUTOVER],
     ["the chain law cut over after the scope law did", CHAIN_CUTOVER > SCOPE_LAW_CUTOVER],
+    ["the handoff report grades by evidence: worked / failed-with-reason / not-tried", (() => {
+      const r = handoffReport({
+        schema: TASK_SCHEMA, id: "t", riskClass: "runtime-code",
+        events: [
+          { type: "created", at: "2026-09-19T05:00:00.000Z" },
+          { type: "red-check", command: "npm test", exitCode: 1, outputDigest: "d" },
+          { type: "pin-retire", command: "bad", justification: "retired because the command hung" },
+        ],
+      }, {
+        schema: "stallion/task-findings@1", task: "t", passStartedAt: "x",
+        findings: [
+          { id: "f1", severity: "LOW", status: "RESOLVED", claim: "a", evidence: ["e"] },
+          { id: "f2", severity: "LOW", status: "WONT-FIX", claim: "b", justification: "boundary recorded" },
+        ],
+      });
+      return r.includes("WORKED (with evidence)") && r.includes("FAILED (exact reasons)") && r.includes("boundary recorded") && r.includes("NOT TRIED");
+    })()],
     ["an undated record MUST chain (fail closed)", recordMustChain({ events: [{ type: "created" }] }) === true],
     ["a pre-cutover record is chain-grandfathered", recordMustChain({ events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }] }) === false],
     ["a post-cutover record must chain", recordMustChain({ events: [{ type: "created", at: "2026-09-19T03:00:00.000Z" }] }) === true],
@@ -727,8 +802,8 @@ if (isEntry) {
   try {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
-    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus };
-    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check|pin-exempt|pin-retire|advance|status> ... (--self-test to self-test)");
+    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus, handoff: cmdHandoff };
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check|pin-exempt|pin-retire|advance|status|handoff> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {
