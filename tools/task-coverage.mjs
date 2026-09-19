@@ -475,6 +475,24 @@ function anchorRecordPhase(id, anchorRef) {
   }
 }
 
+/** The files a commit ITSELF introduces, as a list — one law for every commit shape:
+ *  a ROOT answers against the empty tree (--root: plain diff-tree prints nothing for roots, so
+ *  an orphan branch could land code no transport ever judged); a commit with ONE parent answers
+ *  against it; a MERGE answers for exactly the files that differ from EVERY parent — content
+ *  arriving from either side is judged as its own commits inside the range, so the intersection
+ *  is the merge's own smuggle surface (the crafted evil merge). Note: `-m --first-parent`
+ *  proved to emit EACH-parent diffs, not the first-parent diff this code long claimed (git
+ *  2.43, isolated repro in issue #17) — it flagged every ordinary merge for the union of both
+ *  sides' files, refusing legal merges of already-footered branches. */
+function filesIntroducedBy(sha) {
+  const parentList = gitOut("show", "-s", "--format=%P", sha).trim().split(/\s+/).filter(Boolean);
+  const diffVs = (rev) => gitOut("diff-tree", "--no-commit-id", "--name-only", "-r", rev, sha).trim().split("\n").filter(Boolean);
+  if (parentList.length === 0) return gitOut("diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha).trim().split("\n").filter(Boolean);
+  if (parentList.length === 1) return diffVs(parentList[0]);
+  const lists = parentList.map((p) => new Set(diffVs(p)));
+  return [...lists[0]].filter((f) => lists.every((s) => s.has(f)));
+}
+
 /** The range check: every code commit in base..HEAD must carry an authorizing task footer. */
 function checkRange(base, anchorRef = null) {
   const errors = [];
@@ -483,12 +501,7 @@ function checkRange(base, anchorRef = null) {
   const anchorPhaseCache = new Map();
   let anchorSkips = 0;
   for (const sha of commits) {
-    // -m --first-parent: merges are diffed against their first parent. Plain `diff-tree -r` emits
-    // NOTHING for a merge, which made every merge invisible — an evil merge could land code no
-    // transport ever judged (an adversarial pass's CRITICAL, proven with a real
-    // commit-tree merge). Fail-closed: a merge that introduces code vs its first parent carries a
-    // footer like any other commit.
-    const files = gitOut("diff-tree", "--no-commit-id", "--name-only", "-r", "-m", "--first-parent", sha).trim().split("\n").filter(Boolean);
+    const files = filesIntroducedBy(sha);
     if (!files.some(isCodePath)) continue;
     const message = gitOut("log", "-1", "--format=%B", sha);
     const footer = taskFooterOf(message);
