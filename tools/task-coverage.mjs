@@ -744,14 +744,29 @@ function cmdDoctor() {
   } catch {
     selftestScript = "";
   }
-  // The tool list is DERIVED from the tree (every tools/*.mjs that offers a --self-test), so the
-  // check cannot go stale when a seventh tool appears: the battery must run them all. An
-  // UNREADABLE tools directory fails the check — a gate that cannot read state must not pass
-  // (the same law the staged gate lives under), never an empty-list vacuous pass.
+  // The tool list is DERIVED from the tree (every tools/**/*.mjs that offers a --self-test,
+  // searched RECURSIVELY — nested members like bench/grade.mjs and zcode-plugin/lib/gate-law.mjs
+  // are battery members too), so the check cannot go stale when a new tool appears anywhere
+  // under tools/: the battery must run them all. An UNREADABLE tools directory fails the
+  // check — a gate that cannot read state must not pass (the same law the staged gate lives
+  // under), never an empty-list vacuous pass.
   let toolsListingError = null;
   const selfTestingTools = (() => {
+    const found = [];
+    const walk = (abs, rel) => {
+      for (const entry of readdirSync(abs, { withFileTypes: true })) {
+        if (entry.name.startsWith(".")) continue;
+        const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) walk(`${abs}/${entry.name}`, entryRel);
+        // Membership is the ENTRY law, not a mention: the file must DISPATCH on --self-test
+        // (`argv.includes("--self-test")`). A mere mention is a lie in the tree — bench/setup.mjs
+        // writes battery strings into sandboxes and would otherwise be demanded as a member.
+        else if (entry.name.endsWith(".mjs") && readFileSync(`${abs}/${entry.name}`, "utf8").includes('includes("--self-test")')) found.push(entryRel);
+      }
+    };
     try {
-      return readdirSync(`${ROOT}tools`).filter((f) => f.endsWith(".mjs") && readFileSync(`${ROOT}tools/${f}`, "utf8").includes("--self-test"));
+      walk(`${ROOT}tools`, "");
+      return found;
     } catch (e) {
       toolsListingError = String(e.message).split("\n")[0];
       return null;
@@ -973,6 +988,7 @@ export function selfTest() {
     ["battery completeness derives from the tool list, not a pinned name", missingSelfTests("node tools/a.mjs --self-test", ["a.mjs", "b.mjs"]).length === 1],
     ["a complete battery reports nothing missing", missingSelfTests("node tools/a.mjs --self-test && node tools/b.mjs --self-test", ["a.mjs", "b.mjs"]).length === 0],
     ["a missing script fails every tool closed", missingSelfTests("", ["a.mjs"]).length === 1],
+    ["nested members are matched by their nested path", missingSelfTests("node tools/bench/grade.mjs --self-test", ["bench/grade.mjs", "zcode-plugin/lib/gate-law.mjs"]).length === 1],
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
 
