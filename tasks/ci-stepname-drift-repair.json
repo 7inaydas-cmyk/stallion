@@ -45,6 +45,41 @@
       "seq": 4,
       "parent_hash": "7a789a966835b0604dd55d879f9626842b6d8f1c45c53fd493240bd605a38f5e",
       "entry_hash": "5739d356420282cc52e7066deae485f51758ff525796bf0878bec0a6b4d5bf07"
+    },
+    {
+      "at": "2026-09-19T20:40:00.198Z",
+      "type": "red-check",
+      "evidence": [
+        ".github/workflows/selftest.yml",
+        "docs/decisions/DECISIONS.md"
+      ],
+      "seq": 5,
+      "parent_hash": "5739d356420282cc52e7066deae485f51758ff525796bf0878bec0a6b4d5bf07",
+      "entry_hash": "895065308f01040201a67ab0d054c3ca4dee25a60d9e1148ec4d40343aaf4d1d"
+    },
+    {
+      "at": "2026-09-19T20:40:00.230Z",
+      "type": "pin-exemption",
+      "justification": "display-name and register-prose only: no behavior to pin — the battery and registry greps prove the invocation text unchanged (gate-registry green), and prose-vs-diff is exactly what the additive correction records",
+      "seq": 6,
+      "parent_hash": "895065308f01040201a67ab0d054c3ca4dee25a60d9e1148ec4d40343aaf4d1d",
+      "entry_hash": "445cdeb17475a88b8c2f50b85514ebe3f80ac57abc551079eb2bc45b22d4581c"
+    },
+    {
+      "at": "2026-09-19T20:40:03.759Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 7,
+      "parent_hash": "445cdeb17475a88b8c2f50b85514ebe3f80ac57abc551079eb2bc45b22d4581c",
+      "entry_hash": "32a99764e710ff7f87b59f488d68bcef4c63c065559a1e88ef6363379ab2f6d2"
+    },
+    {
+      "at": "2026-09-19T20:40:03.830Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "32a99764e710ff7f87b59f488d68bcef4c63c065559a1e88ef6363379ab2f6d2",
+      "entry_hash": "0d2e7ad44bf49d7e8480aa0bffb4a5261b2e1f083b15f18f56bfcb5207369179"
     }
   ]
 }

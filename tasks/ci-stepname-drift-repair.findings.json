@@ -1,0 +1,23 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ci-stepname-drift-repair",
+  "passStartedAt": "2026-09-19T20:40:11.535Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "zero-finding pass marker: eight lanes executed against the drift-repair commit, each returning no findings (a manufactured finding would be the failure mode)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T20:43:54.263Z",
+      "evidence": [
+        "adversarial/ci-stepname-drift-repair"
+      ],
+      "dedupKey": "adversarial/ci-stepname-drift-repair",
+      "resolvedAt": "2026-09-19T20:43:54.295Z"
+    }
+  ],
+  "sweptBase": "4f3a360f2acac1db0ec3b57583eeccd1f7c38ac0",
+  "sweptHead": "d7ca173157f561aa9891e69dc50bd0f02471d9d4",
+  "sweptDiffDigest": "177c034ad595"
+}
