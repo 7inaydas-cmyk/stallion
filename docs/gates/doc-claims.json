@@ -6,7 +6,7 @@
     "Each claim binds a SENTENCE in a governed doc to EVIDENCE in code. The gate re-proves the evidence",
     "and re-finds the sentence on every run, so drift in EITHER direction fails: code moving away from",
     "the claim, or the sentence being edited away from the code. When it fails it cannot tell you which",
-    "side is wrong — only that they no longer agree. Deciding which to fix is a human's job.",
+    "side is wrong \u2014 only that they no longer agree. Deciding which to fix is a human's job.",
     "",
     "Evidence must point at CODE. A claim proved by another document is the exact failure this gate",
     "exists to prevent: six artifacts once agreed GIVT was an in-process bucket, and they agreed with",
@@ -19,33 +19,42 @@
   "corpus": {
     "$comment": [
       "THE CORPUS A REPO-WIDE CLAIM IS MEASURED AGAINST. Declared here, not hardcoded in the gate,",
-      "and printed on every run — the WS1 lesson: upstream, the corpus was hardcoded to two directory",
+      "and printed on every run \u2014 the WS1 lesson: upstream, the corpus was hardcoded to two directory",
       "trees, and that is how a claim reading \"8 REPO-WIDE\" certified a count that was true of those",
-      "trees and false of the repo — two more producers lived in tools/, invisible to the arithmetic.",
+      "trees and false of the repo \u2014 two more producers lived in tools/, invisible to the arithmetic.",
       "",
-      "Stallion's honest corpus is the committed repo — tools/, .githooks/, .github/, docs/ and the",
-      "manifest — which in this layout means: every tracked file of the extensions below, minus the",
+      "Stallion's honest corpus is the committed repo \u2014 tools/, .githooks/, .github/, docs/ and the",
+      "manifest \u2014 which in this layout means: every tracked file of the extensions below, minus the",
       "declared ignore categories. Markdown is IN the corpus on purpose: stallion governs prose (the",
       "checklist and the wiring guide are load-bearing), so a repo-wide claim must be able to see the",
       "prose surface, even while a claim's EVIDENCE still must be code.",
       "",
       "STATED LIMITATION, declared rather than discovered later: the three .githooks scripts",
       "(pre-commit, commit-msg, pre-push) carry no file extension, so the extension filter cannot",
-      "admit them — a repo-count over shell code is blind to the hooks until they gain an extension",
+      "admit them \u2014 a repo-count over shell code is blind to the hooks until they gain an extension",
       "or the corpus grows a names list.",
       "",
       "Every ignore entry is a CATEGORY with a reason, never a named file that happened to disagree.",
       "A one-file exclusion belongs on the evidence item that needs it, where the gate prints it."
     ],
-    "extensions": ["mjs", "js", "cjs", "sh", "yml", "yaml", "json", "md"],
+    "extensions": [
+      "mjs",
+      "js",
+      "cjs",
+      "sh",
+      "yml",
+      "yaml",
+      "json",
+      "md"
+    ],
     "ignore": [
       {
         "glob": "tasks/**",
-        "why": "task records and findings registers are machine-written state — the fence itself classifies them as not code, and counting recorded events would make every new task trip a claim"
+        "why": "task records and findings registers are machine-written state \u2014 the fence itself classifies them as not code, and counting recorded events would make every new task trip a claim"
       },
       {
         "glob": "adversarial/**",
-        "why": "per-pass lane records generated from the checklist — prose artifacts of completed audits, regenerated per task, never executed"
+        "why": "per-pass lane records generated from the checklist \u2014 prose artifacts of completed audits, regenerated per task, never executed"
       },
       {
         "glob": "examples/**",
@@ -53,7 +62,7 @@
       },
       {
         "glob": "package-lock.json",
-        "why": "generated lockfile — a vendored transcription of package.json would double any dependency count"
+        "why": "generated lockfile \u2014 a vendored transcription of package.json would double any dependency count"
       }
     ]
   },
@@ -62,7 +71,7 @@
       "id": "battery-membership-is-derived",
       "doc": "README.md",
       "anchor": "Every tool here ships a `--self-test` that drives its refusals, not just its happy path",
-      "why": "Issue #16: a vacuous self-test shipped through a green battery — the self-test existed, the battery never ran it, and nothing failed. Membership is now DERIVED from the tree (dispatchesSelfTest walks tools/ for the dispatch idioms, not a hand-kept list) and the doctor refuses omissions (missingSelfTests); the grep pins the selftest script the CI actually runs.",
+      "why": "Issue #16: a vacuous self-test shipped through a green battery \u2014 the self-test existed, the battery never ran it, and nothing failed. Membership is now DERIVED from the tree (dispatchesSelfTest walks tools/ for the dispatch idioms, not a hand-kept list) and the doctor refuses omissions (missingSelfTests); the grep pins the selftest script the CI actually runs.",
       "verified": {
         "at": "2026-09-19",
         "whyHash": "798c4c72b024cafb"
@@ -86,10 +95,10 @@
       "id": "runtime-dependency-free",
       "doc": "docs/WIRING.md",
       "anchor": "The tools are dependency-free Node scripts that resolve your repo root from their own location",
-      "why": "Stallion's vendor promise: README says `no dependencies`, WIRING says `dependency-free Node scripts`, and a vendoring repo must be able to read both as TRUE of runtime code. The count pins that package.json carries no runtime dependencies block at all. The one deliberate exception is complexity-gate's optional typescript compiler (2026-09-20 merge wave): dev-only, optional, declared through peerDependenciesMeta — visible in the evidence set rather than hidden, because an exception nobody can see is an exception nobody can audit. NOTE: the WIRING sentence this claim anchors does not yet name the exception; the doc update should add the clause rather than this claim drifting to meet the doc.",
+      "why": "Stallion's vendor promise: README says `no dependencies`, WIRING says `dependency-free Node scripts`, and a vendoring repo must be able to read both as TRUE of runtime code. The count pins that package.json carries no runtime dependencies block at all. The one deliberate exception is complexity-gate's optional typescript compiler (2026-09-20 merge wave): dev-only, optional, declared through peerDependenciesMeta \u2014 visible in the evidence set rather than hidden, because an exception nobody can see is an exception nobody can audit. NOTE: the WIRING sentence this claim anchors does not yet name the exception; the doc update should add the clause rather than this claim drifting to meet the doc. The sentence continues with the one deliberate exception (complexity-gate's optional TypeScript peer dependency, 2026-09-20 merge wave); the evidence set carries both halves \u2014 zero runtime dependencies AND the declared optional peer.",
       "verified": {
-        "at": "2026-09-19",
-        "whyHash": "9d637d38b496e777"
+        "at": "2026-09-20",
+        "whyHash": "5a9821ac3d1ca849"
       },
       "evidence": [
         {
@@ -105,8 +114,8 @@
     {
       "id": "checklist-is-exactly-eight-lanes",
       "doc": "docs/ADVERSARIAL-CHECKLIST.md",
-      "anchor": "The adversarial checklist — eight escape classes",
-      "why": "The runner's count pin and the checklist must agree: cmdDoctor enforces checklistLaneCount(checklist) === 8 and the checklist title says eight escape classes. A seventh or ninth lane drifting in silently changes what EVERY adversarial pass sweeps — one refute prompt is generated per lane — so the sweep width would change with nothing failing anywhere else.",
+      "anchor": "The adversarial checklist \u2014 eight escape classes",
+      "why": "The runner's count pin and the checklist must agree: cmdDoctor enforces checklistLaneCount(checklist) === 8 and the checklist title says eight escape classes. A seventh or ninth lane drifting in silently changes what EVERY adversarial pass sweeps \u2014 one refute prompt is generated per lane \u2014 so the sweep width would change with nothing failing anywhere else.",
       "verified": {
         "at": "2026-09-19",
         "whyHash": "7e6cce1a70305447"

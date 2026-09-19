@@ -1,8 +1,11 @@
 # Wiring stallion into a repository
 
 The tools are dependency-free Node scripts that resolve your repo root from their own location
-(`tools/` at the root). Adoption means vendoring: copy `tools/` into your repo, add the scripts,
-wire the fences. Fork and adapt; the trees and defaults are knobs, not law.
+(`tools/` at the root) — the one deliberate exception is complexity-gate's optional TypeScript
+compiler, declared as an optional peer dependency (see §11); skipping that gate costs nothing
+else. Adoption means vendoring: copy `tools/` into your repo, add the scripts, copy `docs/gates/`
+and edit it to your repo, wire the fences. Fork and adapt; the trees and defaults are knobs, not
+law.
 
 ## 1. Vendor the tools
 
@@ -266,6 +269,53 @@ too: fresh clones must re-run `git config core.hooksPath .githooks`, and the doc
   history is the tamper evidence).
 - `docs/ADVERSARIAL-CHECKLIST.md` — the eight classes the refute bundles carry. Edit it to your
   domain; the runner pins the lane count and fails loudly if the format changes.
+
+## 11. The gates (the 2026-09-20 merge wave)
+
+Ten gates joined the lifecycle core, ported from the Antitube harness (a sibling lineage that
+grew them in production) and made config-driven: their repo data lives under `docs/gates/`,
+which is the vendor template — copy it and edit it to your repo. Each gate ships a `--self-test`
+(the battery runs them all) and fails closed when its config is missing or malformed.
+
+- `pathspec` — the ONE path-matching dialect every guard shares (`matches`/`explain`/`firstMatch`;
+  `**` spans zero segments). A guard needing a new matching capability adds it here, once.
+- `detached-head-guard` — a bare `git commit` on a detached HEAD refuses loudly (colocated-jj
+  shape: push succeeds having shipped none of the work).
+- `debt-gate` — an OPEN row of `docs/gates/debt-register.md` past its commits-since-baseline
+  budget fails the build; process debt leaves the register only by SHIPPED or DROPPED, never by
+  being forgotten.
+- `test-lint` — anti-bug-pinning: tautologies, and source-reading tests that don't strip comments.
+- `remote-string-lint` — remote command strings must not expand where they're BUILT
+  (backticks/`$( )` in double quotes); corpus and floors in `docs/gates/remote-string.json`.
+- `gate-coverage` — every tracked source file is seen by at least one gate declared in
+  `docs/gates/coverage.json`; a healthy gate not pointed at the code covers nothing.
+- `reader-existence` — every shared-contract union member needs a producer AND a consumer
+  (dead members inside used unions are invisible to export analysis); contracts and accepted
+  findings in `docs/gates/reader-existence.json`.
+- `doc-reconcile` — named prose claims in `docs/gates/doc-claims.json` are re-proved against
+  code evidence, bidirectionally: code drifting from the claim fails, the sentence being edited
+  away fails. Prose cannot fail; this makes it.
+- `complexity-gate` — the ratchet: nothing born convoluted, baselined functions never rise
+  (`docs/gates/complexity.json` + baseline). The test-names hatch ships CLOSED here (stallion's
+  tests are embedded self-tests); vendors with test files open it via `testGlobs`.
+- `guard-reach` — each registered guard is PROVEN to reach a newly-added file in its corpus
+  (genuine violations planted into an index copy; `docs/gates/guard-reach.json`).
+- `gate-registry` — every gate invocation declared once in `docs/gates/gate-registry.json` and
+  drift-checked across the transports that carry it, both directions: missing from a declared
+  transport, or shadowing in an undeclared one.
+
+The doctor carries one derived family check: `docs/gates/` must be non-empty and every JSON in
+it must parse. Wiring these gates into pre-push/CI is a vendor choice; gate-registry declares
+whatever you wire.
+
+**Antitube-harness mapping, for vendors arriving from that lineage**: risk classes map
+`harness-docs-only → docs-only` and `product-protocol → protected` (or `migration`, per case —
+both demand a recorded approval citing a decisions-register heading); task records live at
+`tasks/<id>.json` and refute bundles at `adversarial/<id>/`; records are hash-chained (a
+pre-chain vendored harness adopts chaining on its next wave, grandfathering existing records);
+`red-check --expect` binds assertion evidence to every new pin. The lifecycle five (task-state,
+task-coverage, task-findings, task-workspace, adversarial-runner) are stallion-native here — an
+older vendored copy is superseded by re-vendoring, not by patching.
 
 ## What is deliberately NOT enforced
 
