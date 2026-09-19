@@ -1,0 +1,68 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ecc-gate-round2",
+  "title": "Round two lands: quoting forms, config slots, the deadlock — and the flag-order crash they introduced",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T03:44:54.509Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "8c2392af58354a89e1f94e4c6ecb675fbadac013b161f50222188b9401668a81"
+    },
+    {
+      "at": "2026-09-19T03:44:54.568Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "8c2392af58354a89e1f94e4c6ecb675fbadac013b161f50222188b9401668a81",
+      "entry_hash": "c95990cdef99754bfa42f8d2034d169984cd4d13ff73936da30d6597cd06bd88"
+    },
+    {
+      "at": "2026-09-19T03:44:54.627Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "c95990cdef99754bfa42f8d2034d169984cd4d13ff73936da30d6597cd06bd88",
+      "entry_hash": "dc3735d44d3aea96f688764d9477458608793a18833528cd1b3bbe5ee7157158"
+    },
+    {
+      "at": "2026-09-19T03:44:54.683Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "dc3735d44d3aea96f688764d9477458608793a18833528cd1b3bbe5ee7157158",
+      "entry_hash": "caefd485909bdc1d95528ab919171c322de9e144d0c1ddda911f94ad0c9fbb01"
+    },
+    {
+      "at": "2026-09-19T03:44:54.737Z",
+      "type": "red-check",
+      "command": "node tools/task-coverage.mjs --commit-msg /tmp/msg",
+      "exitCode": 1,
+      "outputDigest": "0c2317905ee0",
+      "seq": 4,
+      "parent_hash": "caefd485909bdc1d95528ab919171c322de9e144d0c1ddda911f94ad0c9fbb01",
+      "entry_hash": "17ea70fdc2bd9ba39b715921310b48fd573136142fd72c794bd3714df738f2aa"
+    },
+    {
+      "at": "2026-09-19T03:45:08.711Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "17ea70fdc2bd9ba39b715921310b48fd573136142fd72c794bd3714df738f2aa",
+      "entry_hash": "f93b9d4b37b08dd781f2754d64df828cff7156cba86ff663c865eebda59018b6"
+    },
+    {
+      "at": "2026-09-19T03:45:08.777Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "f93b9d4b37b08dd781f2754d64df828cff7156cba86ff663c865eebda59018b6",
+      "entry_hash": "5eb43840e48483c97dc46fc8a1f92084a23952f44cef637f53dfd74526f10582"
+    }
+  ]
+}

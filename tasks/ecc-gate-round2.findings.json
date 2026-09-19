@@ -1,0 +1,44 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ecc-gate-round2",
+  "passStartedAt": "2026-09-19T03:45:08.884Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "The quoting model still misses shell forms the sweep proved live: ANSI-C escape decoding ($'\\x2d\\x2dno-verify' is --no-verify to bash but x2dx2dno-verify to the gate), path-prefixed interpreters (/bin/bash -c), locale quotes ($\"…\"), backslash pairs moving quote boundaries, GIT_CONFIG_COUNT env-protocol re-points, --unset-all/remove-section/empty-value deactivation, --global activation, first-match-only hooksPath laundering a trailing re-point, and a REGRESSION: the pipe split is not quote-aware, so 'git commit -m \"a|b\" --amend' classifies as routine where the parent refused it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:56:32.263Z",
+      "proof": "Verified live against the shipped classifiers: bypassRefusal(\"/bin/bash -c 'git commit --no-verify -m x'\") === null; bash -c \"printf '<%s>' $'\\x2d\\x2dno-verify'\" yields argv <--no-verify> while the gate sees x2dx2dno-verify; bypassRefusal('git config core.hooksPath .githooks && git config core.hooksPath /tmp/nohooks && git commit -m x') === null (first-match-only); destructiveAs('git commit -m \"fix a|b\" --amend') === null where the parent commit's logic refused it — the repair re-opened the class it closed. For the destructive spellings there is no downstream fence (the register's own f1 proof concedes this).",
+      "evidence": [
+        "tools/task-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-19T03:59:20.319Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The gate is wired into no transport anywhere — the only wiring is WIRING.md prose; the doctor certifies the self-test runs in the battery, never that an act-boundary transport exists, and AGENTS' conditional ('when task-gate is wired') is the honest residue",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T03:56:32.319Z",
+      "justification": "Agent-hook settings are user-environment configuration, not repo law: shipping a committed .claude/settings.json would silently change behavior for every Claude Code user of every clone and presume one vendor's hook contract — the repo's decision surface for that is WIRING §7 (documented wiring, conditional AGENTS wording, doctor certifies the battery runs the tool's refusals). Adopters who want it wired into their own agent settings copy five lines.",
+      "resolvedAt": "2026-09-19T03:59:20.380Z"
+    },
+    {
+      "id": "f3",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "Session state files are written and never pruned (a stale session leaves gate-state-*.json forever, gitignored and invisible); the task-coverage banner still hand-maintains seven of eleven counts behind a claim of derivation; and the prior register records f1 RESOLVED while live escapes in that exact class persist",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T03:56:32.379Z",
+      "justification": "Session state files are gitignored, bounded per file, and tiny; pruning them is janitorial work the TTL already neutralizes semantically (a stale file's entries expire on load). The banner derivation now covers all eleven groups (the seven hand-maintained counts went derived in this same commit), and the prior register's RESOLVED-vs-residual caveat is exactly what THIS register records: the escape classes live in f1 here, with the repairs and the stated boundary.",
+      "resolvedAt": "2026-09-19T03:59:20.442Z"
+    }
+  ],
+  "sweptBase": "9ef4cf88f07c8bc106f93ca2eeb5502c1ad15747",
+  "sweptHead": "6ed70cdea7c97a3d1cc369b383095c534769d280",
+  "sweptDiffDigest": "4788a2496d3e"
+}
