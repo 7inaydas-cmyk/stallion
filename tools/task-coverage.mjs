@@ -771,6 +771,33 @@ function cmdCommitMsg(messageFile) {
  * Fail-closed on everything a clone can observe; the one clone-local setting CI cannot carry
  * (core.hooksPath) is scoped to local runs.
  */
+
+/**
+ * The gates-family law (2026-09-20 merge wave): every gate config under docs/gates/ must parse,
+ * and the directory must not be empty — one derived check for the whole ported-gate family, the
+ * same law as the battery derivation. Each gate tool fail-closes on its own config's SEMANTICS
+ * (shape, honesty against the tree); the doctor catches the cheaper, earlier failure: a corrupted
+ * or vanished JSON the gates would each have to rediscover. Kept out of cmdDoctor so neither the
+ * doctor nor this helper crosses the complexity ratchet the wave itself installed.
+ */
+function gatesFamilyRefusal() {
+  const gatesDir = `${ROOT}docs/gates`;
+  try {
+    const gateConfigs = readdirSync(gatesDir).filter((f) => f.endsWith(".json"));
+    if (gateConfigs.length === 0) return "docs/gates/ holds no gate configs — the ported gates read their repo data from there (see docs/WIRING.md §the gates)";
+    for (const f of gateConfigs) {
+      try {
+        JSON.parse(readFileSync(`${gatesDir}/${f}`, "utf8"));
+      } catch (e) {
+        return `docs/gates/${f} does not parse: ${e.message}`;
+      }
+    }
+    return null;
+  } catch (e) {
+    return `docs/gates/ is unreadable: ${String(e.message).split("\n")[0]}`;
+  }
+}
+
 function cmdDoctor() {
   const results = [];
   const check = (name, ok, fix) => results.push({ name, ok, fix });
@@ -879,6 +906,10 @@ function cmdDoctor() {
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
   check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
+
+  // THE GATES FAMILY (2026-09-20 merge wave) — see gatesFamilyRefusal for the law.
+  const gatesConfigRefusal = gatesFamilyRefusal();
+  check("every gate config under docs/gates/ parses", gatesConfigRefusal === null, gatesConfigRefusal);
 
   let tracked = "";
   try {
