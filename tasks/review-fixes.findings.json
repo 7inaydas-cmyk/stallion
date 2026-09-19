@@ -1,0 +1,76 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-fixes",
+  "passStartedAt": "2026-09-19T04:28:58.946Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 7,
+      "severity": "CRITICAL",
+      "claim": "The banner-derivation edit inserted mid-function returns into adversarial-runner's selfTest: the swept pins, the banner, and the boolean verdict were unreachable dead code — --self-test always exited 0 printing nothing, silently neutering the battery member and the verified-phase gate behind it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:37:16.672Z",
+      "proof": "Any regression in lanesFromCheckchecklist parsing, the bundle contract (including the dead-verifier clause this wave added), or the aggregation seam pushes onto the failures array — but the only reachable return was laneCases.length (3, truthy), so process.exit(selfTest() ? 0 : 1) exited 0 and npm run selftest stayed green while the runner printed nothing. Pre-fix the same path printed the banner and returned a real boolean; the commit's 'all GREEN' claim was vacuous for the runner.",
+      "dedupKey": "the banner-derivation edit inserted mid-function returns into adversarial-runner's selftest: the swept pins, the banner, and the boolean verdict were unreachable dead code — --self-test always exited 0 printing nothing, silently neutering the battery member and the verified-phase gate behind it",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:37:16.814Z"
+    },
+    {
+      "id": "f2",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The destructive once-per-session pin was vacuous: both gateDecision calls fed the identical literal key, exercising unchanged same-key semantics instead of the changed dispatch — reverting the dispatch line would pass the entire battery",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:37:16.701Z",
+      "dedupKey": "the destructive once-per-session pin was vacuous: both gatedecision calls fed the identical literal key, exercising unchanged same-key semantics instead of the changed dispatch — reverting the dispatch line would pass the entire battery",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:37:16.841Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "selfTestStatusGuards asserted nothing post-cutover: its fixture appended a proofless HIGH finding, appendFinding refused, and all four cases compared typeof-error-string on a non-register — vacuously passing while counted as 4 green cases",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:37:16.727Z",
+      "dedupKey": "selfteststatusguards asserted nothing post-cutover: its fixture appended a proofless high finding, appendfinding refused, and all four cases compared typeof-error-string on a non-register — vacuously passing while counted as 4 green cases",
+      "evidence": [
+        "tools/task-findings.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:37:16.867Z"
+    },
+    {
+      "id": "f4",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "Count drift in the derived counts themselves: selfTestDedup returned a literal 8 over 10 checks and selfTestBundle returned 9 over 11 clauses; a dead checks variable; the hocksPath typo fix was claimed but not landed; two raw strict-stamp copies remained in task-coverage; and raiseSeverity judged the proof obligation against the finding's original recordedAt, grandfathering a pre-cutover raise",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:37:16.757Z",
+      "dedupKey": "count drift in the derived counts themselves: selftestdedup returned a literal 8 over 10 checks and selftestbundle returned 9 over 11 clauses; a dead checks variable; the hockspath typo fix was claimed but not landed; two raw strict-stamp copies remained in task-coverage; and raiseseverity judged the proof obligation against the finding's original recordedat, grandfathering a pre-cutover raise",
+      "evidence": [
+        "tools/task-findings.mjs",
+        "tools/task-coverage.mjs",
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:37:16.896Z"
+    },
+    {
+      "id": "f5",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "The once-per-session destructive key lets the client spend the single ask on the cheapest classified danger, suppressing facts for every other destructive command for 30 minutes",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T04:37:16.784Z",
+      "dedupKey": "the once-per-session destructive key lets the client spend the single ask on the cheapest classified danger, suppressing facts for every other destructive command for 30 minutes",
+      "justification": "This is the spec's stated shape (issue #14: 'first destructive command per session'), confirmed in the grilling tree; the 30-minute TTL bounds the window, the demand names the specific danger it asked about, and the alternative (per-danger-class asking) is exactly what the spec rejected. The sequencing attack is real but bounded: one deliberate ask per session is the intended friction budget, and the bypass class (the laws that matter most) still refuses EVERY time.",
+      "resolvedAt": "2026-09-19T04:37:16.924Z"
+    }
+  ],
+  "sweptBase": "245d669037c8e7a727359b140ce9760f11b34ab3",
+  "sweptHead": "73a8fd2c1e373e8510d6776e5478f57a75efc823",
+  "sweptDiffDigest": "3c5caf01a502"
+}

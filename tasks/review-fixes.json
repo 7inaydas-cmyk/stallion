@@ -1,0 +1,97 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-fixes",
+  "title": "The two-axis review's action items: push --no-verify, dead-verifier clause, severity-merge dedup, one-law extractions, derived counts",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T04:22:07.211Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "1c471f906f6df1a758ccbf736f308a5413688964543be499af8f51fe902d2a32"
+    },
+    {
+      "at": "2026-09-19T04:22:07.240Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "1c471f906f6df1a758ccbf736f308a5413688964543be499af8f51fe902d2a32",
+      "entry_hash": "7d18128a1ce76800086bf12dcba468d0c30678aec9f2715aa6e702dd3c32bbba"
+    },
+    {
+      "at": "2026-09-19T04:22:07.270Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**",
+        "docs/**"
+      ],
+      "seq": 2,
+      "parent_hash": "7d18128a1ce76800086bf12dcba468d0c30678aec9f2715aa6e702dd3c32bbba",
+      "entry_hash": "f1e1e8c82ca02e64947d027d07d8cb170ff9d053559479d56a400b24e0203878"
+    },
+    {
+      "at": "2026-09-19T04:22:07.299Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "f1e1e8c82ca02e64947d027d07d8cb170ff9d053559479d56a400b24e0203878",
+      "entry_hash": "5ef5224dd0822c7b0c9e7936b569ae993b02ecfcca3d291bf40d03be8d5035d6"
+    },
+    {
+      "at": "2026-09-19T04:22:07.420Z",
+      "type": "red-check",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38cd890d37f9",
+      "seq": 4,
+      "parent_hash": "5ef5224dd0822c7b0c9e7936b569ae993b02ecfcca3d291bf40d03be8d5035d6",
+      "entry_hash": "9f487859cde783ad7fa9d71060c0aacb896a91a9f248d7188ea181e64c5ab8f6"
+    },
+    {
+      "at": "2026-09-19T04:22:07.478Z",
+      "type": "red-check",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "049331ad3676",
+      "seq": 5,
+      "parent_hash": "9f487859cde783ad7fa9d71060c0aacb896a91a9f248d7188ea181e64c5ab8f6",
+      "entry_hash": "0e86c3ab8b3cc0cf0616651424d1dbe0538be88c6c85a1534688fe519eeae75a"
+    },
+    {
+      "at": "2026-09-19T04:22:07.533Z",
+      "type": "red-check",
+      "command": "node tools/task-findings.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f35c1588a239",
+      "seq": 6,
+      "parent_hash": "0e86c3ab8b3cc0cf0616651424d1dbe0538be88c6c85a1534688fe519eeae75a",
+      "entry_hash": "41f02c1bf8fc231906c282fdc66b7ae06a320bc58a18d772449edff546e469ec"
+    },
+    {
+      "at": "2026-09-19T04:28:58.877Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 7,
+      "parent_hash": "41f02c1bf8fc231906c282fdc66b7ae06a320bc58a18d772449edff546e469ec",
+      "entry_hash": "e6a561289c571f1bb42a5d9daa0f7bd9fe6bf3952d659b00d466ff57c8502d35"
+    },
+    {
+      "at": "2026-09-19T04:28:58.903Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "e6a561289c571f1bb42a5d9daa0f7bd9fe6bf3952d659b00d466ff57c8502d35",
+      "entry_hash": "9054350cfd8efad447597ecc89324f798171be297a6dd5d6406620fc5af136a0"
+    },
+    {
+      "at": "2026-09-19T04:37:17.309Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "9054350cfd8efad447597ecc89324f798171be297a6dd5d6406620fc5af136a0",
+      "entry_hash": "8d5a4f971dc7ac9a32751d75c60f0c5ef0f262f7c940306e3ac31ebcd097235f"
+    }
+  ]
+}
