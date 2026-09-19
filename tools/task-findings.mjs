@@ -442,7 +442,12 @@ function acquireLock(lock) {
       closeSync(openSync(lock, "wx"));
       return;
     } catch {
-      if (existsSync(lock) && statSync(lock).mtimeMs < Date.now() - 60_000) rmSync(lock, { force: true }); // stale writer
+      try {
+        if (existsSync(lock) && statSync(lock).mtimeMs < Date.now() - 60_000) rmSync(lock, { force: true }); // stale writer
+      } catch {
+        // The lock vanished between exists and stat — a live CI crash under concurrent writers:
+        // it is not stale, it is GONE, and the racer simply tries again on the next attempt.
+      }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
     }
   }
