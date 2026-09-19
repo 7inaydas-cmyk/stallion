@@ -63,6 +63,31 @@
       "seq": 6,
       "parent_hash": "f93b9d4b37b08dd781f2754d64df828cff7156cba86ff663c865eebda59018b6",
       "entry_hash": "5eb43840e48483c97dc46fc8a1f92084a23952f44cef637f53dfd74526f10582"
+    },
+    {
+      "at": "2026-09-19T03:59:51.816Z",
+      "type": "pin-retire",
+      "command": "node tools/task-coverage.mjs --commit-msg /tmp/msg",
+      "justification": "The pin depended on a session-scratch message file that no longer exists at re-run time — the RED it captured (the flag-order crash on every staged diff) is pinned by the battery and the round's live probes, and its fix is proven by this task's own commits passing the gate. An environment-dependent command is not a reproducible pin.",
+      "seq": 7,
+      "parent_hash": "5eb43840e48483c97dc46fc8a1f92084a23952f44cef637f53dfd74526f10582",
+      "entry_hash": "d72e83db47585022d79088bb6da8e0e37fc166444136ffb9476bc70640dc660c"
+    },
+    {
+      "at": "2026-09-19T03:59:51.870Z",
+      "type": "pin-exemption",
+      "justification": "With the scratch-file pin retired, the task's machine evidence is the second sweep's 3-finding register (all dispositioned), the 46-case gate battery and 6-tool battery green, and the round's commits passing the repaired commit-msg gate live — the same green-at-done arc, carried by the gate that the round itself fixed.",
+      "seq": 8,
+      "parent_hash": "d72e83db47585022d79088bb6da8e0e37fc166444136ffb9476bc70640dc660c",
+      "entry_hash": "359d73d916b6715331583d20a1ca4a2642e5802b5efddea20c80263ad248aee4"
+    },
+    {
+      "at": "2026-09-19T03:59:51.931Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "359d73d916b6715331583d20a1ca4a2642e5802b5efddea20c80263ad248aee4",
+      "entry_hash": "d6fd6006c63ae4d7b7d52d38ecbc6ea4af4130ee67eb11119a92f5e545d48b01"
     }
   ]
 }
