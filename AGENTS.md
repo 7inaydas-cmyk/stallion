@@ -15,8 +15,8 @@ Code in this repo is written under the stallion task lifecycle.
   every pin re-run GREEN.
 - Refusals print the rule, the evidence, and an exact fix command. Run the fix. Do not work
   around a refusal. Never bypass the hooks (`--no-verify`, `commit -n`, re-pointing
-  `core.hooksPath`) — when task-gate is wired (docs/WIRING.md §7) it refuses these outright,
-  and the push fence re-judges what slips past.
+  `core.hooksPath` away from `.githooks`) — when task-gate is wired (docs/WIRING.md §7) it
+  refuses these outright; the push fence re-judges citations and scope for what slips past.
 - Verify changes with `npm run selftest`; verify the wiring with
   `node tools/task-coverage.mjs --doctor`.
 - Fresh clones: `git config core.hooksPath .githooks` (hooks are committed; the activation is

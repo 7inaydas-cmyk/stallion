@@ -155,6 +155,13 @@ loops they refuse. Session state lives in `.stallion/gate-state-*.json` (repo-lo
 30-minute TTL); the self-test runs in the `selftest` battery. The staged-content scan (secrets,
 `debugger`) rides in the commit-msg gate (§6) — same transport, no new wiring.
 
+Honest boundary, stated rather than hidden: the classifiers read the command TEXT. They model
+quoting (single-token quotes are tokens; `sh`/`eval` payloads are classified one level deep),
+backslash escapes, and ANSI-C `$'…'` forms — but variable expansion (`$v`), command
+substitution (`$(…)`), and nested wrappers beyond one level resolve only at execution, and no
+static view can classify them. The gate is friction that demands facts, not a security
+boundary; the push fence is the control for what reaches the remote.
+
 ## 8. The push control
 
 `.githooks/pre-push`:

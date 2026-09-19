@@ -1,0 +1,85 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ecc-gate-repairs",
+  "title": "The intervention sweep's repairs: parser differential, wiring, adapter, whitelist",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T03:31:50.740Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "f4ffd04e37aa8392e2a28176c95092cdcd746710f55cb1299177f01aa3947ce1"
+    },
+    {
+      "at": "2026-09-19T03:31:50.795Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "f4ffd04e37aa8392e2a28176c95092cdcd746710f55cb1299177f01aa3947ce1",
+      "entry_hash": "acd6ca42b9eb60bf6be76a1a73b9698bf71e81f6f64895b0433efcf1d1588f64"
+    },
+    {
+      "at": "2026-09-19T03:31:50.849Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "acd6ca42b9eb60bf6be76a1a73b9698bf71e81f6f64895b0433efcf1d1588f64",
+      "entry_hash": "0efa21a71eee2a222a288840d2d688d714686f16025f6cabb8b5e0390f3c1fad"
+    },
+    {
+      "at": "2026-09-19T03:31:50.902Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "0efa21a71eee2a222a288840d2d688d714686f16025f6cabb8b5e0390f3c1fad",
+      "entry_hash": "9398c3ff17e90a5c4a63b1c6234f521a1f851718b7ee3ff1777ef28fb261e9b6"
+    },
+    {
+      "at": "2026-09-19T03:31:50.953Z",
+      "type": "red-check",
+      "evidence": [
+        "tools/task-gate.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "seq": 4,
+      "parent_hash": "9398c3ff17e90a5c4a63b1c6234f521a1f851718b7ee3ff1777ef28fb261e9b6",
+      "entry_hash": "f1d177d729235b78638260bfcb1df18d495ca471f929f6607464b86ad2823038"
+    },
+    {
+      "at": "2026-09-19T03:31:51.009Z",
+      "type": "pin-exemption",
+      "justification": "The runnable RED for this battery lives on ecc-intervention-gate (self-test ENOENT + absent battery wiring, exit 1 + digests, re-run GREEN at its done gate); this follow-up carries the sweep's REPAIRS after the parent task closed — the same bootstrap shape as wave 2's fence-ancestry follow-up. The repairs are pinned by the 11 self-test cases added for them (differential, compound-lease, config-form, adapter-shape, body-whitelist), each failing against the parent's committed source.",
+      "seq": 5,
+      "parent_hash": "f1d177d729235b78638260bfcb1df18d495ca471f929f6607464b86ad2823038",
+      "entry_hash": "51db66ef92948fbb80e568aa1bfa0133184bea53e024f1393433ec8949cf30d0"
+    },
+    {
+      "at": "2026-09-19T03:31:51.198Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "51db66ef92948fbb80e568aa1bfa0133184bea53e024f1393433ec8949cf30d0",
+      "entry_hash": "ce9d270416c9fa3865ab2a241b90f717542b2bc562d2b2e6c3ab135c13aea07c"
+    },
+    {
+      "at": "2026-09-19T03:31:51.253Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 7,
+      "parent_hash": "ce9d270416c9fa3865ab2a241b90f717542b2bc562d2b2e6c3ab135c13aea07c",
+      "entry_hash": "06878e29809245d94731cc6a5c2cca141fc7ee86f4ef93042c7f951c360d4041"
+    },
+    {
+      "at": "2026-09-19T03:44:30.234Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 8,
+      "parent_hash": "06878e29809245d94731cc6a5c2cca141fc7ee86f4ef93042c7f951c360d4041",
+      "entry_hash": "5337bea1c413ef4841de8d867253e81c1eee6a2f14e922702e17d27b998c75ca"
+    }
+  ]
+}

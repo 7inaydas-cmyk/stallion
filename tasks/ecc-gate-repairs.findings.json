@@ -1,0 +1,133 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ecc-gate-repairs",
+  "passStartedAt": "2026-09-19T03:32:04.544Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "The parser differential is not closed: ANSI-C $'…' quotes and backslash-escaped flags defeat every classifier (git commit $'--no-verify', git reset \\-\\-hard, bash -lc $'git reset --hard' all classify as routine), and eval 'payload' is stripped as a multi-token quote rather than classified as the command it runs",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:52.988Z",
+      "proof": "Agent sends Bash: git commit $'--no-verify' -m x — the shell strips the ANSI-C quoting to the literal flag (proven: bash -c \"printf '<%s>' \\$'--no-verify'\" yields argv <--no-verify>), but classifiedText leaves the $ in the text, the (?:^|\\s) anchor never matches, and the gate prints 'routine command — proceeding'; the commit hooks are skipped. For the destructive spellings there is no downstream fence at all. Variable expansion ($v), command substitution $(…), and backticks remain beyond a quoting fix and are registered as the stated boundary.",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.632Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "The 'config-neutral' diff read is not config-neutral: -c color.ui=never does not override a repo-local color.diff=always (the diff-specific slot wins), and diff.external/textconv (unneutralized) blank or rewrite the cached diff — addedDiffLines extracts zero lines and a staged real key commits while the gate prints its binding success line",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.043Z",
+      "proof": "Clone with git config color.diff always: verified live — git -c color.ui=never -c diff.noprefix=false diff emits ESC-prefixed markers on every token the parser keys on (^diff --git, ^@@, startsWith('+')); running the shipped parser on that output yields 0 added lines; stagedScanRefusal over the laced secret line returns null while the clean spelling refuses. The adapter self-test feeds a synthetic clean fixture that structurally cannot exhibit the laced shape.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.682Z"
+    },
+    {
+      "id": "f3",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "A single pipe is not a split point: 'git push --force-with-lease origin main | rm -rf apps/' is one segment, the lease head matches, and continue skips the entire segment including the mass delete — reopening the exact exemption class this repair claims closed (the self-test pins only the && spelling)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.099Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.734Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The sessionDenialsAt stamp is dropped on the persistence round-trip: loadState returns it never, and the pass path (which follows every refusal by deny-once) persists state without it — the next load resets the counter, denials repeat '#1', the same file re-asked after TTL produces a byte-identical denial, and the 4th-denial condensed form is effectively unreachable",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.155Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.786Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The persistent-form bypass rule deadlocks the documented fresh-clone activation: 'git config core.hooksPath .githooks' is mandated by AGENTS.md, WIRING.md, and the doctor's own fix text, but the bypass class refuses it always with no retry path — under the ALL-Bash wiring this commit documents, the agent can never perform the activation the doctor demands",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.210Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.837Z"
+    },
+    {
+      "id": "f6",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "AGENTS' 'the push fence re-judges what slips past' overclaims for the content scan: stagedScanRefusal has exactly one production caller (the commit-msg gate); the fence audits citations and scope, never secret content — a --no-verify commit with a valid in-scope footer lands a real secret with nothing failing",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.260Z",
+      "evidence": [
+        "AGENTS.md"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.891Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The banner-miscount repair re-introduced banner miscounts: task-gate claims 9+10+5=24 while the array enumerates 29; task-coverage claims 9 scan while scanCases holds 8 — hand-maintained counts over arrays nothing asserts, in the very lines repaired for count drift",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.311Z",
+      "evidence": [
+        "tools/task-gate.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:29.942Z"
+    },
+    {
+      "id": "f8",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "The sh-payload extractor is an interpreter allowlist: zsh -c, dash -c, and bash --login -c payloads are stripped as multi-token quotes instead of classified (only sh/ash/bash with short-flag clusters are recognized)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.369Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:30.001Z"
+    },
+    {
+      "id": "f9",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The doctor's battery check greps the whole committed package.json for the substring — a string in any non-executing field certifies GREEN; it should parse the JSON and test the selftest script itself",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.422Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:44:30.057Z"
+    },
+    {
+      "id": "f10",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "WIRING.md line 99 still points at 'the push fence (§7)' after the renumbering made §7 the intervention gate; the CI step name and the register's f8 closure carry no deferral caveat for the still-deferred rename",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:42:53.476Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-19T03:44:30.118Z"
+    }
+  ],
+  "sweptBase": "16398b81d48bb02be554c9ad1b2f498d794355ce",
+  "sweptHead": "9ef4cf88f07c8bc106f93ca2eeb5502c1ad15747",
+  "sweptDiffDigest": "7f049508ca98"
+}

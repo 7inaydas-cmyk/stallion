@@ -659,9 +659,10 @@ function cmdCommitMsg(messageFile) {
   // is scanned for secrets and debugger statements — refusals name file and line.
   let cachedDiff = "";
   try {
-    // Config-neutral on purpose: repo-local color.ui/diff drivers would lace the output and
-    // blind the parser (an adversarial pass proved the ANSI case).
-    cachedDiff = gitOut("-c", "color.ui=never", "-c", "diff.noprefix=false", "-c", "core.quotePath=false", "diff", "--cached");
+    // Config-neutral on purpose: repo-local color.ui AND the more specific color.diff slot
+    // both lace the output (a sweep proved color.ui=never alone does not override
+    // color.diff=always); external diff drivers and textconv blank or rewrite it entirely.
+    cachedDiff = gitOut("-c", "color.ui=never", "-c", "color.diff=never", "-c", "diff.noprefix=false", "-c", "core.quotePath=false", "diff", "--no-ext-diff", "--no-textconv", "--cached");
   } catch (e) {
     die(`cannot read the staged diff — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass`);
   }
@@ -715,13 +716,13 @@ function cmdDoctor() {
       return existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")) : [];
     }
   })();
-  let battery = "";
+  let selftestScript = "";
   try {
-    battery = committedText("package.json") ?? "";
+    selftestScript = JSON.parse(committedText("package.json") ?? "{}")?.scripts?.selftest ?? "";
   } catch {
-    battery = "";
+    selftestScript = "";
   }
-  check("the selftest battery runs the intervention gate's own self-test", battery.includes("task-gate.mjs --self-test"), "add 'node tools/task-gate.mjs --self-test' to the selftest script in package.json — a gate nobody watches refuse is decoration");
+  check("the selftest battery runs the intervention gate's own self-test", selftestScript.includes("task-gate.mjs --self-test"), "add 'node tools/task-gate.mjs --self-test' to the selftest SCRIPT in package.json — a string elsewhere in the file wires nothing");
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
   check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
@@ -1033,7 +1034,8 @@ export function selfTest() {
   ];
   for (const [name, passes] of scanCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 9 scan + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const bannerCounts = `19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${anchorCases.length} anchor + ${scanCases.length} scan cases`;
+  console.log(failures.length === 0 ? `task-coverage self-test: OK (${bannerCounts} — group counts derived where arrays are local)` : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

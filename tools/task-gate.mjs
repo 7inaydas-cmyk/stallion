@@ -46,11 +46,16 @@ const MAX_TARGETS = 500;
  */
 export function classifiedText(command) {
   const raw = String(command ?? "");
-  const payloadRegex = /(?:^|[\s;&|])(?:\ba|ba)?sh\s+(?:-[a-zA-Z]+\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)")/g;
+  // Payloads worth classifying as commands: any *sh (sh, bash, zsh, dash, ksh…) and eval,
+  // each with up to a few flags, then ONE quoted payload. One level deep — the boundary.
+  const payloadRegex = /(?:^|[\s;&|])(?:[a-z]{0,6}sh\d?|eval)\s+(?:-{1,2}[a-zA-Z][\w-]*\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)"|\$'([^']*)')/g;
   const payloads = [];
-  for (const m of raw.matchAll(payloadRegex)) payloads.push(m[2] ?? m[3] ?? "");
-  const unwrapped = raw.replace(/'([^']*)'|"((?:[^"\\]|\\.)*)"/g, (whole, sq, dq) => {
-    const inner = sq !== undefined ? sq : dq;
+  for (const m of raw.matchAll(payloadRegex)) payloads.push(m[2] ?? m[3] ?? m[4] ?? "");
+  // Backslash-escaped characters are their characters to the shell: git reset \-\-hard IS
+  // --hard. Normalized BEFORE quote handling (an escaped quote stays structural).
+  const unescaped = raw.replace(/\\(.)/g, "$1");
+  const unwrapped = unescaped.replace(/\$?'([^']*)'|"((?:[^"\\]|\\.)*)"/g, (whole, sq, dq) => {
+    const inner = sq !== undefined ? sq.replace(/^\$/, "") : dq;
     return /\s/.test(inner) ? " " : inner;
   });
   return [unwrapped, ...payloads].join("\n");
@@ -69,8 +74,15 @@ export function bypassRefusal(command) {
   if (GIT_HOOKED.test(t) && (/(?:^|\s)--no-verify(?:\s|$)/.test(t) || (/(?:^|\s)commit\s/.test(t) && /(?:^|\s)-n(?:\s|$)/.test(t)))) {
     return "this command bypasses the commit hooks (--no-verify / commit -n) — the hooks ARE the gates; run them";
   }
-  if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t) || /git\s+config\s+[^;|&]*core\.hooksPath/.test(t)) {
+  if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t)) {
     return "this command re-points core.hooksPath — the hooks are the fence; do not move them to run without them";
+  }
+  const cfg = /git\s+config\s+(?:--[\w-]+\s+)*core\.hooksPath\s+(\S+)/.exec(t);
+  if (cfg && cfg[1] !== ".githooks") {
+    return "this command re-points core.hooksPath somewhere other than the committed .githooks — the hooks are the fence; only the documented activation (git config core.hooksPath .githooks) is legal";
+  }
+  if (/git\s+config\s+(?:--[\w-]+\s+)*--unset\s+core\.hooksPath/.test(t)) {
+    return "unsetting core.hooksPath deactivates every committed hook for this clone — if you mean to re-activate, set it back to .githooks instead";
   }
   return null;
 }
@@ -99,7 +111,7 @@ const DESTRUCTIVE = [
  *  segment — the lease is that push's safety, not the compound's. */
 export function commandSegments(command) {
   const raw = String(command ?? "");
-  const segments = raw.split(/[\n;]|&&|\|\||&/).map((x) => x.trim()).filter(Boolean);
+  const segments = raw.split(/[\n;]|&&|\|\||\|&|\||&/).map((x) => x.trim()).filter(Boolean);
   // sh -c payloads are commands too — appended as their own segments, one level deep
   const payloadRegex = /(?:^|[\s;&|])(?:\ba|ba)?sh\s+(?:-[a-zA-Z]+\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)")/g;
   for (const m of raw.matchAll(payloadRegex)) segments.push(m[2] ?? m[3] ?? "");
@@ -158,7 +170,7 @@ function loadState(path, nowMs) {
       // demands again, never a condensed line citing denials it never saw (a sweep finding).
       const counterAge = typeof state.sessionDenialsAt === "number" ? nowMs - state.sessionDenialsAt : Infinity;
       const denials = counterAge <= TTL_MS && typeof state.sessionDenials === "number" ? state.sessionDenials : 0;
-      return { version: 1, sessionDenials: denials, entries: state.entries };
+      return { version: 1, sessionDenials: denials, sessionDenialsAt: counterAge <= TTL_MS ? state.sessionDenialsAt : undefined, entries: state.entries };
     }
   } catch {
     // unreadable state re-asks — a gate that cannot read state errs toward asking again
@@ -253,6 +265,14 @@ export function selfTest() {
     ["git config core.hooksPath (persistent) is a bypass", bypassRefusal("git config core.hooksPath /tmp/empty") !== null],
     ["a chained rm -rf under a force-with-lease push is still destructive", destructiveAs("rm -rf apps/ && git push --force-with-lease origin main") !== null],
     ["a bare force-with-lease push is exempt", destructiveAs("git push --force-with-lease origin main") === null],
+    ["an ANSI-C quoted flag IS the flag", bypassRefusal("git commit $'--no-verify' -m x") !== null],
+    ["backslash-escaped flags are their flags (git reset \\-\\-hard IS --hard)", destructiveAs("git reset \\-\\-hard HEAD~1") !== null],
+    ["eval payloads are classified as the commands they run", bypassRefusal("eval 'git commit --no-verify -m x'") !== null],
+    ["zsh and dash payloads are classified", destructiveAs("zsh -c 'git reset --hard HEAD~1'") !== null && destructiveAs("dash -c 'git reset --hard HEAD~1'") !== null],
+    ["a lease push PIPED into a mass delete is destructive", destructiveAs("git push --force-with-lease origin main | xargs rm -rf apps/") !== null],
+    ["the documented activation (git config core.hooksPath .githooks) is allowed", bypassRefusal("git config core.hooksPath .githooks") === null],
+    ["re-pointing hooksPath elsewhere still refuses", bypassRefusal("git config core.hooksPath /tmp/empty") !== null],
+    ["unsetting hooksPath refuses", bypassRefusal("git config --unset core.hooksPath") !== null],
     ["rm -rf is destructive", destructiveAs("rm -rf build/") !== null],
     ["rm single file is not classed destructive", destructiveAs("rm notes.tmp") === null],
     ["git reset --hard is destructive", destructiveAs("git reset --hard HEAD~1") !== null],
@@ -287,7 +307,9 @@ export function selfTest() {
     })()],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-gate: ${name}`);
-  console.log(failures.length === 0 ? "task-gate self-test: OK (9 bypass + 10 destructive + 5 gate-cycle cases)" : `task-gate self-test: FAILED\n  ${failures.join("\n  ")}`);
+  // The count is DERIVED from the array it summarizes — a hand-maintained banner is count
+  // drift waiting for the next sweep to catch (it caught this one twice).
+  console.log(failures.length === 0 ? `task-gate self-test: OK (${cases.length} gate cases — count derived, not maintained)` : `task-gate self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
