@@ -857,19 +857,20 @@ function cmdDoctor() {
   // gate's LAW runs; this proves the gate's WIRING exists — a deleted or de-fanged hook
   // registration (matcher that covers no edit tool, missing banner event, unparseable manifest)
   // refuses here, not at the first silently-ungated edit; and the paths the manifest dispatches
-  // must resolve on disk — registered-to-fire-at-nothing is not wired (a second review caught
-  // that half unwired). The existence fact resolves THE DISPATCHED PATH through the manifest's
-  // own ${ZCODE_PLUGIN_ROOT} variable, exactly as the hook runtime does — judging a basename
-  // against a fixed directory passed a re-pointed decoy while the dispatch ENOENTed (an
-  // adversarial finding); a spelling the resolver cannot answer fails closed. The fix line IS
-  // the refusal reason — there is no generic fallback to print in a state that cannot occur.
-  const pluginRoot = `${ROOT}tools/zcode-plugin`;
+  // must resolve — registered-to-fire-at-nothing is not wired (a second review caught that half
+  // unwired; an adversarial lane caught the existence fact judging a basename against a fixed
+  // directory, so it now resolves THE DISPATCHED PATH through the manifest's own
+  // ${ZCODE_PLUGIN_ROOT} variable, failing closed on spellings it cannot answer). Like every
+  // other wiring check here, it reads the COMMITTED tree — the doctor is the only transport
+  // that judges plugin wiring, and a de-fanged manifest committed with the working tree
+  // restored must not certify (the same smuggle the hooks/CI checks above refuse).
   const PLUGIN_ROOT_VAR = "${ZCODE_PLUGIN_ROOT}/";
-  const dispatchResolves = (dispatched) => typeof dispatched === "string" && dispatched.startsWith(PLUGIN_ROOT_VAR) && existsSync(`${pluginRoot}/${dispatched.slice(PLUGIN_ROOT_VAR.length)}`);
-  const pluginManifest = existsSync(`${pluginRoot}/hooks/hooks.json`) ? readFileSync(`${pluginRoot}/hooks/hooks.json`, "utf8") : null;
-  const wiringRefusal = pluginManifest === null
-    ? "tools/zcode-plugin/hooks/hooks.json does not exist — the enforcement plugin is gone while its law is still a battery member"
-    : pluginWiringRefusal(pluginManifest, dispatchResolves);
+  const committedPluginBase = "tools/zcode-plugin";
+  const committedManifest = committedText(`${committedPluginBase}/hooks/hooks.json`);
+  const committedDispatchResolves = (dispatched) => typeof dispatched === "string" && dispatched.startsWith(PLUGIN_ROOT_VAR) && committedText(`${committedPluginBase}/${dispatched.slice(PLUGIN_ROOT_VAR.length)}`) !== null;
+  const wiringRefusal = committedManifest === null
+    ? `${committedPluginBase}/hooks/hooks.json is not in the committed tree — the enforcement plugin's wiring certifies nothing a clone will receive while its law is still a battery member`
+    : pluginWiringRefusal(committedManifest, committedDispatchResolves);
   check("the enforcement plugin's authoring gate is wired and its scripts on disk", wiringRefusal === null, wiringRefusal);
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
