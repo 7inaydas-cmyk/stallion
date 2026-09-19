@@ -10,6 +10,7 @@
 export const TASKS = [
   {
     id: "parse-duration",
+    module: "parse-duration",
     kind: "bugfix",
     spec: `Fix the duration parser in apps/lib/parse-duration.mjs so parseDuration(text) returns
 milliseconds for strings like "1h30m", "500ms", "2d", "1.5h", "90s", and combinations in any
@@ -80,6 +81,7 @@ test("all units together", () => assert.equal(parseDuration("1d2h3m4s500ms"), 93
   },
   {
     id: "lru-cache",
+    module: "lru-cache",
     kind: "bugfix",
     spec: `Fix the LRU cache in apps/lib/lru-cache.mjs. new LRUCache(capacity) with get(key),
 set(key, value), has(key), delete(key), and size (a getter). get() returns the value or
@@ -212,6 +214,7 @@ test("constructor rejects bad capacity", () => {
   },
   {
     id: "chunk-generator",
+    module: "chunk",
     kind: "feature",
     spec: `Implement the chunk generator in apps/lib/chunk.mjs: chunk(iterable, n) yields arrays of
 exactly n items, in order, with a final partial array holding the remainder (or nothing if the
@@ -236,7 +239,7 @@ test("even division has no empty tail", () => {
 `,
     hiddenTest: `import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chunk } from "./apps/lib/chunk-generator.mjs";
+import { chunk } from "./apps/lib/chunk.mjs";
 
 test("lazy: nothing is pulled before the first next()", () => {
   let pulled = 0;
@@ -289,6 +292,7 @@ test("Sets are iterable too", () => {
   },
   {
     id: "csv-fields",
+    module: "csv",
     kind: "feature",
     spec: `Implement CSV field escaping in apps/lib/csv.mjs: escapeField(value) returns the minimal
 escaping per RFC 4180 — a field is quoted iff it contains a comma, a double quote, or any of
@@ -323,7 +327,7 @@ test("parse round-trip", () => {
 `,
     hiddenTest: `import { test } from "node:test";
 import assert from "node:assert/strict";
-import { escapeField, parseLine } from "./apps/lib/csv-fields.mjs";
+import { escapeField, parseLine } from "./apps/lib/csv.mjs";
 
 test("commas force quoting", () => assert.equal(escapeField("a,b"), '"a,b"'));
 test("newlines force quoting", () => {

@@ -20,11 +20,16 @@ function runSuite(testCode, runDir) {
   const file = join(runDir, ".bench-acceptance.mjs");
   writeFileSync(file, testCode);
   try {
-    const out = execFileSync("node", ["--test", "--test-reporter=tap", file], { cwd: runDir, encoding: "utf8", timeout: 60_000 });
+    const out = execFileSync("node", ["--test", "--test-reporter=tap", file], { cwd: runDir, encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] });
     return tally(out);
   } catch (e) {
-    // node --test exits nonzero when any test fails — the TAP output still counts.
-    return tally(`${e.stdout ?? ""}${e.stderr ?? ""}`);
+    // node --test exits nonzero when any test fails — the TAP output still counts. But a
+    // KILLED run (timeout/signal) has no verdict: a grader that cannot read state must not
+    // pass (a sweep caught the empty-tally fail-open).
+    const killed = e.killed === true || (typeof e.signal === "string" && e.signal !== "SIGTERM" ? true : e.killed === true);
+    const result = tally(`${e.stdout ?? ""}${e.stderr ?? ""}`);
+    if (e.code === "ENOENT" || result.total === 0) return { passed: 0, failed: 1, total: 1, ungradable: true };
+    return result;
   }
 }
 
@@ -51,7 +56,7 @@ function selfTest() {
       for (const dir of [refDir, seedDir]) {
         const lib = join(dir, "apps", "lib");
         mkdirSync(lib, { recursive: true });
-        writeFileSync(join(lib, `${task.id}.mjs`), dir === refDir ? task.reference : task.seed);
+        writeFileSync(join(lib, `${task.module}.mjs`), dir === refDir ? task.reference : task.seed);
       }
       const ref = runSuite(task.hiddenTest, refDir);
       const seed = runSuite(task.hiddenTest, seedDir);
@@ -69,7 +74,7 @@ function selfTest() {
   ];
   for (const [name, passes] of [...shape, ...cases]) if (!passes) fail(`bench: ${name}`);
   console.log(failures.length === 0
-    ? `bench grade self-test: OK (${TASKS.length} tasks; reference passes all, seed fails all — the grader discriminates)`
+    ? `bench grade self-test: OK (${TASKS.length} tasks; reference passes all, seed fails at least one — the grader discriminates)`
     : `bench grade self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
@@ -84,9 +89,15 @@ if (isEntry) {
     console.error("usage: grade.mjs <dir> <taskId> (--self-test to self-test)");
     process.exit(1);
   }
-  const { passed, failed, total } = runSuite(task.hiddenTest, dir);
+  const { passed, failed, total, ungradable } = runSuite(task.hiddenTest, dir);
   const file = join(dir, ".bench-acceptance.mjs");
   try { rmSync(file, { force: true }); } catch { /* best effort */ }
-  console.log(JSON.stringify({ taskId, passed, failed, total }));
-  process.exit(failed === 0 ? 0 : 1);
+  // An ungradable or empty run is a REFUSAL, not a pass: the suite's own plan line is the
+  // expected count, and a tally that never saw it cannot certify anything.
+  // Count declared tests by LINE-ANCHORED test( calls — RegExp.prototype.test( inside assertions
+  // must not inflate the expectation (the run just showed 9-vs-8 from exactly that).
+  const expected = (task.hiddenTest.match(/^test\(/gm) ?? []).length;
+  const incomplete = ungradable || total === 0 || total < expected;
+  console.log(JSON.stringify({ taskId, passed, failed, total, expected, ungradable: Boolean(incomplete) }));
+  process.exit(failed === 0 && !incomplete ? 0 : 1);
 }

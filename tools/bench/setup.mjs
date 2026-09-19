@@ -43,26 +43,38 @@ function setup(arm, taskId, dir) {
   if (!task) throw new Error(`unknown task: ${taskId}`);
   if (arm !== "treatment" && arm !== "control") throw new Error(`unknown arm: ${arm}`);
   mkdirSync(`${dir}/apps/lib`, { recursive: true });
-  writeFileSync(`${dir}/apps/lib/${taskId.replace(/-/g, "-")}.mjs`, task.seed);
-  writeFileSync(`${dir}/apps/lib/${taskId}.test.mjs`, task.visibleTest);
-  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true }, null, 2)}\n`);
+  // ONE module name across spec, visible test, seed, and hidden grader (a sweep caught all
+  // four disagreeing for the feature tasks — spec-faithful work graded against a stub).
+  writeFileSync(`${dir}/apps/lib/${task.module}.mjs`, task.seed);
+  writeFileSync(`${dir}/apps/lib/${task.module}.test.mjs`, task.visibleTest.replace(`./${task.module}.mjs`, `./${task.module}.mjs`));
+  // The selftest script the AGENTS law mandates must exist on day one (a sweep caught the
+  // stanza pointing at a missing script — a remediation tax billed to the wrong arm).
+  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${taskId}.test.mjs`, selftest: `node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-gate.mjs --self-test` } }, null, 2)}\n`);
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "bench@localhost");
   git(dir, "config", "user.name", `bench-${arm}`);
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "chore: seed the task");
   if (arm === "treatment") {
-    cpSync(`${STALLION_ROOT}tools`, `${dir}/tools`, { recursive: true });
+    // Vendor the harness WITHOUT the benchmark's own answer key: tools/bench/ holds every
+    // hidden suite and reference implementation, and a graded treatment agent walks tools/
+    // from its first lifecycle command (a sweep finding: the key shipped with the arm).
+    cpSync(`${STALLION_ROOT}tools`, `${dir}/tools`, { recursive: true, filter: (src) => !src.includes(`${STALLION_ROOT}tools/bench`) });
     mkdirSync(`${dir}/.githooks`, { recursive: true });
     writeFileSync(`${dir}/.githooks/pre-commit`, "#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n");
     writeFileSync(`${dir}/.githooks/commit-msg`, "#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 1\n");
     execFileSync("chmod", ["+x", `${dir}/.githooks/pre-commit`, `${dir}/.githooks/commit-msg`]);
-    // The staged gate needs no records; the commit-msg gate needs a scoped in-flight task —
-    // both are exactly what the treatment agent's workflow produces.
-    cpSync(`${STALLION_ROOT}tasks`, `${dir}/tasks`, { recursive: true });
-    rmLocked(`${dir}/tasks`);
+    // EMPTY task state: the gates judge only this sandbox's own records. (A sweep caught the
+    // live records riding along — including an in-flight vendor task that held the staged gate
+    // permanently open, an uncontrolled variable in a benchmark claiming arms differ only in
+    // the harness.)
+    mkdirSync(`${dir}/tasks`, { recursive: true });
     writeFileSync(`${dir}/AGENTS.md`, AGENTS_STANZA);
     writeFileSync(`${dir}/.gitignore`, ".stallion/\n");
+    // task-coverage's own self-test cross-reads the decisions register; a verified battery
+    // that includes it needs the register present (the second friction the run surfaced).
+    mkdirSync(`${dir}/docs/decisions`, { recursive: true });
+    cpSync(`${STALLION_ROOT}docs/decisions/DECISIONS.md`, `${dir}/docs/decisions/DECISIONS.md`);
     // .stallion-base is not needed: the commit-msg gate does not resolve a push base, and the
     // benchmark measures commit-time behavior, not push behavior.
     // The harness commit lands BEFORE the hooks activate — the gates bind the task work that
@@ -72,14 +84,6 @@ function setup(arm, taskId, dir) {
     git(dir, "config", "core.hooksPath", ".githooks");
   }
   console.log(`${arm}/${taskId}: sandbox ready at ${dir}`);
-}
-
-// The vendored tasks/ carry live records with hash chains bound to this clone's history is NOT
-// required (chains verify independently) — but the lockfiles from a live repo must not ride
-// along, and stale lockfiles would wedge the first mutation.
-import { readdirSync, rmSync } from "node:fs";
-function rmLocked(dir) {
-  for (const f of readdirSync(dir)) if (f.endsWith(".lock") || f.endsWith(".tmp")) rmSync(`${dir}/${f}`, { force: true });
 }
 
 const isEntry = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
