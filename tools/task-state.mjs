@@ -547,18 +547,51 @@ function outputDigest(output) {
   return createHash("sha256").update(output).digest("hex").slice(0, 12);
 }
 
+/**
+ * Pure: does a RED run's output carry the assertion evidence the author expected? `--expect`
+ * binds a pattern to a pin at RECORD time — the pattern should name a line the check prints only
+ * when tests RAN and FAILED (a runner's failure line, a self-test's FAIL print, a structural
+ * assertion's own refusal). An uncollectable run — a suite that fails to resolve its imports, a
+ * tool that dies on an unknown flag, a command that crashes before asserting — exits nonzero
+ * while proving nothing, and red-pins nothing (an adversarial lane caught exactly this shape on
+ * 2026-09-19: a brand-new module's contract suite "failed" pre-fix at transform, zero tests
+ * collected, and the vacuous RED sailed through as evidence). null = satisfied; otherwise the
+ * refusal reason.
+ */
+export function expectationRefusal(pattern, output) {
+  let re;
+  try {
+    re = new RegExp(pattern);
+  } catch (e) {
+    return `--expect is not a valid regular expression: ${pattern}`;
+  }
+  if (!re.test(output)) {
+    return `the command failed but its output does not carry the expected evidence: ${pattern}`;
+  }
+  return null;
+}
+
 function cmdRedCheck(args) {
   const [id, ...paths] = args._;
-  if (!id) die("usage: red-check <id> --command \"<failing check>\" [--evidence <path>[,<path>...]]");
+  if (!id) die(`usage: red-check <id> --command "<failing check>" [--expect "<output pattern>"] [--evidence <path>[,<paths>...]]`);
   const command = typeof args.command === "string" && args.command.trim().length > 0 ? args.command.trim() : null;
+  const expect = typeof args.expect === "string" && args.expect.trim().length > 0 ? args.expect.trim() : null;
+  if (expect !== null && command === null) die("--expect binds to a command pin — pass it together with --command");
   const all = [...paths, ...(typeof args.evidence === "string" ? args.evidence.split(",") : [])].map((p) => p.trim()).filter(Boolean);
-  if (!command && all.length === 0) die("red-check requires --command \"<the failing check>\" (and optionally --evidence <paths>)");
+  if (!command && all.length === 0) die(`red-check requires --command "<the failing check>" (and optionally --expect "<output pattern>" / --evidence <paths>)`);
   for (const p of all) if (!evidencePathIsFile(p)) die(`evidence path is not a readable file: ${p}\n  fix: pass paths that exist, repo-relative or cwd-relative: node tools/task-state.mjs red-check ${id} --evidence <path>`);
   const event = { at: new Date().toISOString(), type: "red-check" };
   if (command) {
     const run = runPinCommand(command);
     if (run.exitCode === 0) {
       die(`REFUSED — the pin passed (exit 0): ${command}\n  rule: a pin is evidence only when it FAILS against pre-fix source\n  fix: run the red-check before the fix lands, or point the command at the pre-fix behavior`);
+    }
+    if (expect !== null) {
+      const refusal = expectationRefusal(expect, run.output);
+      if (refusal !== null) {
+        die(`REFUSED — ${refusal}\n  rule: an uncollectable run red-pins nothing — a suite that fails to load, a tool that refuses on a flag, and a crash before the first assertion ALL exit nonzero while proving nothing\n  fix: point --expect at a line your check prints only when it ran and failed for the asserted reason (a runner's failure line, a SELF-TEST FAIL print), or restructure the pin as a structural assertion on the defect itself`);
+      }
+      event.expect = expect;
     }
     event.command = command;
     event.exitCode = run.exitCode;
@@ -567,7 +600,7 @@ function cmdRedCheck(args) {
   if (all.length > 0) event.evidence = all;
   mutateTask(id, (record) => ({ ...record, events: [...record.events, event] }));
   console.log(command
-    ? `task ${id}: command pin recorded RED (exit ${event.exitCode}, digest ${event.outputDigest}) — ${command}`
+    ? `task ${id}: command pin recorded RED (exit ${event.exitCode}, digest ${event.outputDigest}${event.expect ? `, expects /${event.expect}/` : ""}) — ${command}`
     : `task ${id}: RED-check evidence recorded (${all.length} path(s)) — supplementary, not a substitute for a command pin`);
 }
 
@@ -734,6 +767,10 @@ export function selfTest() {
     ["verified without red-check refused", !evaluateTransition(at(executing, "executing"), null, "verified", true).ok],
     ["a path-only red-check no longer verifies a code task", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }] }, null, "verified", true).ok],
     ["a command pin verifies a code task", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true).ok],
+    ["a pin carrying a satisfied --expect stays a valid pin", hasValidPin({ ...base, events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", expect: "Tests.*failed", exitCode: 1, outputDigest: "abc" }] })],
+    ["--expect is satisfied by an assertion-failure line", expectationRefusal("Tests.*failed", "Test Files  1 failed (1)\n      Tests  3 failed | 9 passed (12)") === null],
+    ["--expect refuses the uncollectable shape (nonzero exit, no tests ran)", expectationRefusal("Tests.*failed", "Test Files  1 failed (1)\n      Tests  no tests\n Failed to resolve import") !== null],
+    ["--expect refuses an invalid pattern with its own reason", expectationRefusal("[unclosed", "anything") !== null],
     ["a recorded pin exemption substitutes for the command pin", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }, { type: "pin-exemption", justification: "cannot re-run in this env" }] }, null, "verified", true).ok],
     ["a forged pin with exit 0 is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "true", exitCode: 0, outputDigest: "x" }] }, null, "verified", true).ok],
     ["a killed pin (null exit) is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "hang", exitCode: null, outputDigest: "x" }] }, null, "verified", true).ok],
@@ -833,7 +870,7 @@ if (isEntry) {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
     const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus, handoff: cmdHandoff };
-    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check|pin-exempt|pin-retire|advance|status|handoff> ... (--self-test to self-test)");
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check(--command, --expect, --evidence)|pin-exempt|pin-retire|advance|status|handoff> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {
