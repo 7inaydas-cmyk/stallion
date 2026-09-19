@@ -1,0 +1,67 @@
+{
+  "$comment": [
+    "Config for tools/reader-existence.mjs, seeded 2026-09-20 — ported from the Antitube harness",
+    "(PD-14 / RCA-15 R7) and adapted to stallion's contract surfaces.",
+    "",
+    "THE LAW: every member of a shared-contract string union needs BOTH a producer (code that",
+    "writes the value) and a consumer (code that branches on it) in production code. Export-level",
+    "dead-code analysis cannot see a dead member inside a USED union — the 2026-07-15 RCA lesson,",
+    "kept generalized in the tool's header.",
+    "",
+    "THE KNOWN LIMIT THAT SHAPES THIS BASELINE: the tool matches LITERALS. Stallion's biggest",
+    "producers are the CLIs themselves — `new --risk-class <class>`, `record --severity <S>` pass",
+    "the member as an argv VARIABLE, invisible to literal matching. Every RISK_CLASSES and",
+    "SEVERITIES row below is that shape: consumed by real guard branches, produced only from the",
+    "terminal. Read NO_PRODUCER as \"no code path hard-codes it\", never \"unreachable\". These rows",
+    "are the recorded blind spot, not hidden by deletion — a baseline that lies in the reassuring",
+    "direction is worse than one that over-reports.",
+    "",
+    "WHY PHASES (tools/task-state.mjs) IS NOT SWEPT: the plugin's agreement probe builds its",
+    "fixture matrix as an ITERATED array (const phases = [...]; for...of — agreement-check.mjs),",
+    "and an iterated array is not a predicate, so every member classifies AMBIGUOUS there; one",
+    "ambiguous use suppresses every verdict for the member. A PHASES sweep today would report",
+    "zero findings while certifying nothing — the exact vacuity that once got an Antitube baseline",
+    "row deleted in error. Phase literals also flow as argv variables (`advance <phase>`). Re-add",
+    "PHASES only with a classifier that resolves iteration, and read the SUPPRESSED line first.",
+    "",
+    "WHY THE LANE SLUGS ARE NOT SWEPT: the eight adversarial escape-class lanes are headings in",
+    "docs/ADVERSARIAL-CHECKLIST.md, derived at runtime by lanesFromChecklist() into computed",
+    "slugs — there is no literal lane union in code to sweep. task-findings' `lane` field is a",
+    "positive integer, not a vocabulary.",
+    "",
+    "CORPUS: roots are config; test artifacts by name, inline selfTest* function bodies, contract",
+    "declaration ranges, and the tool itself are excluded BY LAW (see the tool's header — stallion",
+    "keeps its tests inside production files, so the corpus cuts the function, not the file).",
+    "Every exclusion here carries a why; a reasonless exclusion fails the gate.",
+    "",
+    "Removing an accepted row is how this file shrinks. That is the intended direction of travel:",
+    "the gate refuses a row that is no longer a finding (a baseline nobody prunes becomes a",
+    "permission slip), exactly as it refuses a finding with no row."
+  ],
+  "corpus": {
+    "roots": ["tools"],
+    "exclude": [
+      {
+        "spec": "tools/bench/setup.mjs",
+        "why": "the battery sandbox factory — writes fixture trees and battery strings into sandboxes: test scaffolding, not the lifecycle's production surface. grade.mjs and tasks.mjs stay in the corpus; they are shipped tools."
+      }
+    ]
+  },
+  "contracts": [
+    { "path": "tools/task-findings.mjs", "symbol": "FINDING_STATUSES" },
+    { "path": "tools/task-findings.mjs", "symbol": "SEVERITIES" },
+    { "path": "tools/task-state.mjs", "symbol": "RISK_CLASSES" }
+  ],
+  "accepted": {
+    "RISK_CLASSES.planning-only": "NO_PRODUCER — consumed by IMPLEMENTATION_FORBIDDEN (executionGuard refuses implementation for this class) and NON_CODE_CLASSES (verificationGuard waives the command-pin law); the only producer is generic: `new --risk-class planning-only` passes the string as an argv variable, which literal matching cannot see (the tool's KNOWN LIMIT). No code path hard-codes the write; the class is terminal-reachable.",
+    "RISK_CLASSES.docs-only": "NO_PRODUCER — consumed by NON_CODE_CLASSES (task-state.mjs, pin-law waiver) and by recordRefusal (task-coverage.mjs: a docs-only record can never authorize code at the fence); producer is generic argv (`new --risk-class docs-only`). Same known-limit shape as planning-only.",
+    "RISK_CLASSES.runtime-code": "NO_CONSUMER — produced literally only by the agreement probe's synthetic record (tools/zcode-plugin/lib/agreement-check.mjs); no production branch tests for it BY DESIGN: runtime-code is the default class that passes every guard, and the guards branch on the restricted sets (IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, NON_CODE_CLASSES), never on the default. The real producer is argv (`--risk-class runtime-code`, named unquoted in every remedy string and AGENTS.md, which literal matching rightly ignores). The honest shape of a default member, not a gap to close.",
+    "RISK_CLASSES.protected": "NO_PRODUCER — consumed by APPROVAL_REQUIRED (executionGuard demands a recorded owner approval; fenceSurfaceRefusal makes fence-surface scope protected-tier blast radius); producer is generic argv (`new --risk-class protected`). Known-limit shape.",
+    "RISK_CLASSES.migration": "NO_PRODUCER — consumed by APPROVAL_REQUIRED (same tier law as protected: a migration task needs an approval event before executing); producer is generic argv. Known-limit shape.",
+    "RISK_CLASSES.experiment": "NO_PRODUCER — consumed by IMPLEMENTATION_FORBIDDEN and NON_CODE_CLASSES (an experiment task can never reach executing and owes no command pin); producer is generic argv. Known-limit shape.",
+    "SEVERITIES.CRITICAL": "NO_PRODUCER — consumed by the proof law (shapeError: a CRITICAL/HIGH finding recorded after PROOF_CUTOVER owes evidence + a concrete failure scenario, and raiseSeverity's owesProofNow re-applies it on every raise); the only producer is generic: `adversarial-runner record --severity <S>` passes argv. Known-limit shape.",
+    "SEVERITIES.HIGH": "NO_PRODUCER — same proof-law shape as CRITICAL (the CRITICAL/HIGH branch is one law; each literal is pinned here separately); generic argv producer via `record --severity HIGH`.",
+    "SEVERITIES.MEDIUM": "DEAD as a literal by design — severity vocabulary for CLI validation (`SEVERITIES.includes`) and rank-order comparison (raiseSeverity keeps the STRICTEST severity by array position, not by name), so no per-member branch exists or is wanted: the proof law deliberately covers only CRITICAL/HIGH. A member consumed by position is invisible to literal matching — recorded, not hidden.",
+    "SEVERITIES.LOW": "DEAD as a literal by design — same position-consumed shape as MEDIUM; LOW is also the class the proof law exempts by simply not naming it. No per-member branch should exist."
+  }
+}
