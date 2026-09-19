@@ -1,0 +1,206 @@
+{
+  "threshold": 8,
+  "note": "Functions permitted above the threshold, at exactly the complexity they had when recorded. The ratchet lets these fall, never rise. Regenerate with `node tools/complexity-gate.mjs --update-baseline` — a deliberate act, reviewable in the diff.",
+  "functions": [
+    {
+      "file": "tools/guard-reach.mjs",
+      "name": "loadRegistry",
+      "complexity": 55
+    },
+    {
+      "file": "tools/gate-coverage.mjs",
+      "name": "loadConfig",
+      "complexity": 42
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "cmdDoctor",
+      "complexity": 37
+    },
+    {
+      "file": "tools/zcode-plugin/lib/agreement-check.mjs",
+      "name": "checkAgreement",
+      "complexity": 33
+    },
+    {
+      "file": "tools/task-gate.mjs",
+      "name": "classifiedText",
+      "complexity": 30
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "selfTest",
+      "complexity": 27
+    },
+    {
+      "file": "tools/task-gate.mjs",
+      "name": "quoteAwareSplit",
+      "complexity": 23
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "parseFlags",
+      "complexity": 20
+    },
+    {
+      "file": "tools/task-state.mjs",
+      "name": "cmdRedCheck",
+      "complexity": 20
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "recordRefusal",
+      "complexity": 19
+    },
+    {
+      "file": "tools/task-gate.mjs",
+      "name": "bypassRefusal",
+      "complexity": 19
+    },
+    {
+      "file": "tools/task-findings.mjs",
+      "name": "shapeError",
+      "complexity": 18
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "checkRange",
+      "complexity": 17
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "cmdCommitMsg",
+      "complexity": 16
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "pluginWiringRefusal",
+      "complexity": 16
+    },
+    {
+      "file": "tools/guard-reach.mjs",
+      "name": "main",
+      "complexity": 14
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "<anonymous>:134",
+      "complexity": 14
+    },
+    {
+      "file": "tools/task-findings.mjs",
+      "name": "selfTestDedup",
+      "complexity": 14
+    },
+    {
+      "file": "tools/task-gate.mjs",
+      "name": "loadState",
+      "complexity": 14
+    },
+    {
+      "file": "tools/remote-string-lint.mjs",
+      "name": "main",
+      "complexity": 13
+    },
+    {
+      "file": "tools/task-state.mjs",
+      "name": "globRefusal",
+      "complexity": 13
+    },
+    {
+      "file": "tools/zcode-plugin/lib/gate-law.mjs",
+      "name": "authoringDecision",
+      "complexity": 13
+    },
+    {
+      "file": "tools/adversarial-runner.mjs",
+      "name": "<anonymous>:239",
+      "complexity": 12
+    },
+    {
+      "file": "tools/adversarial-runner.mjs",
+      "name": "cmdRecord",
+      "complexity": 12
+    },
+    {
+      "file": "tools/adversarial-runner.mjs",
+      "name": "cmdVerdict",
+      "complexity": 12
+    },
+    {
+      "file": "tools/gate-coverage.mjs",
+      "name": "selfTest",
+      "complexity": 12
+    },
+    {
+      "file": "tools/task-findings.mjs",
+      "name": "raiseSeverity",
+      "complexity": 12
+    },
+    {
+      "file": "tools/task-state.mjs",
+      "name": "cmdAdvance",
+      "complexity": 12
+    },
+    {
+      "file": "tools/test-lint.mjs",
+      "name": "main",
+      "complexity": 12
+    },
+    {
+      "file": "tools/gate-coverage.mjs",
+      "name": "main",
+      "complexity": 11
+    },
+    {
+      "file": "tools/remote-string-lint.mjs",
+      "name": "loadConfig",
+      "complexity": 11
+    },
+    {
+      "file": "tools/zcode-plugin/lib/gate-law.mjs",
+      "name": "parseEditPayload",
+      "complexity": 11
+    },
+    {
+      "file": "tools/bench/grade.mjs",
+      "name": "runSuite",
+      "complexity": 9
+    },
+    {
+      "file": "tools/remote-string-lint.mjs",
+      "name": "selfTest",
+      "complexity": 9
+    },
+    {
+      "file": "tools/task-coverage.mjs",
+      "name": "resolvePushBase",
+      "complexity": 9
+    },
+    {
+      "file": "tools/task-findings.mjs",
+      "name": "chainError",
+      "complexity": 9
+    },
+    {
+      "file": "tools/task-findings.mjs",
+      "name": "missingResolveEvidence",
+      "complexity": 9
+    },
+    {
+      "file": "tools/task-state.mjs",
+      "name": "cmdStatus",
+      "complexity": 9
+    },
+    {
+      "file": "tools/task-state.mjs",
+      "name": "verificationGuard",
+      "complexity": 9
+    },
+    {
+      "file": "tools/test-lint.mjs",
+      "name": "findUnstrippedSourceReads",
+      "complexity": 9
+    }
+  ]
+}

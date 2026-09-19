@@ -1,0 +1,7 @@
+{
+  "_readme": "The complexity ratchet's repo data. threshold: the ceiling for NEW functions (McCabe cyclomatic). includes/excludes: pathspec globs for the source sweep. testGlobs: where the 'a test names this function' hatch looks for identifiers — EMPTY here on purpose: stallion's tests are embedded self-tests inside the source files, so a source-file corpus would name every declaration and open the hatch for everything. The hatch is CLOSED in this repo; a new over-threshold function must be split or consciously baselined. Vendors with real test files (tests/*.mjs, **/*.test.ts) list them here and get the upstream behaviour.",
+  "threshold": 8,
+  "includes": ["tools/**/*.mjs"],
+  "excludes": ["**/node_modules/**", "**/fixtures/**"],
+  "testGlobs": []
+}
