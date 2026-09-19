@@ -1,0 +1,8 @@
+{
+  "$comment": "OBSERVED reach modes, written by guard-reach.mjs. A disk->index downgrade FAILS; index->disk rewrites freely.",
+  "modes": {
+    "task-coverage-commit-msg": "index",
+    "test-lint": "index",
+    "gate-coverage": "index"
+  }
+}
