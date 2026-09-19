@@ -19,11 +19,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, derivePhase } from "./task-state.mjs";
+import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, derivePhase, PHASES } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
-const WORKSPACE_PHASES = new Set(["planned", "executing", "verified", "adversarial"]);
+/** Derived, never re-typed: the drafting window is PHASES from planned up to (excluding)
+ *  done — a future phase change flows through task-state's one taxonomy, not a copy here. */
+const WORKSPACE_PHASES = new Set(PHASES.slice(PHASES.indexOf("planned"), PHASES.indexOf("done")));
 
 /** Pure: the sibling dir a task's workspace lives in — derived from the repo's OWN name, so a
  *  vendored harness never stamps its brand on the host repo (issue #2). Phase derivation is
@@ -165,6 +167,7 @@ export function selfTest() {
   });
 
   const cases = [
+    ["the drafting window is DERIVED from PHASES, never re-typed (a taxonomy change must flow through)", JSON.stringify([...WORKSPACE_PHASES]) === JSON.stringify(PHASES.slice(PHASES.indexOf("planned"), PHASES.indexOf("done")))],
     ["no record refused", !canAddWorkspace(null, false).ok],
     ["planning-only refused", !canAddWorkspace(mk("planned", "planning-only"), false).ok],
     ["intake refused", !canAddWorkspace(mk("intake"), false).ok],
@@ -180,7 +183,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-workspace: ${name}`);
 
-  console.log(failures.length === 0 ? "task-workspace self-test: OK (12 guard cases; live jj path prints its own landing law)" : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? `task-workspace self-test: OK (${cases.length} guard cases — count derived; live jj path prints its own landing law)` : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

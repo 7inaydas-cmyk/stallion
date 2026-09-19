@@ -17,8 +17,13 @@ import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-/** The phases that authorize code — the same set the staged gate lives under. */
-const AUTHORIZING_PHASES = new Set(["executing", "verified", "adversarial"]);
+/**
+ * The phases that authorize code — DERIVED from whatever taxonomy the edited repo's own
+ * task-state declares (never re-typed here): the window runs from "executing" up to
+ * (excluding) "done". The anchors are law stated once; the set is a slice, so a repo that
+ * adds a phase gets it honored by this gate without this file changing.
+ */
+const authorizingPhases = (PHASES) => new Set(PHASES.slice(PHASES.indexOf("executing"), PHASES.indexOf("done")));
 
 /**
  * Parse a PreToolUse hook payload (the stdin JSON). Returns { ok, toolName, filePath, cwd } or
@@ -74,7 +79,7 @@ export function authoringDecision({ filePath, cwd }, law, records) {
   if (!isCodePath(relPath)) return { decision: "allow", hint: `${relPath} is not lifecycle-governed code` };
   const active = records.filter((record) => {
     if (recordRefusal(record) !== null) return false;
-    return AUTHORIZING_PHASES.has(derivePhase(record.events ?? []));
+    return authorizingPhases(law.state.PHASES).has(derivePhase(record.events ?? []));
   });
   if (active.length === 0) {
     return {
@@ -109,8 +114,8 @@ export function authoringDecision({ filePath, cwd }, law, records) {
  * lifecycle survives context pressure. Pure over the law module and records.
  */
 export function bannerContext(law, records) {
-  const { derivePhase, scopeOf } = law.state;
-  const active = records.filter((record) => AUTHORIZING_PHASES.has(derivePhase(record.events ?? [])));
+  const { derivePhase, scopeOf, PHASES } = law.state;
+  const active = records.filter((record) => authorizingPhases(PHASES).has(derivePhase(record.events ?? [])));
   const stateTool = relative(law.root, join(law.root, law.shape === "vendored" ? "tools/harness/task-state.mjs" : "tools/task-state.mjs"));
   const lines = ["[stallion] this repo writes code under the task lifecycle — refusals print the rule, the evidence, and the fix; run the fix, never work around it."];
   if (active.length === 0) {
@@ -168,6 +173,15 @@ export function selfTest() {
     ["the banner names the in-flight task, its phase, and the next command", (() => { const b = bannerContext(fakeLaw, [task("executing", ["tools/**"])]); return b.includes("t-executing") && b.includes("advance") && b.includes("tools/**"); })()],
     ["the banner with no tasks names the new-task command", bannerContext(fakeLaw, []).includes("new <id>")],
     ["the banner's first line states the law", bannerContext(fakeLaw, []).startsWith("[stallion] this repo writes code under the task lifecycle")],
+    ["the authorizing window follows the repo's own PHASES (derive, don't declare)", (() => {
+      const mutated = { ...fakeLaw, state: { ...fakeLaw.state, PHASES: [...fakeLaw.state.PHASES.slice(0, -1), "shipping", "done"] } };
+      const rec = { schema: "stallion/task-state@1", id: "t-ship", events: [{ to: "shipping" }], scope: ["tools/**"] };
+      return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, mutated, [rec]).decision === "allow";
+    })()],
+    ["a phase the repo's PHASES does not declare still refuses", (() => {
+      const rec = { schema: "stallion/task-state@1", id: "t-ship", events: [{ to: "shipping" }], scope: ["tools/**"] };
+      return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, fakeLaw, [rec]).decision === "deny";
+    })()],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`zcode-plugin gate-law: ${name}`);
   console.log(failures.length === 0 ? `zcode-plugin gate-law self-test: OK (${cases.length} cases — count derived)` : `zcode-plugin gate-law self-test: FAILED\n  ${failures.join("\n  ")}`);
