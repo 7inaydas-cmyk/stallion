@@ -39,6 +39,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
 import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER, recordMustChain, CHAIN_CUTOVER } from "./task-state.mjs";
 import { chainError, chainStampEvents, STRICT_UTC_STAMP } from "./task-findings.mjs";
+import { stripComments } from "./test-lint.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -833,7 +834,10 @@ function cmdDoctor() {
         // indexOf). A mere mention is a lie in the tree — bench/setup.mjs writes battery
         // strings into sandboxes; and a review caught the single-idiom form blind to
         // task-gate.mjs's `===` spelling, leaving the law unenforceable for its own tool.
-        else if (entry.name.endsWith(".mjs") && dispatchesSelfTest(readFileSync(`${abs}/${entry.name}`, "utf8"))) found.push(entryRel);
+        // Membership derivation reads STRIPPED source — a comment naming the dispatch idiom is a
+        // mention, not a dispatch (the twice-in-one-day incident class test-lint exists for; its
+        // first act on landing here was catching this exact read unstripped).
+        else if (entry.name.endsWith(".mjs") && dispatchesSelfTest(stripComments(readFileSync(`${abs}/${entry.name}`, "utf8")))) found.push(entryRel);
       }
     };
     try {
@@ -1087,7 +1091,8 @@ export function selfTest() {
     ["loose == is not a dispatch idiom (the tightened equality arm)", !dispatchesSelfTest('if (a == "--self-test") x();')],
     ["a negated !== is not a dispatch idiom (its == tail never was one)", !dispatchesSelfTest('if (a !== "--self-test") return;')],
     ["a bare mention inside a written string is NOT a member (bench/setup.mjs)", !dispatchesSelfTest('writeFileSync(p, "node tools/task-findings.mjs --self-test && node tools/task-gate.mjs --self-test")')],
-    ["the real task-gate.mjs source dispatches (the regression the review caught)", dispatchesSelfTest(readFileSync(new URL("./task-gate.mjs", import.meta.url), "utf8"))],
+    ["the real task-gate.mjs source dispatches (the regression the review caught)", dispatchesSelfTest(stripComments(readFileSync(new URL("./task-gate.mjs", import.meta.url), "utf8")))],
+    ["a dispatch idiom mentioned only in a comment is NOT a member (the strip law)", !dispatchesSelfTest(stripComments("// if (argv.includes(\"--self-test\")) selfTest();\nfunction x() {}\n"))],
     ...(() => {
       // In THIS tree the plugin is law and its manifest is judged; a vendored harness without
       // the plugin skips the manifest cases with a visible note instead of crashing the
