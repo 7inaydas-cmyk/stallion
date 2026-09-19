@@ -1,0 +1,36 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "bench-kit-repairs",
+  "passStartedAt": "2026-09-19T06:08:14.793Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "the sandbox shipped to treatment arms carries a selftest battery that omits task-coverage --self-test while its own comment explains the decisions-register dependency was added precisely so the battery could include it — the sandboxes run a lying battery, the same silent-skip class issue #16 killed in the home repo",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T06:07:56.152Z",
+      "proof": "build a treatment sandbox and run npm run selftest: task-coverage is never exercised, yet the AGENTS stanza tells the agent 'Verify with npm run selftest' — verification that skips the fence tool certifies nothing about it",
+      "evidence": [
+        "tools/bench/setup.mjs"
+      ],
+      "dedupKey": "tools/bench/setup.mjs scripts.selftest (five tools) vs tools/bench/setup.mjs:74-77 comment; the home battery runs seven members",
+      "resolvedAt": "2026-09-19T06:08:14.641Z"
+    },
+    {
+      "id": "f2",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "the killed-run refusal has a live probe (hanging module, ungradable JSON, exit 1) but no battery pin — runSuite's timeout is hardcoded 60s and a battery case would pay it on every run",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T06:07:56.187Z",
+      "evidence": "tools/bench/grade.mjs runSuite; wave transcript probe output",
+      "dedupKey": "tools/bench/grade.mjs runsuite; wave transcript probe output",
+      "justification": "runSuite's 60s timeout is hardcoded and a battery case would pay it on every battery run forever; the live probe (hanging module, ungradable:true, exit 1) is recorded in this register's wave and the refusal is three lines feeding a shared exit law",
+      "resolvedAt": "2026-09-19T06:08:14.682Z"
+    }
+  ],
+  "sweptBase": "40c6317619486fc0edc5eae930489d583f34a06b",
+  "sweptHead": "eb5a5515156bb26b8da4074c75365ecd56038ebc",
+  "sweptDiffDigest": "8f78fdd5f850"
+}

@@ -1,0 +1,95 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "fence-root-blindness",
+  "title": "issue #17: root-commit blindness + the merge union over-report — one per-commit file law",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T06:01:53.691Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "4c624576ae7094c4f31385fdc0bc4922acca578569f69c5167de2f2e52dab891"
+    },
+    {
+      "at": "2026-09-19T06:01:53.735Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "4c624576ae7094c4f31385fdc0bc4922acca578569f69c5167de2f2e52dab891",
+      "entry_hash": "b327aeeccf8144a508309543ba9f08634de873796c2fdc91916a5481306ba43e"
+    },
+    {
+      "at": "2026-09-19T06:01:53.773Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "b327aeeccf8144a508309543ba9f08634de873796c2fdc91916a5481306ba43e",
+      "entry_hash": "3781378866ce59916c304ced568219f2f7d66e76939a01ee8a22c404b7ac5579"
+    },
+    {
+      "at": "2026-09-19T06:01:53.813Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "3781378866ce59916c304ced568219f2f7d66e76939a01ee8a22c404b7ac5579",
+      "entry_hash": "d760c33b320272fe42b949787defc3148171f977f3f4e075ff56c82cc3414603"
+    },
+    {
+      "at": "2026-09-19T06:02:00.742Z",
+      "type": "red-check",
+      "command": "S=/home/excelsior/Desktop/stallion/tools; A=$(mktemp -d); cd \"$A\"; git init -q -b master; git config user.email p@p; git config user.name p; echo base > base.txt; git add -A; git commit -qm \"orphan root with code, no footer\"; git checkout -q --orphan evil; mkdir -p apps; echo smuggle > apps/smuggled.mjs; git add apps; git commit -qm \"evil orphan: code, no footer\"; cp -r \"$S\" tools; node tools/task-coverage.mjs --base master >/dev/null 2>&1 && { echo \"ROOT SMUGGLE PASSED THE FENCE\"; exit 1; }; echo \"root smuggle refused\"; Y=$(mktemp -d); cd \"$Y\"; git init -q -b master; git config user.email p@p; git config user.name p; echo base > base.txt; git add -A; git commit -qm base; cp -r \"$S\" tools; git add tools; git commit -qm \"vendor the harness\"; node tools/task-state.mjs new fence-probe --risk-class runtime-code >/dev/null; node tools/task-state.mjs advance fence-probe planned >/dev/null; node tools/task-state.mjs scope fence-probe --add \"apps/**\" >/dev/null; node tools/task-state.mjs advance fence-probe executing >/dev/null; git checkout -qb feat; mkdir apps; echo ok > apps/ok.mjs; git add -A; git commit -qm \"feat: ok\n\ntask: fence-probe\"; git checkout -q master; git merge -q --no-ff --no-commit feat >/dev/null 2>&1; echo extra > apps/extra.mjs; git add -A; git commit -qm \"merge with content beyond both parents\"; BASE=$(git rev-parse HEAD~2); node tools/task-coverage.mjs --base \"$BASE\" >/dev/null 2>&1 && { echo \"EVIL MERGE PASSED THE FENCE\"; exit 1; }; echo \"evil merge refused\"; exit 0",
+      "exitCode": 1,
+      "outputDigest": "8a60e45bf387",
+      "seq": 4,
+      "parent_hash": "d760c33b320272fe42b949787defc3148171f977f3f4e075ff56c82cc3414603",
+      "entry_hash": "cdb176306fa525cd052b54a4b87961466ed3df0d91bb4105a52bbcdd276ad22c"
+    },
+    {
+      "at": "2026-09-19T06:03:18.585Z",
+      "type": "pin-retire",
+      "command": "S=/home/excelsior/Desktop/stallion/tools; A=$(mktemp -d); cd \"$A\"; git init -q -b master; git config user.email p@p; git config user.name p; echo base > base.txt; git add -A; git commit -qm \"orphan root with code, no footer\"; git checkout -q --orphan evil; mkdir -p apps; echo smuggle > apps/smuggled.mjs; git add apps; git commit -qm \"evil orphan: code, no footer\"; cp -r \"$S\" tools; node tools/task-coverage.mjs --base master >/dev/null 2>&1 && { echo \"ROOT SMUGGLE PASSED THE FENCE\"; exit 1; }; echo \"root smuggle refused\"; Y=$(mktemp -d); cd \"$Y\"; git init -q -b master; git config user.email p@p; git config user.name p; echo base > base.txt; git add -A; git commit -qm base; cp -r \"$S\" tools; git add tools; git commit -qm \"vendor the harness\"; node tools/task-state.mjs new fence-probe --risk-class runtime-code >/dev/null; node tools/task-state.mjs advance fence-probe planned >/dev/null; node tools/task-state.mjs scope fence-probe --add \"apps/**\" >/dev/null; node tools/task-state.mjs advance fence-probe executing >/dev/null; git checkout -qb feat; mkdir apps; echo ok > apps/ok.mjs; git add -A; git commit -qm \"feat: ok\n\ntask: fence-probe\"; git checkout -q master; git merge -q --no-ff --no-commit feat >/dev/null 2>&1; echo extra > apps/extra.mjs; git add -A; git commit -qm \"merge with content beyond both parents\"; BASE=$(git rev-parse HEAD~2); node tools/task-coverage.mjs --base \"$BASE\" >/dev/null 2>&1 && { echo \"EVIL MERGE PASSED THE FENCE\"; exit 1; }; echo \"evil merge refused\"; exit 0",
+      "justification": "the evil-merge half pinned the audited base one commit too low (HEAD~2 pulls the footer-less vendor commit into the range), so that assertion could be satisfied by the vendor refusal rather than the merge's own — re-recorded with the base AT the vendor commit so it binds to the merge",
+      "seq": 5,
+      "parent_hash": "cdb176306fa525cd052b54a4b87961466ed3df0d91bb4105a52bbcdd276ad22c",
+      "entry_hash": "df8759de124dbff4651bf667e8a2b9d006f4ee7fe66f5ee230e3a1f0fd77faeb"
+    },
+    {
+      "at": "2026-09-19T06:04:02.839Z",
+      "type": "red-check",
+      "command": "S=/home/excelsior/Desktop/stallion/tools; A=$(mktemp -d); cd \"$A\"; git init -q -b master; git config user.email p@p; git config user.name p; echo base > base.txt; git add -A; git commit -qm \"orphan root with code, no footer\"; git checkout -q --orphan evil; mkdir -p apps; echo smuggle > apps/smuggled.mjs; git add apps; git commit -qm \"evil orphan: code, no footer\"; cp -r \"$S\" tools; node tools/task-coverage.mjs --base master >/dev/null 2>&1 && { echo \"ROOT SMUGGLE PASSED THE FENCE\"; exit 1; }; echo \"root smuggle refused\"; Y=$(mktemp -d); cd \"$Y\"; git init -q -b master; git config user.email p@p; git config user.name p; echo base > base.txt; git add -A; git commit -qm base; cp -r \"$S\" tools; git add tools; git commit -qm \"vendor the harness\"; V=$(git rev-parse HEAD); node tools/task-state.mjs new fence-probe --risk-class runtime-code >/dev/null; node tools/task-state.mjs advance fence-probe planned >/dev/null; node tools/task-state.mjs scope fence-probe --add \"apps/**\" >/dev/null; node tools/task-state.mjs advance fence-probe executing >/dev/null; git checkout -qb feat; mkdir apps; echo ok > apps/ok.mjs; git add -A; git commit -qm \"feat: ok\n\ntask: fence-probe\"; git checkout -q master; git merge -q --no-ff --no-commit feat >/dev/null 2>&1; echo extra > apps/extra.mjs; git add -A; git commit -qm \"merge with content beyond both parents\"; node tools/task-coverage.mjs --base \"$V\" >/dev/null 2>&1 && { echo \"EVIL MERGE PASSED THE FENCE\"; exit 1; }; echo \"evil merge refused\"; exit 0",
+      "exitCode": 1,
+      "outputDigest": "8a60e45bf387",
+      "seq": 6,
+      "parent_hash": "df8759de124dbff4651bf667e8a2b9d006f4ee7fe66f5ee230e3a1f0fd77faeb",
+      "entry_hash": "dd3b76ddf0df6064695b3670cd0b88bc8ea4353cfe2ca14d63647d42bd3852c2"
+    },
+    {
+      "at": "2026-09-19T06:04:15.369Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 7,
+      "parent_hash": "dd3b76ddf0df6064695b3670cd0b88bc8ea4353cfe2ca14d63647d42bd3852c2",
+      "entry_hash": "022fe898f52e1bd9c57181ac202ea3c63285dd6f3441dea41f98a6037c23a501"
+    },
+    {
+      "at": "2026-09-19T06:05:46.306Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "022fe898f52e1bd9c57181ac202ea3c63285dd6f3441dea41f98a6037c23a501",
+      "entry_hash": "38ff798cfa602dc06931e4aeea93d0e386eff87cea3a43ee43ba2a9592851b18"
+    },
+    {
+      "at": "2026-09-19T06:05:46.801Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "38ff798cfa602dc06931e4aeea93d0e386eff87cea3a43ee43ba2a9592851b18",
+      "entry_hash": "e65f2c4f4d68590544fcb1503024304ae7d8d851171bc13dfd27bcf8c96ec79b"
+    }
+  ]
+}

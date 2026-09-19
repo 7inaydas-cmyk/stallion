@@ -1,0 +1,62 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "selftest-honesty",
+  "passStartedAt": "2026-09-19T05:57:43.478Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "the doctor's derived tool list catches fs errors into an empty array, so an unreadable tools/ directory passes the battery-completeness check vacuously — the same fail-open shape the task exists to kill (cmdStaged dies on unreadable state; this check must too)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:56:29.541Z",
+      "proof": "delete/chmod tools/ or force readdirSync failure: selfTestingTools=[] → missingSelfTests(script, [])=[] → check(true) — a gate that cannot read state passes; the sibling staged gate dies on exactly this class (tools/task-coverage.mjs:536-539)",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:736-742 (catch { return []; } feeds notrun=[] → check ok)",
+      "resolvedAt": "2026-09-19T05:57:34.821Z"
+    },
+    {
+      "id": "f2",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "the new check's fix text has an unreachable else branch (the generic 'add every tools/*.mjs' string can never display on failure — failure always carries the specific list); dead text in the escape's own repair",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:56:29.609Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:745-748 ternary: the else arm only evaluates when notrun.length===0, which is the passing branch",
+      "resolvedAt": "2026-09-19T05:57:34.857Z"
+    },
+    {
+      "id": "f3",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "no machine guard distinguishes a VACUOUS battery member from an omitted one: the doctor proves membership, not that the member prints/verifies anything, so a future early-return regression inside any single tool's selfTest again exits the battery green",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T05:56:29.645Z",
+      "evidence": "the repaired bug itself: adversarial-runner --self-test was a battery member the whole time (package.json selftest) and the battery stayed green",
+      "dedupKey": "the repaired bug itself: adversarial-runner --self-test was a battery member the whole time (package.json selftest) and the battery stayed green",
+      "justification": "membership is what a static doctor can prove; verifying a member is non-vacuous needs its OUTPUT, and counting OK lines inside the battery chain would change the chain's exit semantics every hook depends on — the pin re-runs at done, and output-level checking is registered future work alongside issue #11's archaeology",
+      "resolvedAt": "2026-09-19T05:57:34.894Z"
+    },
+    {
+      "id": "f4",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "a tools/*.mjs that only MENTIONS --self-test in a comment joins the derived list and the doctor refuses until the battery runs it — fail-closed friction by deliberate law reading",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T05:56:29.681Z",
+      "evidence": "tools/task-coverage.mjs:737 filter is substring-based, no execution check",
+      "dedupKey": "tools/task-coverage.mjs:737 filter is substring-based, no execution check",
+      "justification": "a tree file that mentions --self-test without implementing one is a lie in the repo; refusing until the battery runs it or the mention is removed is the fail-closed reading of the law, and the friction lands on the author of the lie",
+      "resolvedAt": "2026-09-19T05:57:34.930Z"
+    }
+  ],
+  "sweptBase": "c4017ce99c70362a40ba483a95aaaadfeec655b6",
+  "sweptHead": "66e5bdac7786d936a6537d5dc5929a6ee4519ce6",
+  "sweptDiffDigest": "8327badba231"
+}

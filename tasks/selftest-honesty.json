@@ -1,0 +1,76 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "selftest-honesty",
+  "title": "issue #16: adversarial-runner self-test fail-open + doctor battery-completeness derivation",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T05:54:05.007Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "278ceb30ca0a8d5833359b15e3315733cd1d583bff97fb60a95dc85ca00c11f6"
+    },
+    {
+      "at": "2026-09-19T05:54:05.042Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "278ceb30ca0a8d5833359b15e3315733cd1d583bff97fb60a95dc85ca00c11f6",
+      "entry_hash": "9812a6ce7a82a4c7b57433a0088bcf8e283c41a224f1bb67c08f740c79763c72"
+    },
+    {
+      "at": "2026-09-19T05:54:05.074Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "9812a6ce7a82a4c7b57433a0088bcf8e283c41a224f1bb67c08f740c79763c72",
+      "entry_hash": "60270e446a24c8c6cf8791c96453cc372f68468965e942c873e19e89def2ae14"
+    },
+    {
+      "at": "2026-09-19T05:54:05.109Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "60270e446a24c8c6cf8791c96453cc372f68468965e942c873e19e89def2ae14",
+      "entry_hash": "2bf8a15690075dd3bb0d2849b80dde2a00094762c55401fb15deb3470ced0b21"
+    },
+    {
+      "at": "2026-09-19T05:54:08.609Z",
+      "type": "red-check",
+      "command": "npm run selftest 2>&1 | grep -F \"adversarial-runner self-test: OK\"",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 4,
+      "parent_hash": "2bf8a15690075dd3bb0d2849b80dde2a00094762c55401fb15deb3470ced0b21",
+      "entry_hash": "6013b454ebd69849fd9207c45959c81ba3253d4d0267c425767f1ea4ed9c39a0"
+    },
+    {
+      "at": "2026-09-19T05:55:23.033Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "6013b454ebd69849fd9207c45959c81ba3253d4d0267c425767f1ea4ed9c39a0",
+      "entry_hash": "7c063a3676609677f65b6b4ae7cd233eeb0b6c6754a806ac67d960d82f880749"
+    },
+    {
+      "at": "2026-09-19T05:57:43.563Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "7c063a3676609677f65b6b4ae7cd233eeb0b6c6754a806ac67d960d82f880749",
+      "entry_hash": "02df5f0d030fa3a3f185ad8a0157008e9abade6b2c1d26b3acb91a4acbeb76e1"
+    },
+    {
+      "at": "2026-09-19T05:57:44.908Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "02df5f0d030fa3a3f185ad8a0157008e9abade6b2c1d26b3acb91a4acbeb76e1",
+      "entry_hash": "a086a7108c53812cdebf5c415186ff9f1204a442961c6b402b78997097481e50"
+    }
+  ]
+}

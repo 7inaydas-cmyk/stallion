@@ -1,0 +1,35 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "fence-root-blindness",
+  "passStartedAt": "2026-09-19T06:04:15.426Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "the ordinary-merge false-positive half of this fix (merges of already-footered branches must PASS) carries no machine pin: the recorded pin spends its discriminating RED on the two refusal halves (root smuggle, evil merge), and the pass-half was only ever red before the fix, when no pin was recorded",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T06:05:27.114Z",
+      "proof": "a regression that re-flags ordinary merges would pass every recorded check: the pin asserts refusals that would still hold, the battery never runs checkRange, and CI's fence step only audits this repo's own linear history — nothing machine-verifies 'a legal merge passes' until a real merge push happens",
+      "evidence": "tasks/fence-root-blindness.json pin command vs tools/task-coverage.mjs filesIntroducedBy — the pass scenario lives only in the wave transcript (scratch repos, exit codes shown)",
+      "dedupKey": "tasks/fence-root-blindness.json pin command vs tools/task-coverage.mjs filesintroducedby — the pass scenario lives only in the wave transcript (scratch repos, exit codes shown)",
+      "justification": "the pass-half's discriminating RED existed only before the fix, when no pin was recorded; the standing proof is now production evidence — the in-tree merge of the remote README edit is judged clean by the fence from the committed adoption base (run this wave, exit 0). Machine-pinning the pass-half belongs with checkRange's absent battery coverage, already registered future work.",
+      "resolvedAt": "2026-09-19T06:05:46.180Z"
+    },
+    {
+      "id": "f2",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "the octopus-merge intersection path (lists.every containment across 3+ parents) is verified by review only — no live probe was built for it",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T06:05:27.155Z",
+      "evidence": "tools/task-coverage.mjs filesIntroducedBy multi-parent branch",
+      "dedupKey": "tools/task-coverage.mjs filesintroducedby multi-parent branch",
+      "justification": "the octopus intersection is three lines of containment over per-parent diffs, review-verified against the two-parent live probes on both sides (refuse beyond-parents, pass ordinary); this repo and its CI history contain no octopus merges, and a live probe would pin git plumbing rather than law",
+      "resolvedAt": "2026-09-19T06:05:46.220Z"
+    }
+  ],
+  "sweptBase": "66e5bdac7786d936a6537d5dc5929a6ee4519ce6",
+  "sweptHead": "b871c6a1b700135438b317b9225e67544de1d556",
+  "sweptDiffDigest": "ca3246992d3f"
+}

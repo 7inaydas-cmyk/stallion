@@ -1,0 +1,76 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "bench-kit-repairs",
+  "title": "issue #18: bench kit — scripts.test module filename, live killed verdict, dead replace, entry URLs",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T06:06:41.938Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "1a6e6c73134aebb996f935d3799e33527a92ce7893460f76d54570c4f9e4322c"
+    },
+    {
+      "at": "2026-09-19T06:06:41.993Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "1a6e6c73134aebb996f935d3799e33527a92ce7893460f76d54570c4f9e4322c",
+      "entry_hash": "26f96390c59f134156c80fe70db2d2a17e38b241969c92c2c420689fc18bbf46"
+    },
+    {
+      "at": "2026-09-19T06:06:42.039Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "26f96390c59f134156c80fe70db2d2a17e38b241969c92c2c420689fc18bbf46",
+      "entry_hash": "46fe70dd29f4000bf6ff2dc9b534ce752993a4d6a8510ce13958379adc6aedb9"
+    },
+    {
+      "at": "2026-09-19T06:06:42.080Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "46fe70dd29f4000bf6ff2dc9b534ce752993a4d6a8510ce13958379adc6aedb9",
+      "entry_hash": "b7aec855b00f704f1d666bb1a1324ecacaf0ff3a9ec797aed1d1322ada398140"
+    },
+    {
+      "at": "2026-09-19T06:06:42.119Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); node tools/bench/setup.mjs treatment chunk-generator \"$D\" >/dev/null && cd \"$D\" && npm test 2>&1 | grep -q \"^not ok \"",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 4,
+      "parent_hash": "b7aec855b00f704f1d666bb1a1324ecacaf0ff3a9ec797aed1d1322ada398140",
+      "entry_hash": "33aaa0a4dc7e653c53c06268938599d4d0ef65ee22be98e4356cf8ba5876d156"
+    },
+    {
+      "at": "2026-09-19T06:07:19.400Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "33aaa0a4dc7e653c53c06268938599d4d0ef65ee22be98e4356cf8ba5876d156",
+      "entry_hash": "eae97205bfac407c74d0bb22d40e17ef557663d62b0fc0c1dbd8dccf4b014d90"
+    },
+    {
+      "at": "2026-09-19T06:08:14.883Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "eae97205bfac407c74d0bb22d40e17ef557663d62b0fc0c1dbd8dccf4b014d90",
+      "entry_hash": "dd1bf2e21230f94a3316d58b7c6db419cd39b0b84ad854683c4c6f6c49ee7363"
+    },
+    {
+      "at": "2026-09-19T06:08:15.261Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "dd1bf2e21230f94a3316d58b7c6db419cd39b0b84ad854683c4c6f6c49ee7363",
+      "entry_hash": "3fbd199992329fed7b84a242715bdcd878a0a476e61acedf7191ae604cffd5a3"
+    }
+  ]
+}
