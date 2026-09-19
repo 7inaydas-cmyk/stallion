@@ -31,6 +31,8 @@ remembered.
 - `planning-only` and `experiment` tasks never reach `executing`.
 - `protected` and `migration` tasks carry an approval whose reference literally equals an entry
   heading in the decisions register. A substring is not a decision.
+- `verified` runs the WHOLE selftest battery at the boundary (checks land once at the phase,
+  not per edit — ECC's stop-time batching): a red tool blocks the phase with its failing lines.
 - `verified` requires a command pin: `red-check --command "<the failing check>"` RUNS the
   command, refuses if it passes, and records the command, its nonzero exit, and an output
   digest. Path evidence supplements but never substitutes; a task that cannot carry a runnable
@@ -72,6 +74,16 @@ remembered.
   refute bundles carry the refutation contract: refute only by affirmative demonstration;
   uncertainty never clears a blocker; returning zero findings is valid — manufactured findings
   are the primary failure mode of LLM reviewers.
+
+## The handoff report
+
+`node tools/task-state.mjs handoff <id>` machine-generates the evidence-graded handoff (ECC's
+save-session shape) from the record and the register: WORKED with evidence (pins labeled
+truthfully — RED-recorded until the done gate re-runs them — and resolved findings whose
+evidence still exists), FAILED with exact reasons (retired pins and wont-fix justifications,
+verbatim and flattened so client text cannot forge sections), NOT TRIED (unresolved findings,
+vanished evidence, unmet obligations). No free text enters it that the tools did not already
+require somewhere.
 
 ## Commands
 

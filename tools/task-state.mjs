@@ -305,9 +305,10 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, res
   return { ok: true };
 }
 
-/** What blocks the next transition, computed from the SAME facts `advance` will check (the one
- *  exception: `advance done` re-runs command pins, which a status read must not do — status
- *  reports that the re-run WILL happen instead). */
+/** What blocks the next transition, computed from the SAME facts `advance` will check. The
+ *  exceptions are the runs advance performs and a status read must not: `advance done` re-runs
+ *  command pins, `advance verified` runs the selftest battery — status reports that each WILL
+ *  happen instead (a sweep caught the silent fail-open before the note existed). */
 export function obligations(record, findings, evidenceOnDisk) {
   const current = derivePhase(record.events);
   if (current === "done") return ["done — reopen as a new task if more work is needed"];
@@ -315,6 +316,9 @@ export function obligations(record, findings, evidenceOnDisk) {
   const verdict = evaluateTransition(record, findings, target, evidenceOnDisk);
   if (verdict.ok && target === "done") {
     return [`advance to ${target} is unblocked`, `done will re-run ${commandPins(record).length} command pin(s) — each must pass`];
+  }
+  if (verdict.ok && target === "verified" && derivePhase(record.events) === "executing") {
+    return [`advance to ${target} is unblocked`, `verified will run the WHOLE selftest battery — every tool must be green`];
   }
   return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason, `fix: ${verdict.remedy}`];
 }
@@ -326,27 +330,41 @@ export function obligations(record, findings, evidenceOnDisk) {
  * 'didn't work' is not"), NOT TRIED (unresolved findings, unmet obligations). No free text
  * enters it that the tools did not already require somewhere.
  */
-export function handoffReport(record, findings) {
+/** Client text is FLATTENED (newlines become ⏎) — a justification or claim cannot forge
+ *  section headings in the machine's voice (a sweep caught exactly that injection). */
+function flat(text) {
+  return String(text ?? "").replace(/[\r\n]+/g, " ⏎ ");
+}
+
+export function handoffReport(record, findings, evidenceOnDisk = true, resolveEvidenceMissing = []) {
+  const phase = derivePhase(record.events);
   const pins = commandPins(record);
   const retired = record.events.filter((e) => e.type === "pin-retire");
   const resolved = (findings?.findings ?? []).filter((f) => f.status === "RESOLVED");
   const wont = (findings?.findings ?? []).filter((f) => f.status === "WONT-FIX");
   const unresolved = (findings?.findings ?? []).filter((f) => f.status === "UNRESOLVED");
-  const obligationsLeft = obligations(record, findings, true).filter((o) => !o.startsWith("advance to"));
+  const obligationsLeft = obligations(record, findings, evidenceOnDisk).filter((o) => !o.startsWith("advance to"));
+  const missing = new Set(resolveEvidenceMissing.map((m) => m.split(":")[0]));
   const lines = [
-    `# Handoff — ${record.id} (${derivePhase(record.events)}, ${record.riskClass})`,
+    `# Handoff — ${record.id} (${phase}, ${record.riskClass})`,
     "",
     "## WORKED (with evidence)",
-    ...(pins.length > 0 ? pins.map((p) => `- pin GREEN at done: ${JSON.stringify(p.command)} (exit ${p.exitCode}, digest ${p.outputDigest})`) : ["- (no command pins recorded)"]),
-    ...resolved.map((f) => `- finding ${f.id} RESOLVED — ${(f.evidence ?? []).join(", ")}`),
+    ...(pins.length > 0
+      ? pins.map((p) => phase === "done"
+        ? `- pin GREEN at done: ${flat(p.command)} (re-run passed the done gate)`
+        : `- pin recorded RED (exit ${p.exitCode}, digest ${p.outputDigest}): ${flat(p.command)} — re-runs and must be GREEN at done`)
+      : ["- (no command pins recorded)"]),
+    ...resolved.filter((f) => !missing.has(f.id)).map((f) => `- finding ${f.id} RESOLVED — ${(f.evidence ?? []).map(flat).join(", ")}`),
     "",
     "## FAILED (exact reasons)",
-    ...retired.map((e) => `- pin retired (${JSON.stringify(e.command)}): ${e.justification}`),
-    ...wont.map((f) => `- finding ${f.id} WONT-FIX: ${f.justification}`),
+    ...retired.map((e) => `- pin retired (${flat(e.command)}): ${flat(e.justification)}`),
+    ...wont.map((f) => `- finding ${f.id} WONT-FIX: ${flat(f.justification)}`),
     "",
     "## NOT TRIED",
-    ...unresolved.map((f) => `- finding ${f.id} (${f.severity}): ${f.claim}`),
-    ...obligationsLeft.map((o) => `- obligation: ${o}`),
+    ...unresolved.map((f) => `- finding ${f.id} (${f.severity}): ${flat(f.claim)}`),
+    ...[...missing].map((id) => `- finding ${id} RESOLVED but its evidence no longer exists — re-resolve with live paths`),
+    ...obligationsLeft.map((o) => `- obligation: ${flat(o)}`),
+    ...(phase !== "done" ? ["- (the task is not done: the done gate re-runs every pin and re-verifies resolve evidence)"] : []),
   ];
   return lines.join("\n");
 }
@@ -594,6 +612,9 @@ function cmdAdvance(args) {
     if (run.exitCode !== 0) {
       batteryGreen = false;
       batteryOutput = run.output.split("\n").filter((l) => /FAILED|Error/.test(l)).slice(0, 3).join(" | ");
+      die(`REFUSED — the selftest battery is not green (exit ${run.exitCode}) — verification runs the whole battery at the phase boundary
+  evidence: ${batteryOutput || "(no FAILED lines captured — run npm run selftest)"}
+  fix: npm run selftest   — fix every failing tool, then advance`);
     }
   }
   if (target === "done" && derivePhase(loadTask(id).events) === "adversarial") {
@@ -628,7 +649,11 @@ function cmdHandoff(args) {
   const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
   if (!ok) die(error);
   if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-  console.log(handoffReport(record, ok ? register : null));
+  // Real fs facts, the same ones advance judges with — a handoff that assumes the disk
+  // understates what remains (a sweep caught the stubbed-true version).
+  const onDisk = redCheckEvidence(record).every(evidencePathIsFile);
+  const missing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
+  console.log(handoffReport(record, ok ? register : null, onDisk, missing));
 }
 
 function cmdStatus(args) {
@@ -709,7 +734,7 @@ export function selfTest() {
     ["a recorded pin exemption substitutes for the command pin", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }, { type: "pin-exemption", justification: "cannot re-run in this env" }] }, null, "verified", true).ok],
     ["a forged pin with exit 0 is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "true", exitCode: 0, outputDigest: "x" }] }, null, "verified", true).ok],
     ["a killed pin (null exit) is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "hang", exitCode: null, outputDigest: "x" }] }, null, "verified", true).ok],
-    ["a red battery blocks verified at the boundary", !evaluateTransition(at(executing, "executing"), null, "verified", true, [], [], false).ok],
+    ["a red battery blocks verified even WITH a valid pin (the discriminating form)", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, [], [], false).ok],
     ["a green battery lets verified proceed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, [], [], true).ok],
     ["verified with vanished evidence refused", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["gone.test.ts"] }] }, null, "verified", false).ok],
     ["done without findings register refused", !evaluateTransition(adversarial, null, "done", true).ok],
@@ -720,7 +745,7 @@ export function selfTest() {
     ["done is terminal", !evaluateTransition(at(adversarial, "done"), cleanFindings, "verified", true).ok],
     ["unknown phase refused", !evaluateTransition(base, null, "shipped", true).ok],
   ];
-  for (const [name, passes] of cases) if (!passes) fail(`task-state: ${name}`);
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
 
   const remedyCases = [
     ["illegal jump names the legal next step", evaluateTransition(base, null, "executing", true).remedy?.includes("advance t planned")],
@@ -737,7 +762,7 @@ export function selfTest() {
       return !evaluateTransition(withPin, null, "verified", true).ok && evaluateTransition(adversarial, cleanFindings, "done", true, [], []).ok;
     })()],
   ];
-  for (const [name, passes] of remedyCases) if (!passes) fail(`task-state: ${name}`);
+  for (const [n, passes] of remedyCases) if (!passes) fail(`task-state: ${n}`);
 
   const scopeCases = [
     ["scopeOf unions scope events in first-declared order", JSON.stringify(scopeOf({ events: [{ type: "scope", patterns: ["tools/**"] }, { type: "transition", to: "planned" }, { type: "scope", patterns: [".githooks/*", "tools/**"] }] })) === JSON.stringify(["tools/**", ".githooks/*"])],
@@ -769,7 +794,9 @@ export function selfTest() {
           { id: "f2", severity: "LOW", status: "WONT-FIX", claim: "b", justification: "boundary recorded" },
         ],
       });
-      return r.includes("WORKED (with evidence)") && r.includes("FAILED (exact reasons)") && r.includes("boundary recorded") && r.includes("NOT TRIED");
+      return r.includes("WORKED (with evidence)") && r.includes("FAILED (exact reasons)") && r.includes("boundary recorded") && r.includes("NOT TRIED")
+        && r.includes("pin recorded RED (exit 1") && !r.includes("GREEN at done: \"npm test\"")  // truthful pre-done labels
+        && (r.match(/\n## /g) ?? []).length === 3;  // exactly the machine headings — flattened client text cannot add any
     })()],
     ["an undated record MUST chain (fail closed)", recordMustChain({ events: [{ type: "created" }] }) === true],
     ["a pre-cutover record is chain-grandfathered", recordMustChain({ events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }] }) === false],
@@ -789,9 +816,9 @@ export function selfTest() {
     ["non-surface scope never trips the tier law", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, ["tools/**", "docs/*"]) === null],
     ["the tier refusal carries the protected-task fix", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, [".githooks/**"]).remedy?.includes("--risk-class protected")],
   ];
-  for (const [name, passes] of scopeCases) if (!passes) fail(`task-state: ${name}`);
+  for (const [n, passes] of scopeCases) if (!passes) fail(`task-state: ${n}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy + 26 scope cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

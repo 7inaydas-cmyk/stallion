@@ -41,8 +41,9 @@ Code in this repo is written under the stallion task lifecycle.
 - Commits that touch code carry a `task: <id>` footer on its own line, last paragraph.
 - Every task declares its blast radius at `planned`: `node tools/task-state.mjs scope <id> --add
   "tools/**"` — code commits outside the declared scope are refused at commit time and at push.
-- `verified` needs a command pin: `red-check --command "<the failing check>"`; `done` needs a
-  clean adversarial pass and every pin re-run GREEN.
+- `verified` needs a command pin AND a green whole-battery run (`advance verified` runs
+  `npm run selftest` at the boundary); `done` needs a clean adversarial pass and every pin
+  re-run GREEN; `task-state handoff <id>` prints the evidence-graded handoff.
 - Refusals print the exact fix command. Run it. Do not work around a refusal.
 - Self-check the wiring: `node tools/task-coverage.mjs --doctor`
 ```

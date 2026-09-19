@@ -128,7 +128,7 @@ export function appendFinding(register, { id, lane, severity, claim, proof, evid
     ...register,
     findings: [
       ...register.findings,
-      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}), ...(evidence ? { evidence } : {}) },
+      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}), ...(evidence ? { evidence } : {}), dedupKey: normalizedEvidenceOf({ claim, evidence }) },
     ],
   };
   const error = validateFindings(candidate);
@@ -230,6 +230,11 @@ function selfTestDedup(fail) {
   if (duplicateEvidenceOf(first, { evidence: "tools/a.mjs:2" }) !== null) fail("task-findings: distinct evidence must not collide");
   if (duplicateEvidenceOf(first, { claim: "Tools/A.MJS:1" }) !== "f1") fail("task-findings: with no evidence field, the normalized claim is the dedup key");
   if (duplicateEvidenceOf(first, {}) !== null) fail("task-findings: an empty finding collides with nothing");
+  const resolved = setFindingStatus(first, "f1", { status: "RESOLVED", evidence: ["fix.test.ts"] });
+  if (typeof resolved === "string") { fail(`task-findings: resolve fixture refused (${resolved})`); return; }
+  if (duplicateEvidenceOf(resolved, { evidence: "tools/a.mjs:1" }) !== "f1") fail("task-findings: the dedup key must SURVIVE the resolve (the array evidence must not degrade it to the claim)");
+  const claimKeyed = appendFinding(base, { id: "f2", lane: 1, severity: "LOW", claim: "stored has no evidence" });
+  if (duplicateEvidenceOf(claimKeyed, { claim: "Stored Has No Evidence" }) !== "f2") fail("task-findings: a stored finding recorded without evidence dedups on its normalized claim");
 }
 
 function selfTestChain(fail) {
@@ -261,8 +266,10 @@ function selfTestProofLaw(fail) {
 /** The dedup key (ECC's orch-review lesson: dedup on normalized EVIDENCE, not titles or
  *  line-adjacent claims — 11 raw findings collapsed to 4 unique halves verifier spend). */
 export function normalizedEvidenceOf(finding) {
-  const key = typeof finding?.evidence === "string" && finding.evidence.trim() ? finding.evidence : typeof finding?.claim === "string" ? finding.claim : "";
-  return key.toLowerCase().replace(/\s+/g, " ").trim();
+  const raw = typeof finding?.dedupKey === "string" && finding.dedupKey.trim()
+    ? finding.dedupKey
+    : typeof finding?.evidence === "string" && finding.evidence.trim() ? finding.evidence : typeof finding?.claim === "string" ? finding.claim : "";
+  return raw.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /** Pure: does a candidate finding duplicate one already in the register? Returns the existing
