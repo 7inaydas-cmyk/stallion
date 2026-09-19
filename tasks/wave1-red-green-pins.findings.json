@@ -154,7 +154,7 @@
       "claim": "the wave's only surviving pin is the tool's own self-test: the harness grading itself, circular for self-changes",
       "status": "WONT-FIX",
       "recordedAt": "2026-09-18T20:26:30.009Z",
-      "justification": "harness self-changes can only pin their own battery; the pin did discriminate (exit 1 pre-fix, 0 post-fix) and Antitube tasks pin real suites. Circular-but-honest is the documented boundary.",
+      "justification": "harness self-changes can only pin their own battery; the pin did discriminate (exit 1 pre-fix, 0 post-fix) and host-repo tasks pin real suites. Circular-but-honest is the documented boundary.",
       "resolvedAt": "2026-09-18T20:26:30.692Z"
     },
     {

@@ -12,7 +12,7 @@ _Avoid_: calling any part of it product infrastructure, runtime, or internals of
 target repo.
 
 **Target repo**:
-The repository whose code is written under the harness (currently Antitube). The
+The repository whose code is written under the harness (the private host repo). The
 harness is vendored into its tree but ships nothing into the product and replaces
 none of the target repo's own machinery.
 _Avoid_: "the project" used alone — it ambiguously names either the harness or the
