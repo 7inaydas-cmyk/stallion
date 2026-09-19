@@ -12,9 +12,12 @@ rules out of the prompt and into tools that say no.
 
 `task-state` records each task as an event log and moves it through six phases: intake, planned,
 executing, verified, adversarial, done. The record is a JSON file under `tasks/`. Phase is
-derived from the events, never stored, so history cannot be quietly rewritten — and every event
-is hash-chained (seq, parent hash, entry hash over canonical JSON), so a hand edit is not just
-visible in git, it breaks the chain the tools refuse to append to.
+derived from the events, never stored, so history cannot be quietly rewritten — and records
+created since the chain cutover are hash-chained (seq, parent hash, entry hash over canonical
+JSON): a hand edit to one is not just visible in git, it breaks the chain the tools refuse to
+append to. Records predating the cutover are grandfathered; their integrity law remains the
+git-history boundary (a backdated creation stamp on a wholly forged record is that boundary's
+known edge).
 
 The interesting part is what it refuses:
 

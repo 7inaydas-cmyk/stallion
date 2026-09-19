@@ -51,7 +51,7 @@ function shapeError(f) {
   if (id) return id;
   if (f.lane !== null && f.lane !== undefined && (!Number.isInteger(f.lane) || f.lane < 1)) return `finding ${f.id}: lane must be a positive integer or null`;
   if (!SEVERITIES.includes(f.severity)) return `finding ${f.id}: unknown severity ${String(f.severity)}`;
-  if ((f.severity === "CRITICAL" || f.severity === "HIGH") && typeof f.proof !== "string" && f.recordedAt >= PROOF_CUTOVER) {
+  if ((f.severity === "CRITICAL" || f.severity === "HIGH") && typeof f.proof !== "string" && owesProof(f)) {
     return `finding ${f.id}: ${f.severity} owes a proof (evidence + a concrete failure scenario) — enforce it in the schema, not only in the prompt`;
   }
   if (typeof f.proof === "string" && f.proof.trim().length === 0) return `finding ${f.id}: an empty proof is not a proof`;
@@ -110,13 +110,25 @@ export function aggregateFindings(register) {
   return { total: register.findings.length, unresolved: by.UNRESOLVED, resolved: by.RESOLVED, wontFix: by["WONT-FIX"], clean: by.UNRESOLVED === 0 };
 }
 
+/**
+ * Pure: does this finding owe a proof? The cutover stamp is parsed with the same fail-closed
+ * strictness as every other cutover law — a missing, malformed, or offset-spelled recordedAt
+ * OWES the proof (the forge case is the case that must not escape; an earlier version compared
+ * lexicographically and failed open on exactly this class).
+ */
+export function owesProof(f) {
+  if (typeof f.recordedAt !== "string") return true;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(f.recordedAt)) return true;
+  return Date.parse(f.recordedAt) >= Date.parse(PROOF_CUTOVER);
+}
+
 /** Pure append. Returns a NEW register; refuses (returns a string) instead of mutating on bad input. */
-export function appendFinding(register, { id, lane, severity, claim, proof }) {
+export function appendFinding(register, { id, lane, severity, claim, proof, evidence }) {
   const candidate = {
     ...register,
     findings: [
       ...register.findings,
-      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}) },
+      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}), ...(evidence ? { evidence } : {}) },
     ],
   };
   const error = validateFindings(candidate);
@@ -174,9 +186,9 @@ function selfTestValidate(fail) {
 
 function selfTestAppendResolve(fail) {
   const base = emptyFindings("self-test");
-  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "dead wiring claimed fixed" });
+  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "dead wiring claimed fixed", proof: "fixture proof: pinned so the battery never depends on the wall clock" });
   if (typeof appended === "string") fail(`task-findings: appendFinding refused a good finding (${appended})`);
-  const dupAppend = appendFinding(appended, { id: "f1", lane: 3, severity: "HIGH", claim: "again" });
+  const dupAppend = appendFinding(appended, { id: "f1", lane: 3, severity: "HIGH", claim: "again", proof: "fixture" });
   if (typeof dupAppend !== "string") fail("task-findings: appendFinding accepted a duplicate id");
   let agg = aggregateFindings(appended);
   if (agg.clean || agg.unresolved !== 1) fail("task-findings: one UNRESOLVED finding must not aggregate clean");
@@ -229,6 +241,10 @@ function selfTestProofLaw(fail) {
   if (validateFindings({ ...emptyFindings("t"), findings: [{ ...post, proof: "file:line + the input that breaks it" }] }) !== null) fail("task-findings: a CRITICAL finding with proof must validate");
   if (validateFindings({ ...emptyFindings("t"), findings: [{ ...post, severity: "LOW" }] }) !== null) fail("task-findings: a LOW finding does not owe proof");
   if (validateFindings({ ...emptyFindings("t"), findings: [pre] }) !== null) fail("task-findings: a pre-cutover finding is grandfathered without proof");
+  if (!owesProof({ severity: "CRITICAL" })) fail("task-findings: a finding with NO recordedAt owes a proof (fail closed)");
+  if (!owesProof({ severity: "CRITICAL", recordedAt: 123 })) fail("task-findings: a non-string recordedAt owes a proof (fail closed)");
+  if (!owesProof({ severity: "CRITICAL", recordedAt: "2026-09-18T23:00:00.000-05:00" })) fail("task-findings: an offset-spelled post-cutover stamp owes a proof (fail closed)");
+  if (owesProof({ severity: "CRITICAL", recordedAt: "2026-09-17T00:00:00.000Z" })) fail("task-findings: a strict-Z pre-cutover stamp is grandfathered");
 }
 
 /**
@@ -248,7 +264,7 @@ export function missingResolveEvidence(register, existsFn) {
 
 function selfTestResolveEvidence(fail) {
   const base = emptyFindings("self-test");
-  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "x" });
+  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "x", proof: "fixture" });
   if (typeof appended === "string") fail(`task-findings: evidence fixture append refused (${appended})`);
   const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["gone.test.ts"] });
   if (typeof resolved === "string") fail(`task-findings: evidence fixture resolve refused (${resolved})`);
@@ -423,7 +439,7 @@ if (isEntry && process.argv.includes("--self-test")) {
     const failures = [];
     selfTestFindings((m) => failures.push(m));
     await selfTestConcurrentWriters((m) => failures.push(m));
-    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation + 9 chain + 4 proof cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
+    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation + 9 chain + 8 proof cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
     process.exit(failures.length === 0 ? 0 : 1);
   })();
 }

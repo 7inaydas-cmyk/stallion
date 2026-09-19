@@ -58,6 +58,10 @@ export const SCOPE_LAW_CUTOVER = "2026-09-18T20:50:00.000Z";
  *  records; the one record created inside the implementation window is blessed by the explicit,
  *  recorded `adopt-chain` command. Earlier records are grandfathered. */
 export const CHAIN_CUTOVER = "2026-09-19T02:45:00.000Z";
+/** The adoption window's end (the law's ship commit, fa4071c, 03:10Z): no record created after
+ *  this may EVER be adopted. The bound is what keeps adopt-chain from laundering later
+ *  forgeries — it exists for records born inside the implementation window, and only those. */
+export const ADOPT_WINDOW_END = "2026-09-19T03:10:00.000Z";
 export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
 /** The taxonomy is defined HERE and imported by every other tool (issue #1): one law, no drift. */
@@ -425,24 +429,43 @@ function cmdScope(args) {
   console.log(`task ${id}: scope amended (append-only) — ${scopeOf(written).length} pattern(s) declared in total: ${scopeOf(written).join(", ")}`);
 }
 
+/** Pure: is this record adoptable? The window is BOUNDED — created in [CHAIN_CUTOVER,
+ *  ADOPT_WINDOW_END] — so a later hand-forgery can never be blessed; done is terminal; a
+ *  record that already carries a chain is once-only. Everything judges the locked snapshot. */
+export function adoptionRefusal(record) {
+  const created = recordCreatedAt(record);
+  const strict = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(created);
+  if (!strict || Date.parse(created) < Date.parse(CHAIN_CUTOVER)) {
+    return `record predates the chain cutover (${CHAIN_CUTOVER}) — grandfathered, nothing to adopt`;
+  }
+  if (Date.parse(created) > Date.parse(ADOPT_WINDOW_END)) {
+    return `record was created after the adoption window closed (${ADOPT_WINDOW_END}) — the chain law has shipped, so an unchained record born now is a hand-forgery, not a window artifact; adoption refuses`;
+  }
+  if (derivePhase(record.events) === "done") return "done is terminal — a finished record is not rewritten, even to be blessed";
+  if (record.events.some((e) => typeof e.entry_hash === "string")) return "record already carries a chain — adoption is a once-only act";
+  return null;
+}
+
 /**
  * Bless the one record created inside the chain law's implementation window (created
  * post-cutover, before the stamping code existed). Stamps every existing event and appends a
- * recorded `chain-adopt` marker — the adoption is itself a chained event, visible forever.
- * Pre-cutover records are grandfathered and refuse adoption; done records are terminal.
+ * recorded `chain-adopt` marker — the adoption is itself a chained event, visible forever. The
+ * read, the judgment, and the write all happen INSIDE the lock (a load outside the lock is the
+ * lost-update bug this file's own header refuses).
  */
 function cmdAdoptChain(args) {
   const id = args._[0];
   if (!id) die("usage: adopt-chain <id>");
   const path = taskPath(id);
-  const record = parseTaskRecord(existsSync(path) ? readFileSync(path, "utf8") : null, id, path);
-  if (!recordMustChain(record)) die(`task ${id} was created before the chain cutover (${CHAIN_CUTOVER}) — grandfathered, nothing to adopt`);
-  if (derivePhase(record.events) === "done") die("done is terminal — a finished record is not rewritten, even to be blessed");
-  if (record.events.some((e) => typeof e.entry_hash === "string")) die(`task ${id} already carries a chain — adoption is a once-only act`);
-  mutateJson(taskPath(id), () => ({ ...record, events: chainStampEvents([...record.events, { at: new Date().toISOString(), type: "chain-adopt" }]) }));
-  const check = chainError(loadTask(id).events);
-  if (check) die(`adoption produced an invalid chain (${check}) — the record is unchanged in git; investigate`);
-  console.log(`task ${id}: chain adopted — ${loadTask(id).events.length} events stamped, adoption recorded`);
+  const written = mutateJson(path, (text) => {
+    const record = parseTaskRecord(text, id, path);
+    const refusal = adoptionRefusal(record);
+    if (refusal) die(`REFUSED — ${refusal}`);
+    return { ...record, events: chainStampEvents([...record.events, { at: new Date().toISOString(), type: "chain-adopt" }]) };
+  });
+  const check = chainError(written.events);
+  if (check) die(`adoption produced an invalid chain (${check}) — investigate`);
+  console.log(`task ${id}: chain adopted — ${written.events.length} events stamped, adoption recorded`);
 }
 
 const PIN_COMMAND_TIMEOUT_MS = 300_000;
@@ -677,6 +700,11 @@ export function selfTest() {
     ["a pre-cutover record is chain-grandfathered", recordMustChain({ events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }] }) === false],
     ["a post-cutover record must chain", recordMustChain({ events: [{ type: "created", at: "2026-09-19T03:00:00.000Z" }] }) === true],
     ["an offset-spelled stamp fails closed for chains", recordMustChain({ events: [{ type: "created", at: "2026-09-18T20:00:00.000-05:00" }] }) === true],
+    ["a window record is adoptable", adoptionRefusal({ events: [{ type: "created", at: "2026-09-19T02:50:00.000Z" }] }) === null],
+    ["a post-window record can NEVER be adopted (the laundering bound)", adoptionRefusal({ events: [{ type: "created", at: "2026-09-19T05:00:00.000Z" }] }) !== null],
+    ["a pre-cutover record refuses adoption", adoptionRefusal({ events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }] }) !== null],
+    ["an already-chained record refuses adoption", adoptionRefusal({ events: [{ type: "created", at: "2026-09-19T02:50:00.000Z", entry_hash: "a".repeat(64) }] }) !== null],
+    ["the post-window refusal names the forgery reading", adoptionRefusal({ events: [{ type: "created", at: "2026-09-19T05:00:00.000Z" }] }).includes("hand-forgery")],
     ["globRefusal refuses a first segment of '**' (covers everything)", globRefusal("**/*") !== null],
     ["globRefusal refuses a first segment of bare '*' (covers everything)", globRefusal("*/**") !== null],
     ["globRefusal accepts a named first segment with wildcards", globRefusal("tool*/*.mjs") === null],

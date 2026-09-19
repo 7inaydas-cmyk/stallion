@@ -214,7 +214,7 @@ function cmdPrepare(args) {
 
 function cmdRecord(args) {
   const id = args._[0];
-  if (!id) die("usage: record <task-id> --lane <n> --severity <S> --claim <text>");
+  if (!id) die("usage: record <task-id> --lane <n> --severity <S> --claim <text> [--proof <scenario>] [--evidence <file:line or command output>]");
   requireTask(id);
   const lane = Number(args.lane);
   if (!Number.isInteger(lane) || lane < 1) die("record requires --lane <n> (the checklist escape class)");
@@ -240,7 +240,7 @@ function cmdRecord(args) {
   // collides with the sibling writer that already appended.
   const next = mutateJson(findingsPath(id), (text) => {
     const register = parseRegisterForWrite(text, id);
-    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...(typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {}) });
+    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...(typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {}), ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
     if (typeof appended === "string") die(appended);
     return appended;
   });
@@ -310,7 +310,11 @@ function cmdVerdict(args) {
   console.log(`task ${id}: ${agg.total} finding(s) — ${agg.unresolved} UNRESOLVED, ${agg.resolved} RESOLVED, ${agg.wontFix} WONT-FIX`);
   const swept = sweptRangeLine(register);
   if (swept) console.log(`  ${swept}`);
-  for (const f of register.findings) console.log(`  [${f.status}] ${f.id} (lane ${f.lane ?? "?"}, ${f.severity}): ${f.claim}`);
+  for (const f of register.findings) {
+    console.log(`  [${f.status}] ${f.id} (lane ${f.lane ?? "?"}, ${f.severity}): ${f.claim}`);
+    if (f.evidence) console.log(`      evidence: ${f.evidence}`);
+    if (f.proof) console.log(`      proof: ${f.proof}`);
+  }
   if (!agg.clean) {
     console.error("adversarial-runner: verdict FAIL — resolve or wont-fix every finding");
     for (const f of register.findings) {
@@ -373,7 +377,7 @@ function selfTestBundle(fail) {
 
 function selfTestAggregation(fail) {
   // Verdict aggregation refusals, driven through the shared seam end-to-end.
-  const register = appendFinding(emptyFindings("t9"), { id: "f1", lane: 1, severity: "HIGH", claim: "x" });
+  const register = appendFinding(emptyFindings("t9"), { id: "f1", lane: 1, severity: "HIGH", claim: "x", proof: "fixture proof: pinned" });
   if (typeof register === "string") fail(`adversarial-runner: fixture append refused (${register})`);
   if (aggregateFindings(register).clean) fail("adversarial-runner: unresolved register must not be clean");
   const bareWontFix = setFindingStatus(register, "f1", { status: "WONT-FIX" });

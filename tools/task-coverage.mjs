@@ -930,7 +930,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of anchorCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 15 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
