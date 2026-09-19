@@ -53,10 +53,21 @@ const CODE_NAMES = new Set(["Dockerfile", "Caddyfile"]); // no-extension executa
  *  surface — .stallion-base, the hooks, the CI workflows — IS code: an adversarial finding
  *  showed a base bump or a workflow edit needed no task footer, letting the gated party
  *  rewrite the fence in the very push it fences. */
-export function isCodePath(path) {
+/** Pure: is this path fence SURFACE — the controls' own law, rewrites of which must carry a
+ *  task footer like any code? Earned twice: .stallion-base/.githooks/.github were reclassified
+ *  because the gated party could rewrite the fence in the push it fences; docs/gates/ joined
+ *  them in the 2026-09-20 merge wave (an adversarial finding) because a gate's threshold,
+ *  exemptions, accepted findings, required transports, and ratchet baseline live there —
+ *  rewriting any of them defangs a gate in a commit that would otherwise need no task footer. */
+function fenceSurfacePath(path) {
   if (path === ".stallion-base") return true;
   if (path.startsWith(".githooks/")) return true;
   if (path.startsWith(".github/workflows/") && /\.(yml|yaml)$/.test(path)) return true;
+  return path.startsWith("docs/gates/");
+}
+
+export function isCodePath(path) {
+  if (fenceSurfacePath(path)) return true;
   if (!CODE_TREES.some((t) => path.startsWith(t))) return false;
   const base = path.slice(path.lastIndexOf("/") + 1);
   if (CODE_NAMES.has(base)) return true;
@@ -1052,6 +1063,8 @@ export function selfTest() {
     ["the adoption-base file is code (it IS the fence)", isCodePath(".stallion-base")],
     ["committed hooks are code (they ARE the fence)", isCodePath(".githooks/pre-push")],
     ["CI workflows are code (they carry the fence)", isCodePath(".github/workflows/selftest.yml")],
+    ["gate configs are code (they ARE the fence's law — an adversarial finding)", isCodePath("docs/gates/complexity.json")],
+    ["every gate config path is fence surface", isCodePath("docs/gates/gate-registry.json") && isCodePath("docs/gates/debt-register.md")],
     ["docs under .github are not code", !isCodePath(".github/ISSUE_TEMPLATE.md")],
   ];
   for (const [name, passes] of codeCases) if (!passes) fail(`task-coverage: ${name}`);

@@ -320,6 +320,8 @@ older vendored copy is superseded by re-vendoring, not by patching.
 ## What is deliberately NOT enforced
 
 Working-tree edits are free; the fence is the stage gate and the push. Docs and config commits
-need no task record. Nothing stops a hand-edited record; the git history of the record file is
+need no task record — with one boundary earned the hard way: `docs/gates/**` IS code to the
+fence (a gate's threshold, exemptions, and baselines are its decision law; the gated party must
+not rewrite them in the push they fence — the same precedent as the hooks and CI workflows). Nothing stops a hand-edited record; the git history of the record file is
 the evidence trail. These are boundaries, not gaps, and they are stated so nobody has to
 discover them.

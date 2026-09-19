@@ -30,7 +30,7 @@
     {
       "file": "tools/task-coverage.mjs",
       "name": "selfTest",
-      "complexity": 27
+      "complexity": 28
     },
     {
       "file": "tools/task-gate.mjs",
@@ -84,7 +84,7 @@
     },
     {
       "file": "tools/task-coverage.mjs",
-      "name": "<anonymous>:134",
+      "name": "<anonymous>:145",
       "complexity": 14
     },
     {

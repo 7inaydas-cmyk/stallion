@@ -1,0 +1,80 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "harness-merge-wave1",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T19:35:25.235Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "c9eceaeaf852241e2aaadaa0000d67555f9b1c03e73bb0023d8a188dd86e5c5a"
+    },
+    {
+      "at": "2026-09-19T19:35:25.267Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "c9eceaeaf852241e2aaadaa0000d67555f9b1c03e73bb0023d8a188dd86e5c5a",
+      "entry_hash": "8c55e4e8e73563c9f4a51be6c0aa0902a22696ffa4a52fec96619234fecefd73"
+    },
+    {
+      "at": "2026-09-19T19:35:25.297Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "8c55e4e8e73563c9f4a51be6c0aa0902a22696ffa4a52fec96619234fecefd73",
+      "entry_hash": "bddcfb2b6b9a7fd72cf88605fc77edebcd6c548242459dda281a0d30260710ee"
+    },
+    {
+      "at": "2026-09-19T19:35:25.327Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "bddcfb2b6b9a7fd72cf88605fc77edebcd6c548242459dda281a0d30260710ee",
+      "entry_hash": "4981adaf86235e311f2182399446fc3c5515a9d360884bbec9c4a06394c593d6"
+    },
+    {
+      "at": "2026-09-19T19:37:07.938Z",
+      "type": "red-check",
+      "command": "test \"$(grep -c -- '--expect' tools/task-state.mjs)\" -ge 1",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 4,
+      "parent_hash": "4981adaf86235e311f2182399446fc3c5515a9d360884bbec9c4a06394c593d6",
+      "entry_hash": "6a861dd7c82775446afe83285cded007878b7f5071552805bc8453ea2b551cf3"
+    },
+    {
+      "at": "2026-09-19T20:09:10.675Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "6a861dd7c82775446afe83285cded007878b7f5071552805bc8453ea2b551cf3",
+      "entry_hash": "909fa420bdaf94f422d399712f56f6304de8e843d873a71e948be348e0d74acf"
+    },
+    {
+      "at": "2026-09-19T20:15:42.057Z",
+      "type": "red-check",
+      "command": "D=$(mktemp -d); git clone -q /home/excelsior/Desktop/stallion \"$D\"; cd \"$D\"; git config user.email p@p; git config user.name p; python3 -c \"\nimport json\np = 'docs/gates/complexity.json'\nc = json.load(open(p))\nc['threshold'] = 12\njson.dump(c, open(p, 'w'), indent=2); open(p, 'a').write('\\n')\n\"; git add -A; git commit -qm 'sabotage: defang the ratchet'; node tools/task-coverage.mjs --base HEAD~1 > /tmp/defang.out 2>&1; grep -q 'docs/gates/complexity.json' /tmp/defang.out",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 6,
+      "parent_hash": "909fa420bdaf94f422d399712f56f6304de8e843d873a71e948be348e0d74acf",
+      "entry_hash": "5c7c7f40a91cc4a142dc794587c27ccb536f1e31ef375989515b5a1a3263ebd1"
+    },
+    {
+      "at": "2026-09-19T20:17:13.697Z",
+      "type": "scope",
+      "patterns": [
+        "docs/gates/**"
+      ],
+      "seq": 7,
+      "parent_hash": "5c7c7f40a91cc4a142dc794587c27ccb536f1e31ef375989515b5a1a3263ebd1",
+      "entry_hash": "717c57340fac3302f2515de50768870cc68b5228be2901516167446296e57a3c"
+    }
+  ]
+}
