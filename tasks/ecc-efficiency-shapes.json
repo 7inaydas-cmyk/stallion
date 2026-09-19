@@ -1,0 +1,87 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ecc-efficiency-shapes",
+  "title": "Dedup at record time, the handoff report, the verified battery (Closes #15)",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T04:00:46.313Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "181c849da3b60407fe5fe79ccd30799cbb8ea1317816461a99601fa2dbf24eec"
+    },
+    {
+      "at": "2026-09-19T04:00:46.370Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "181c849da3b60407fe5fe79ccd30799cbb8ea1317816461a99601fa2dbf24eec",
+      "entry_hash": "f10e52294b7479a1fc8de46935b977fcee371c8fb751800a2f3d9b952a1a03b4"
+    },
+    {
+      "at": "2026-09-19T04:00:46.427Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**",
+        "docs/**"
+      ],
+      "seq": 2,
+      "parent_hash": "f10e52294b7479a1fc8de46935b977fcee371c8fb751800a2f3d9b952a1a03b4",
+      "entry_hash": "e2c675816b6a232558f5a5979b44c9ee896e4dafd53e8d89725cc51d38f34de0"
+    },
+    {
+      "at": "2026-09-19T04:00:46.514Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "e2c675816b6a232558f5a5979b44c9ee896e4dafd53e8d89725cc51d38f34de0",
+      "entry_hash": "7566adf5fed8d0b06b4ab37801db9dccfa17b46b314eb6ae474770ab6bae15e1"
+    },
+    {
+      "at": "2026-09-19T04:01:04.076Z",
+      "type": "red-check",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1a82e04741eb",
+      "seq": 4,
+      "parent_hash": "7566adf5fed8d0b06b4ab37801db9dccfa17b46b314eb6ae474770ab6bae15e1",
+      "entry_hash": "7a49787fa54703fe40f80d4f7f9c4a8d78fb9a5eb3359382cf1c0baba53df548"
+    },
+    {
+      "at": "2026-09-19T04:01:22.555Z",
+      "type": "red-check",
+      "command": "node tools/task-findings.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "05590de5f045",
+      "seq": 5,
+      "parent_hash": "7a49787fa54703fe40f80d4f7f9c4a8d78fb9a5eb3359382cf1c0baba53df548",
+      "entry_hash": "536e2b323d5201a9cd0db439364d27366bc8e8075f2ec1ca808dd5ea1e543dfc"
+    },
+    {
+      "at": "2026-09-19T04:03:17.234Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "536e2b323d5201a9cd0db439364d27366bc8e8075f2ec1ca808dd5ea1e543dfc",
+      "entry_hash": "69696723460668f0256e1f9d7fe8b08bc65fc476fe022473ce0c2da487ff510b"
+    },
+    {
+      "at": "2026-09-19T04:03:17.297Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 7,
+      "parent_hash": "69696723460668f0256e1f9d7fe8b08bc65fc476fe022473ce0c2da487ff510b",
+      "entry_hash": "6cea92367ae59dc067e68ef937b5646b22cc758420029d3ea185832852d43aac"
+    },
+    {
+      "at": "2026-09-19T04:13:09.066Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 8,
+      "parent_hash": "6cea92367ae59dc067e68ef937b5646b22cc758420029d3ea185832852d43aac",
+      "entry_hash": "cdc62ceeead8ba76ddc3746572f7a9254f57f4ec2a4302ea280dcaed30f2cb45"
+    }
+  ]
+}

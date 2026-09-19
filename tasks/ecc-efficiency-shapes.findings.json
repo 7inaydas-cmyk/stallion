@@ -1,0 +1,94 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ecc-efficiency-shapes",
+  "passStartedAt": "2026-09-19T04:03:17.382Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "handoffReport manufactures unverified verdicts: every pin prints 'GREEN at done' with its RED exit code beside it, at any phase, no re-run behind it; RESOLVED findings with vanished evidence still land under WORKED (evidenceOnDisk stubbed true, no missingResolveEvidence); and obligations are computed against an assumed filesystem",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:11:29.803Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:13:08.343Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "Client-authored multi-line text interpolates verbatim into the handoff — a wont-fix justification containing forged section headings renders indistinguishably from the machine's own WORKED/FAILED sections, contradicting the report's no-free-text design claim",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:11:29.854Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:13:08.404Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "The dedup key degrades post-resolve: resolving replaces string evidence with the resolution array, so the resolved finding's key silently falls back to its claim while the candidate keys on evidence — the same escape re-records, exactly the double-spend the feature exists to refuse (the self-test only exercises string-evidence shapes)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:11:29.905Z",
+      "evidence": [
+        "tools/task-findings.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:13:08.457Z"
+    },
+    {
+      "id": "f4",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "batteryOutput is dead wiring — the failing lines are captured and dropped; the refusal carries a static string while the commit message promises 'the failing lines as evidence'",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:11:29.960Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:13:08.509Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The battery gate diverges from its other statements: obligations()/status calls evaluateTransition without the battery argument (fail-open default true), so status reports 'unblocked' while advance will refuse; the obligations comment's 'one exception' claim is now false; TASK-LIFECYCLE and WIRING do not mention the battery or the handoff command",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:11:30.018Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "docs/TASK-LIFECYCLE.md",
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-19T04:13:08.560Z"
+    },
+    {
+      "id": "f6",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The battery unit cases pin nothing: the red-battery fixture carries no pin (refused by the pre-existing no-RED-check rule regardless of the flag) and the green case duplicates an existing assertion — deleting the battery check leaves the battery green",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T04:11:30.072Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-19T04:13:08.613Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The dedup refusal's remedy is unexecutable for closed findings (resolve/wont-fix refuses on non-UNRESOLVED); duplicateEvidenceOf is imported dead into task-state; the claim-keyed stored-side dedup case is untested; the task-state and task-findings banners drift again (28/32 vs 26; the validation/mutation split); the battery's unlocked pre-read inherits the done gate's race shape",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T04:11:30.123Z",
+      "justification": "The banner derivations landed (task-state and task-findings now derive); the dead import is dropped and the remedy reworded in the repair commit. What remains by design: dedup enforcement lives at the record CLI (the only append transport — the sweep's own analysis says a register appended by other writers is the plain-JSON boundary); the battery's unlocked pre-read inherits the done gate's documented race shape (deliberate: pins/battery may run minutes, holding the file lock through them would gift the stale-breaker a lost update — the narrower race is the recorded trade); the claim-keyed stored-side case is now pinned in task-findings' selfTestDedup.",
+      "resolvedAt": "2026-09-19T04:13:08.666Z"
+    }
+  ],
+  "sweptBase": "fe892af5124fbc23644e6e9c5687803739e330da",
+  "sweptHead": "894df31d97747871de3ad17b20e5d852089501d9",
+  "sweptDiffDigest": "e0b28ff58e65"
+}
