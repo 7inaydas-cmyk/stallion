@@ -1,0 +1,76 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "lock-race-tolerant",
+  "title": "issue #19: acquireLock stale-check TOCTOU — a vanishing lock crashes the waiter",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T06:13:17.894Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "1e27283438a915ef8a78e48d5583bc01ae210bb072f4645ff910d8f49da7bbc3"
+    },
+    {
+      "at": "2026-09-19T06:13:17.938Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "1e27283438a915ef8a78e48d5583bc01ae210bb072f4645ff910d8f49da7bbc3",
+      "entry_hash": "65ccaa5cdb26d2b89566f9751aa7c6bb9a8cd7d2e74b6bc32130abe7a9ef5895"
+    },
+    {
+      "at": "2026-09-19T06:13:17.981Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "65ccaa5cdb26d2b89566f9751aa7c6bb9a8cd7d2e74b6bc32130abe7a9ef5895",
+      "entry_hash": "e3ab5795182cfea3ca21f1c72697479aa2cc72bd550eea6476210cd909ddaa31"
+    },
+    {
+      "at": "2026-09-19T06:13:18.034Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "e3ab5795182cfea3ca21f1c72697479aa2cc72bd550eea6476210cd909ddaa31",
+      "entry_hash": "a06e41a2ef70f5841fe48b5c6f826dcaea674c464dbfc832008bd0a295fcd618"
+    },
+    {
+      "at": "2026-09-19T06:13:53.382Z",
+      "type": "red-check",
+      "command": "cat > /tmp/lk-waiter.mjs <<WE\nconst { withLock } = await import(process.argv[3]);\nconst target = process.argv[2];\nfor (let i = 0; i < 3000; i += 1) withLock(target, () => {});\nconsole.log(\"waiter survived 3000 acquires\");\nWE\ncat > /tmp/lk-deleter.mjs <<XE\nimport { closeSync, openSync, rmSync } from \"node:fs\";\nconst lock = process.argv[2];\nconst end = Date.now() + 30000;\nwhile (Date.now() < end) {\n  try { closeSync(openSync(lock, \"w\")); } catch {}\n  try { rmSync(lock, { force: true }); } catch {}\n}\nXE\nT=$(mktemp -d)/shared.json; R=/home/excelsior/Desktop/stallion/tools/task-findings.mjs; node /tmp/lk-deleter.mjs \"$T.lock\" & DL=$!; sleep 0.3; node /tmp/lk-waiter.mjs \"$T\" \"$R\"; RC=$?; kill $DL 2>/dev/null; wait $DL 2>/dev/null; rm -f /tmp/lk-waiter.mjs /tmp/lk-deleter.mjs; exit $RC",
+      "exitCode": 1,
+      "outputDigest": "58915ebad153",
+      "seq": 4,
+      "parent_hash": "a06e41a2ef70f5841fe48b5c6f826dcaea674c464dbfc832008bd0a295fcd618",
+      "entry_hash": "33b09a22e3d329e95ea37277b91f5d47a80845ed1cc02b01e3252f05222c3f75"
+    },
+    {
+      "at": "2026-09-19T06:15:45.119Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "33b09a22e3d329e95ea37277b91f5d47a80845ed1cc02b01e3252f05222c3f75",
+      "entry_hash": "a3d69e66ff4ef0c7457c9e8990ca9c73e1dd932a6ce00f88f0b3037cbd72be69"
+    },
+    {
+      "at": "2026-09-19T06:16:42.876Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "a3d69e66ff4ef0c7457c9e8990ca9c73e1dd932a6ce00f88f0b3037cbd72be69",
+      "entry_hash": "f8ac9749593ca7005acce93c4de454faff0bb35e099bb8d89b2130bc7198388b"
+    },
+    {
+      "at": "2026-09-19T06:17:26.064Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "f8ac9749593ca7005acce93c4de454faff0bb35e099bb8d89b2130bc7198388b",
+      "entry_hash": "6afde275720568452cd8cc61a564326bd0cfdbb4f963d5ac5d8fa7cb892bb181"
+    }
+  ]
+}

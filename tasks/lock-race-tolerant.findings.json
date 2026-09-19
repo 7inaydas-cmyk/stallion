@@ -1,0 +1,23 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "lock-race-tolerant",
+  "passStartedAt": "2026-09-19T06:16:55.921Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "the repair's catch swallows EVERY error from the stale-check, but the law it encodes (and its own comment) is only about the vanishing lock — a non-ENOENT failure (EACCES, EMFILE, a TypeError from bad args) should stay loud instead of presenting six seconds later as could-not-acquire",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T06:16:04.994Z",
+      "evidence": [
+        "tools/task-findings.mjs"
+      ],
+      "dedupKey": "tools/task-findings.mjs acquirelock catch block",
+      "resolvedAt": "2026-09-19T06:16:42.910Z"
+    }
+  ],
+  "sweptBase": "64dc2b855f4bdddf09ed4aeb156e164f16ae5797",
+  "sweptHead": "ef44e49aa729303ae01867e2459ef7c31d982605",
+  "sweptDiffDigest": "855978ad0e1f"
+}
