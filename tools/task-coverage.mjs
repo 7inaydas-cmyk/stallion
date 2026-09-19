@@ -179,18 +179,30 @@ export function dispatchesSelfTest(text) {
   return /\.(?:includes|indexOf)\(\s*["']--self-test["']\s*\)|===\s*["']--self-test["']/.test(text);
 }
 
-/** Pure: the probe both wiring checks share — does any hook in this entry invoke the script? */
-const hookInvokes = (hooks, script) => (hooks ?? []).some((h) => `${h.command} ${JSON.stringify(h.args ?? [])}`.includes(script));
+/** Pure: the script path a hook entry DISPATCHES — the arg (or command) that names the script.
+ *  The judge hands THE DISPATCHED PATH to the caller's existence fact, never a basename
+ *  re-derived against a fixed directory: that double agreed with the hook runtime on the
+ *  happy path and diverged exactly on the re-pointed decoy, where the basename stayed on
+ *  disk while the dispatch ENOENTed (an adversarial pass caught the mock-vs-live seam).
+ *  null = the entry dispatches nothing for that script. */
+const dispatchedScript = (hooks, script) => {
+  for (const h of hooks ?? []) {
+    for (const part of [h?.command, ...(h?.args ?? [])]) {
+      if (typeof part === "string" && part.includes(script)) return part;
+    }
+  }
+  return null;
+};
 
 /** Pure: is the ZCode plugin's authoring gate wired in its hooks manifest AND on disk? Issue
  *  #14's acceptance said "doctor sees it" and a review found the doctor only checked battery
  *  membership — a deleted or de-fanged hook registration passed. A second review caught the
- *  seam still half-wired: the manifest was judged but the SCRIPTS it dispatches were not, so
- *  deleting authoring-gate.mjs behind an intact manifest passed "wired". The manifest must
- *  register PreToolUse with a matcher that covers Edit, Write, AND ApplyPatch (the dispatch
- *  aliases), and the banner on SessionStart + UserPromptSubmit; `scriptExists` is the caller's
- *  fs fact (the judge stays pure — called without it, it refuses, never assumes). Returns
- *  null when wired, the reason when not. */
+ *  seam still half-wired: the manifest was judged but the SCRIPTS it dispatches were not.
+ *  `scriptExists` receives the DISPATCHED path and answers whether it resolves on disk — the
+ *  caller's fs fact (the judge stays pure, and refuses when called without it). Every clause
+ *  runs before any pass: the banner law is judged even when the matcher is omitted (an early
+ *  return on omission once let a deleted banner pass — caught twice in one adversarial pass).
+ *  Returns null when wired, the reason when not. */
 export function pluginWiringRefusal(manifest, scriptExists) {
   if (typeof scriptExists !== "function") return "the wiring judge was called without the script-existence fact — a gate that cannot read state must not pass";
   const need = ["Edit", "Write", "ApplyPatch"];
@@ -202,10 +214,17 @@ export function pluginWiringRefusal(manifest, scriptExists) {
   }
   const events = parsed?.hooks ?? {};
   if (!Array.isArray(events.PreToolUse) || events.PreToolUse.length === 0) return "the plugin registers no PreToolUse hook — the authoring gate is not wired";
-  const pre = events.PreToolUse.find((entry) => hookInvokes(entry?.hooks, "authoring-gate.mjs"));
+  const pre = events.PreToolUse.find((entry) => dispatchedScript(entry?.hooks, "authoring-gate.mjs"));
   if (!pre) return "no PreToolUse hook invokes authoring-gate.mjs — the gate exists but nothing dispatches it";
-  if (!scriptExists("authoring-gate.mjs")) return "the manifest dispatches authoring-gate.mjs but the script is not on disk — the gate is registered to fire at nothing";
-  if (pre.matcher === undefined) return null; // an omitted matcher matches everything — wired
+  const gatePath = dispatchedScript(pre.hooks, "authoring-gate.mjs");
+  if (!scriptExists(gatePath)) return `the manifest dispatches '${gatePath}' but that path resolves to nothing on disk — the gate is registered to fire at nothing`;
+  for (const event of ["SessionStart", "UserPromptSubmit"]) {
+    const entry = Array.isArray(events[event]) && events[event].find((e) => dispatchedScript(e?.hooks, "banner.mjs"));
+    if (!entry) return `no ${event} hook invokes banner.mjs — the turn banner is not wired on that event`;
+    const bannerPath = dispatchedScript(entry.hooks, "banner.mjs");
+    if (!scriptExists(bannerPath)) return `the manifest dispatches '${bannerPath}' on ${event} but that path resolves to nothing on disk — the banner is registered to fire at nothing`;
+  }
+  if (pre.matcher === undefined) return null; // an omitted matcher matches everything — wired, and every clause above has already run
   let matcher;
   try {
     matcher = new RegExp(pre.matcher);
@@ -214,11 +233,6 @@ export function pluginWiringRefusal(manifest, scriptExists) {
   }
   const missed = need.filter((tool) => !matcher.test(tool));
   if (missed.length > 0) return `the PreToolUse matcher '${pre.matcher}' does not cover ${missed.join(", ")} — edits through those tool names escape the gate`;
-  for (const event of ["SessionStart", "UserPromptSubmit"]) {
-    const wired = Array.isArray(events[event]) && events[event].some((entry) => hookInvokes(entry?.hooks, "banner.mjs"));
-    if (!wired) return `no ${event} hook invokes banner.mjs — the turn banner is not wired on that event`;
-  }
-  if (!scriptExists("banner.mjs")) return "the manifest dispatches banner.mjs but the script is not on disk — the banner is registered to fire at nothing";
   return null;
 }
 
@@ -842,15 +856,20 @@ function cmdDoctor() {
   // Issue #14's acceptance, closed late by the review: "doctor sees it." The battery proves the
   // gate's LAW runs; this proves the gate's WIRING exists — a deleted or de-fanged hook
   // registration (matcher that covers no edit tool, missing banner event, unparseable manifest)
-  // refuses here, not at the first silently-ungated edit; and the scripts the manifest
-  // dispatches must be on disk — registered-to-fire-at-nothing is not wired (a second review
-  // caught that half unwired). The fix line IS the refusal reason — there is no generic
-  // fallback to print in a state that cannot occur.
-  const pluginHooksDir = `${ROOT}tools/zcode-plugin/hooks`;
-  const pluginManifest = existsSync(`${pluginHooksDir}/hooks.json`) ? readFileSync(`${pluginHooksDir}/hooks.json`, "utf8") : null;
+  // refuses here, not at the first silently-ungated edit; and the paths the manifest dispatches
+  // must resolve on disk — registered-to-fire-at-nothing is not wired (a second review caught
+  // that half unwired). The existence fact resolves THE DISPATCHED PATH through the manifest's
+  // own ${ZCODE_PLUGIN_ROOT} variable, exactly as the hook runtime does — judging a basename
+  // against a fixed directory passed a re-pointed decoy while the dispatch ENOENTed (an
+  // adversarial finding); a spelling the resolver cannot answer fails closed. The fix line IS
+  // the refusal reason — there is no generic fallback to print in a state that cannot occur.
+  const pluginRoot = `${ROOT}tools/zcode-plugin`;
+  const PLUGIN_ROOT_VAR = "${ZCODE_PLUGIN_ROOT}/";
+  const dispatchResolves = (dispatched) => typeof dispatched === "string" && dispatched.startsWith(PLUGIN_ROOT_VAR) && existsSync(`${pluginRoot}/${dispatched.slice(PLUGIN_ROOT_VAR.length)}`);
+  const pluginManifest = existsSync(`${pluginRoot}/hooks/hooks.json`) ? readFileSync(`${pluginRoot}/hooks/hooks.json`, "utf8") : null;
   const wiringRefusal = pluginManifest === null
     ? "tools/zcode-plugin/hooks/hooks.json does not exist — the enforcement plugin is gone while its law is still a battery member"
-    : pluginWiringRefusal(pluginManifest, (script) => existsSync(`${pluginHooksDir}/${script}`));
+    : pluginWiringRefusal(pluginManifest, dispatchResolves);
   check("the enforcement plugin's authoring gate is wired and its scripts on disk", wiringRefusal === null, wiringRefusal);
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
@@ -1074,20 +1093,30 @@ export function selfTest() {
       // battery on ENOENT (a sweep caught the unconditional read breaking exactly that port).
       // The cases are declared once as data and the skip note COUNTS the list — a review
       // caught the note hard-coding "four" while five cases ran, so the note now derives.
+      // The default predicate resolves the DISPATCHED PATH like the hook runtime does — each
+      // disk check is also witnessed ALONE (adversarial lanes caught a () => false pin
+      // passing whichever single check survived, and an early return skipping the banner law).
       const manifestUrl = new URL("./zcode-plugin/hooks/hooks.json", import.meta.url);
-      const onDisk = (script) => existsSync(new URL(`./zcode-plugin/hooks/${script}`, import.meta.url));
+      const PLUGIN_ROOT_VAR = "${ZCODE_PLUGIN_ROOT}/";
+      const resolves = (dispatched) => typeof dispatched === "string" && dispatched.startsWith(PLUGIN_ROOT_VAR) && existsSync(new URL(`./zcode-plugin/${dispatched.slice(PLUGIN_ROOT_VAR.length)}`, import.meta.url));
       const manifestCases = [
         ["the plugin manifest as shipped passes the wiring judge", (m, se) => pluginWiringRefusal(m, se) === null],
         ["a matcher covering no edit tool refuses", (m, se) => { const x = JSON.parse(m); x.hooks.PreToolUse[0].matcher = "NoSuchTool"; return pluginWiringRefusal(x, se) !== null; }],
         ["a missing banner event refuses", (m, se) => { const x = JSON.parse(m); delete x.hooks.UserPromptSubmit; return pluginWiringRefusal(x, se) !== null; }],
         ["a gate script nothing dispatches refuses", (m, se) => { const x = JSON.parse(m); x.hooks.PreToolUse[0].hooks[0].args = ["${ZCODE_PLUGIN_ROOT}/hooks/somewhere-else.mjs"]; return pluginWiringRefusal(x, se) !== null; }],
-        ["a registered script missing from disk refuses (the half a review found unwired)", (m) => pluginWiringRefusal(m, () => false) !== null],
+        ["a re-pointed decoy path refuses while the real script stays on disk", (m, se) => { const x = JSON.parse(m); x.hooks.PreToolUse[0].hooks[0].args = ["${ZCODE_PLUGIN_ROOT}/hooks/decoy/authoring-gate.mjs"]; return pluginWiringRefusal(x, se) !== null; }],
+        ["a path spelling the resolver cannot answer refuses (fail closed)", (m) => { const x = JSON.parse(m); x.hooks.PreToolUse[0].hooks[0].args = ["hooks/authoring-gate.mjs"]; return pluginWiringRefusal(x, resolves) !== null; }],
+        ["the gate's disk check is witnessed alone (banner present)", (m) => pluginWiringRefusal(m, (p) => typeof p === "string" && !p.includes("authoring-gate.mjs")) !== null],
+        ["the banner's disk check is witnessed alone (gate present)", (m) => pluginWiringRefusal(m, (p) => typeof p === "string" && !p.includes("banner.mjs")) !== null],
+        ["total script absence refuses", (m) => pluginWiringRefusal(m, () => false) !== null],
+        ["a matcher-omitted manifest still answers for the banner's script", (m) => { const x = JSON.parse(m); delete x.hooks.PreToolUse[0].matcher; return pluginWiringRefusal(x, (p) => typeof p === "string" && p.includes("authoring-gate.mjs")) !== null; }],
+        ["an omitted matcher with every script on disk still passes (omission matches everything)", (m, se) => { const x = JSON.parse(m); delete x.hooks.PreToolUse[0].matcher; return pluginWiringRefusal(x, se) === null; }],
         ["the judge called without the script-existence fact refuses (no fs fact, no pass)", (m) => pluginWiringRefusal(m) !== null],
-        ["an unparseable manifest refuses", () => pluginWiringRefusal("{ nope", onDisk) !== null],
+        ["an unparseable manifest refuses", () => pluginWiringRefusal("{ nope", resolves) !== null],
       ];
       if (!existsSync(manifestUrl)) return [[`(plugin absent in this tree — its ${manifestCases.length} wiring cases skip visibly)`, true]];
       const manifest = readFileSync(manifestUrl, "utf8");
-      return manifestCases.map(([name, run]) => [name, run(manifest, onDisk)]);
+      return manifestCases.map(([name, run]) => [name, run(manifest, resolves)]);
     })(),
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
