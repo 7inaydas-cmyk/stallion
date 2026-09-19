@@ -51,7 +51,7 @@ function setup(arm, taskId, dir) {
   writeFileSync(`${dir}/apps/lib/${task.module}.test.mjs`, task.visibleTest);
   // The selftest script the AGENTS law mandates must exist on day one (a sweep caught the
   // stanza pointing at a missing script — a remediation tax billed to the wrong arm).
-  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${task.module}.test.mjs`, selftest: `node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-gate.mjs --self-test` } }, null, 2)}\n`);
+  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${task.module}.test.mjs`, selftest: `node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test` } }, null, 2)}\n`);
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "bench@localhost");
   git(dir, "config", "user.name", `bench-${arm}`);
