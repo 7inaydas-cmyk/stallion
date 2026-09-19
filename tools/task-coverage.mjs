@@ -571,7 +571,10 @@ const SECRET_PATTERNS = [
   [/AKIA[0-9A-Z]{16}/, "AWS access key id"],
   [/sk-[A-Za-z0-9]{20,}/, "generic API key"],
 ];
-const PLACEHOLDER_SECRET = /^(?:x{3,}|your?_|<[^>]*>|\$\{?[A-Za-z_]|example|test|dummy|changeme|redacted|\*+|n\/a)/i;
+/** Placeholder BODIES (the part after the structural prefix): the whitelist an adversarial
+ *  pass proved was dead code in its ^-over-m[0] form — no placeholder is a prefix of sk-ant-.
+ *  The body test makes redacted fixtures (sk-ant-XXXX…) pass while real keys refuse. */
+const PLACEHOLDER_BODY = /^(?:[xX0*]{4,}|your|example|test|dummy|sample|changeme|redacted|placeholder|<[^>]*>|\$\{)/;
 
 /**
  * Pure: scan ADDED diff lines for secrets and stray debugger statements. Returns null when
@@ -581,7 +584,8 @@ export function stagedScanRefusal(addedLines) {
   for (const { file, line, text } of addedLines ?? []) {
     for (const [pattern, name] of SECRET_PATTERNS) {
       const m = pattern.exec(text);
-      if (m && !PLACEHOLDER_SECRET.test(m[0])) {
+      const body = m ? m[0].replace(/^(?:sk-ant-|ghp_|gho_|AKIA|sk-)/i, "") : "";
+      if (m && !PLACEHOLDER_BODY.test(body)) {
         return { reason: `staged content carries a ${name} at ${file}:${line} — secrets do not land in git; rotate the key and read it from the environment` };
       }
     }
@@ -592,8 +596,10 @@ export function stagedScanRefusal(addedLines) {
   return null;
 }
 
-/** Added diff lines as {file, line, text}, tracking hunk headers — the scan's input. */
-function addedDiffLines(diffText) {
+/** Added diff lines as {file, line, text}, tracking hunk headers — the scan's input.
+ *  Exported: an adversarial pass caught the doubles-without-adapter gap (the pure scan was
+ *  pinned while the parser that feeds it had no test callers at all). */
+export function addedDiffLines(diffText) {
   const out = [];
   let file = "";
   let line = 0;
@@ -653,7 +659,9 @@ function cmdCommitMsg(messageFile) {
   // is scanned for secrets and debugger statements — refusals name file and line.
   let cachedDiff = "";
   try {
-    cachedDiff = gitOut("diff", "--cached");
+    // Config-neutral on purpose: repo-local color.ui/diff drivers would lace the output and
+    // blind the parser (an adversarial pass proved the ANSI case).
+    cachedDiff = gitOut("-c", "color.ui=never", "-c", "diff.noprefix=false", "-c", "core.quotePath=false", "diff", "--cached");
   } catch (e) {
     die(`cannot read the staged diff — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass`);
   }
@@ -707,6 +715,14 @@ function cmdDoctor() {
       return existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")) : [];
     }
   })();
+  let battery = "";
+  try {
+    battery = committedText("package.json") ?? "";
+  } catch {
+    battery = "";
+  }
+  check("the selftest battery runs the intervention gate's own self-test", battery.includes("task-gate.mjs --self-test"), "add 'node tools/task-gate.mjs --self-test' to the selftest script in package.json — a gate nobody watches refuse is decoration");
+
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
   check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
 
@@ -997,10 +1013,27 @@ export function selfTest() {
     ["a debugger statement refuses", stagedScanRefusal([{ file: "a.ts", line: 9, text: "  debugger;" }]) !== null],
     ["ordinary code passes", stagedScanRefusal([{ file: "a.ts", line: 1, text: "const x = 1;" }]) === null],
     ["a short sk- word is not a key", stagedScanRefusal([{ file: "a.ts", line: 1, text: "const sk = ski trip" }]) === null],
+    ["a REDACTED structural key passes (the body whitelist works)", stagedScanRefusal([{ file: "docs/runbook.md", line: 4, text: "set KEY=sk-ant-XXXXXXXXXXXXXXXXXXXX" }]) === null],
+    ["a real key after a placeholder-shaped prefix still refuses", stagedScanRefusal([{ file: "a.ts", line: 2, text: `k = "${["sk", "ant"].join("-")}-real0123456789abcdef"` }]) !== null],
+    ["the adapter parses a real diff shape: file, hunk header, added lines counted", (() => {
+      const parsed = addedDiffLines([
+        "diff --git a/apps/api/k.ts b/apps/api/k.ts",
+        "index 111..222 100644",
+        "--- a/apps/api/k.ts",
+        "+++ b/apps/api/k.ts",
+        "@@ -10,3 +10,4 @@ context()",
+        " unchanged line",
+        "-removed line",
+        "+const keep = 1;",
+        "+const bad = 2; // carries the scan target",
+        "+another added",
+      ].join("\n"));
+      return parsed.length === 3 && parsed[0].file === "apps/api/k.ts" && parsed[0].line === 11 && parsed[2].line === 13;
+    })()],
   ];
   for (const [name, passes] of scanCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 5 scan + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 9 scan + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

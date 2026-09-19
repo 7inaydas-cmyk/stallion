@@ -27,7 +27,7 @@
  * state must not leak across repos), atomic writes through the shared task-findings lock,
  * 30-minute TTL, bounded to 500 targets. The directory is gitignored; nothing here is law.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { atomicWriteJson, withLock } from "./task-findings.mjs";
 
@@ -36,10 +36,28 @@ const STATE_DIR = `${ROOT}.stallion`;
 const TTL_MS = 30 * 60 * 1000;
 const MAX_TARGETS = 500;
 
-/** Strip quoted segments — a flag-looking VALUE ("--no-verify" inside -m "…") is not a flag. */
-export function unquoted(command) {
-  return String(command ?? "").replace(/'(?:[^'\\]|\\.)*'/g, " ").replace(/"(?:[^"\\]|\\.)*"/g, " ");
+/**
+ * The classifier's view of a command, closing the parser differential an adversarial pass
+ * caught: a SINGLE-TOKEN quoted segment is the token itself (git commit '--no-verify' means
+ * --no-verify — the shell strips those quotes), while a MULTI-token quoted segment is a payload
+ * or value (a -m message) and is removed. And a quoted payload following sh/bash (with any
+ * short flags) IS a command: it is appended for classification, one level deep — nested
+ * wrappers beyond that are the documented boundary, not a solved problem.
+ */
+export function classifiedText(command) {
+  const raw = String(command ?? "");
+  const payloadRegex = /(?:^|[\s;&|])(?:\ba|ba)?sh\s+(?:-[a-zA-Z]+\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)")/g;
+  const payloads = [];
+  for (const m of raw.matchAll(payloadRegex)) payloads.push(m[2] ?? m[3] ?? "");
+  const unwrapped = raw.replace(/'([^']*)'|"((?:[^"\\]|\\.)*)"/g, (whole, sq, dq) => {
+    const inner = sq !== undefined ? sq : dq;
+    return /\s/.test(inner) ? " " : inner;
+  });
+  return [unwrapped, ...payloads].join("\n");
 }
+
+/** Back-compat alias: the single-view form (tests and callers). */
+export const unquoted = classifiedText;
 
 const GIT_HOOKED = /(?:^|\s)(?:commit|merge|cherry-pick|rebase|am)(?:\s|$)/;
 
@@ -51,7 +69,7 @@ export function bypassRefusal(command) {
   if (GIT_HOOKED.test(t) && (/(?:^|\s)--no-verify(?:\s|$)/.test(t) || (/(?:^|\s)commit\s/.test(t) && /(?:^|\s)-n(?:\s|$)/.test(t)))) {
     return "this command bypasses the commit hooks (--no-verify / commit -n) — the hooks ARE the gates; run them";
   }
-  if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t)) {
+  if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t) || /git\s+config\s+[^;|&]*core\.hooksPath/.test(t)) {
     return "this command re-points core.hooksPath — the hooks are the fence; do not move them to run without them";
   }
   return null;
@@ -75,12 +93,25 @@ const DESTRUCTIVE = [
   [/\b(?:DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM)\b/i, "bulk SQL data loss", "raw"],
 ];
 
-/** Pure: is this command destructive? Returns the human name of the danger, or null. */
+/** Pure: is this command destructive? Returns the human name of the danger, or null.
+ *  Compounds are judged SEGMENT by segment (an adversarial pass caught the whole-string
+ *  lease exemption nullifying a chained rm -rf); --force-with-lease exempts only its own
+ *  segment — the lease is that push's safety, not the compound's. */
+export function commandSegments(command) {
+  const raw = String(command ?? "");
+  const segments = raw.split(/[\n;]|&&|\|\||&/).map((x) => x.trim()).filter(Boolean);
+  // sh -c payloads are commands too — appended as their own segments, one level deep
+  const payloadRegex = /(?:^|[\s;&|])(?:\ba|ba)?sh\s+(?:-[a-zA-Z]+\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)")/g;
+  for (const m of raw.matchAll(payloadRegex)) segments.push(m[2] ?? m[3] ?? "");
+  return segments;
+}
+
 export function destructiveAs(command) {
-  const t = unquoted(command);
-  if (/git\s+push\s+[^;|&]*--force-with-lease/.test(t)) return null; // the lease IS the safety
-  for (const [pattern, name, where] of DESTRUCTIVE) {
-    if (pattern.test(where === "raw" ? String(command ?? "") : t)) return name;
+  for (const segment of commandSegments(command)) {
+    if (/git\s+push\s+[^;|&]*--force-with-lease/.test(segment)) continue;
+    for (const [pattern, name, where] of DESTRUCTIVE) {
+      if (pattern.test(where === "raw" ? segment : unquoted(segment))) return name;
+    }
   }
   return null;
 }
@@ -123,7 +154,11 @@ function loadState(path, nowMs) {
           delete state.entries[key];
         }
       }
-      return { version: 1, sessionDenials: typeof state.sessionDenials === "number" ? state.sessionDenials : 0, entries: state.entries };
+      // The ordinal counter TTLs with everything else — a session months later gets full
+      // demands again, never a condensed line citing denials it never saw (a sweep finding).
+      const counterAge = typeof state.sessionDenialsAt === "number" ? nowMs - state.sessionDenialsAt : Infinity;
+      const denials = counterAge <= TTL_MS && typeof state.sessionDenials === "number" ? state.sessionDenials : 0;
+      return { version: 1, sessionDenials: denials, entries: state.entries };
     }
   } catch {
     // unreadable state re-asks — a gate that cannot read state errs toward asking again
@@ -157,7 +192,7 @@ export function gateDecision(state, target, fullDemand, nowMs) {
   const text = n <= 3
     ? `${fullDemand}\n[denial #${n} this session]`
     : `${target}: denial #${n} this session — present the facts and retry, or change the plan; the full demands were shown at denials 1-3`;
-  return { refuse: true, text, next: { ...state, sessionDenials: n, entries: { ...state.entries, [target]: { askedAt: nowMs } } } };
+  return { refuse: true, text, next: { ...state, sessionDenials: n, sessionDenialsAt: nowMs, entries: { ...state.entries, [target]: { askedAt: nowMs } } } };
 }
 
 function die(message) {
@@ -211,6 +246,13 @@ export function selfTest() {
     ["a quoted --no-verify inside -m is not a flag", bypassRefusal(`git commit -m "--no-verify words"`) === null],
     ["re-pointing core.hooksPath is a bypass", bypassRefusal("git -c core.hooksPath=/x commit -m y") !== null],
     ["plain commit is not a bypass", bypassRefusal('git commit -m "real message"') === null],
+    ["a SINGLE-TOKEN quoted flag IS the flag (the shell strips those quotes)", bypassRefusal("git commit '--no-verify' -m x") !== null],
+    ["a quoted -c hooksPath value is still a re-point", bypassRefusal("git -c 'core.hooksPath=/tmp/x' commit -m y") !== null],
+    ["an sh -c payload is classified as the command it runs", bypassRefusal('sh -c "git commit --no-verify -m x"') !== null],
+    ["a bash -lc destructive payload is classified", destructiveAs("bash -lc \'git reset --hard HEAD~1\'") !== null],
+    ["git config core.hooksPath (persistent) is a bypass", bypassRefusal("git config core.hooksPath /tmp/empty") !== null],
+    ["a chained rm -rf under a force-with-lease push is still destructive", destructiveAs("rm -rf apps/ && git push --force-with-lease origin main") !== null],
+    ["a bare force-with-lease push is exempt", destructiveAs("git push --force-with-lease origin main") === null],
     ["rm -rf is destructive", destructiveAs("rm -rf build/") !== null],
     ["rm single file is not classed destructive", destructiveAs("rm notes.tmp") === null],
     ["git reset --hard is destructive", destructiveAs("git reset --hard HEAD~1") !== null],
@@ -245,7 +287,7 @@ export function selfTest() {
     })()],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-gate: ${name}`);
-  console.log(failures.length === 0 ? "task-gate self-test: OK (5 bypass + 8 destructive + 8 gate-cycle cases)" : `task-gate self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-gate self-test: OK (9 bypass + 10 destructive + 5 gate-cycle cases)" : `task-gate self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

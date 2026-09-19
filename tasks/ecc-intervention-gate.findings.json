@@ -1,0 +1,150 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "ecc-intervention-gate",
+  "passStartedAt": "2026-09-19T03:19:27.349Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "Parser differential: the classifiers see only the quote-stripped command, the shell strips quotes at execution — git commit '--no-verify', git -c 'core.hooksPath=/x' commit, and sh -c \"git commit --no-verify\" all classify as routine while executing the bypass; the same quoting defeats the destructive laws (bash -c 'git reset --hard', rm '-rf')",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.233Z",
+      "proof": "Agent sends Bash: git commit '--no-verify' -m wip. The hook passes the string to task-gate --bash; unquoted() deletes the quoted segment before the regexes run, bypassRefusal returns null, the gate prints 'routine command — proceeding'; the shell then strips the quotes and passes --no-verify to git, skipping the commit hooks. Containment: the push fence still audits pushes — but the destructive class has no downstream fence at all.",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:16.799Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "git config core.hooksPath <path> (the persistent form that neuters every committed hook for the clone) classifies as routine and passes — only the per-invocation -c spelling is refused, while AGENTS.md claims re-pointing is refused outright",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.521Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:16.853Z"
+    },
+    {
+      "id": "f3",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "The force-with-lease exemption returns null for the WHOLE compound command: 'rm -rf apps/ && git push --force-with-lease' classifies as routine and the delete executes ungated",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.590Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:16.902Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The shipped wiring never passes --session, so every conversation shares one gate-state-default.json: a second session's first edit of a touched file passes with no fact demand, and its first denial can be the condensed form citing denials it never saw; the sessionDenials counter is also immortal (no TTL), so months later every first-touch refusal is the one-liner",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.655Z",
+      "evidence": [
+        "tools/task-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-19T03:31:16.954Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "task-gate is wired into no transport in the repo, yet AGENTS/README/CONTEXT claim present-tense enforcement and the doctor has no task-gate check — a fresh clone following the docs gets no act-boundary refusals and nothing fails on the gap",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.724Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.009Z"
+    },
+    {
+      "id": "f6",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The --session flag is parsed and threaded but dead under the documented wiring (per-session semantics unrealizable as shipped)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.787Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.060Z"
+    },
+    {
+      "id": "f7",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "Dead imports in task-gate (rmSync, statSync, writeFileSync never called); the state files accumulate unpruned",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.857Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.113Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "Banner miscounts (6 bypass cases not 5; 22 total), the CI step still says 'Five tool self-tests' over a six-tool battery, and the WIRING renumbering left 'The push fence (§7)' pointing at the intervention gate",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:28:37.919Z",
+      "evidence": [
+        "tools/task-gate.mjs",
+        ".github/workflows/selftest.yml",
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.163Z"
+    },
+    {
+      "id": "f9",
+      "lane": 3,
+      "severity": "HIGH",
+      "claim": "The documented wiring routes only Bash(git*) to --bash: five of the twelve destructive classifiers (rm -rf, rm -r, find -exec rm, dd, SQL drops) are unreachable through the only wiring the repo documents, and compound commands not starting with git (cd x && git push --force) miss the prefix matcher — while WIRING, README, and the module header promise those laws",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:29:00.007Z",
+      "proof": "A vendor applies the WIRING §7 JSON verbatim; the agent runs rm -rf apps/legacy or psql -c \"DROP TABLE users\": the command does not start with git, the Bash(git*) matcher never invokes task-gate, and the delete executes with zero friction while §7's own prose three lines below promises a rollback demand. No other stallion control observes tool-time non-git commands; the doctor inspects only .githooks and CI; the self-tests exercise the classifiers with no routing test.",
+      "evidence": [
+        "docs/WIRING.md",
+        "tools/task-gate.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.216Z"
+    },
+    {
+      "id": "f10",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The staged scan's real adapter is untested and config-fragile: addedDiffLines is module-private with zero test callers (all five scan cases feed hand-built doubles), and repo-local git config (color.ui=always) laces the diff with ANSI codes the parser never matches — zero added lines extracted, a staged sk-ant key commits while the gate prints its binding success line",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:29:00.063Z",
+      "proof": "Repo with git config color.ui always: during .githooks/commit-msg, git diff --cached returns ANSI-laced output (verified: git -c color.ui=always diff emits escape codes before every token); addedDiffLines' startsWith('+') and the ^diff --git header regex never match, stagedScanRefusal([]) returns null, and the secret lands. The parser has no pin at all, so it can regress to return [] silently — the doubles stand in for the machine exactly where production breaks.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.268Z"
+    },
+    {
+      "id": "f11",
+      "lane": 5,
+      "severity": "HIGH",
+      "claim": "PLACEHOLDER_SECRET is unreachable dead code: every pattern match begins with a structural prefix (sk-ant-, ghp_, AKIA), so the ^-anchored whitelist over m[0] can never fire, and the 'placeholder key passes' self-test is vacuous — its input matches no secret pattern at all, so it passes with the whitelist deleted, inverted, or intact",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T03:29:00.118Z",
+      "proof": "Stage a docs fixture carrying sk-ant-XXXXXXXXXXXXXXXXXX or ghp_+30 x's (canonical redacted forms used in runbooks): the commit-msg gate refuses with 'carries a Anthropic API key — rotate the key', an impossible remedy for a placeholder; the code comment's own words say this is the failure mode that gets scans disabled. Verified exhaustively: no placeholder alternative is a prefix of any structural match prefix, so the whitelist test never suppresses anything.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-19T03:31:17.318Z"
+    }
+  ],
+  "sweptBase": "f9ec33322823902fe8b0f43cf1dbd4bfbce2ca1e",
+  "sweptHead": "16398b81d48bb02be554c9ad1b2f498d794355ce",
+  "sweptDiffDigest": "9720429ad2f4"
+}

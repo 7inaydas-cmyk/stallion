@@ -134,15 +134,18 @@ concrete facts gets investigation.
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --edit \"$CLAUDE_FILE\" || exit 2'" } ] },
-      { "matcher": "Bash(git*)", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --bash \"$CLAUDE_COMMAND\" || exit 2'" } ] }
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --edit \"$CLAUDE_FILE\" --session \"$CLAUDE_SESSION_ID\" || exit 2'" } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --bash \"$CLAUDE_COMMAND\" --session \"$CLAUDE_SESSION_ID\" || exit 2'" } ] }
     ]
   }
 }
 ```
 
-(Adapt the env names to your agent's hook contract; the `|| exit 2` translation is the Claude
-Code blocking form — see §5.) Three laws: the FIRST edit of each file per session refuses with
+(Adapt the env names to your agent's hook contract — including the session identifier, which
+keeps concurrent conversations from sharing gate state; the `|| exit 2` translation is the
+Claude Code blocking form — see §5. The Bash matcher is ALL commands, not git-only: the
+destructive laws cover `rm`, `dd`, and SQL, and a compound like `cd pkg && git push --force`
+never starts with `git`.) Three laws: the FIRST edit of each file per session refuses with
 a fact demand (importers, affected surface, the user's instruction verbatim — the retry passes);
 gate-bypassing git commands (`--no-verify`, `commit -n`, `-c core.hooksPath=`) refuse ALWAYS;
 destructive commands (force push, hard reset, `rm -rf`, SQL drops) deny once per session with a
