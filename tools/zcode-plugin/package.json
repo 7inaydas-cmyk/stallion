@@ -1,0 +1,8 @@
+{
+  "name": "stallion-enforcement",
+  "version": "0.1.0",
+  "description": "PreToolUse authoring gate + turn banner enforcing the stallion task lifecycle in ZCode",
+  "type": "module",
+  "private": true,
+  "license": "MIT"
+}
