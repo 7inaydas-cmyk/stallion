@@ -38,7 +38,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
 import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER, recordMustChain, CHAIN_CUTOVER } from "./task-state.mjs";
-import { chainError, chainStampEvents } from "./task-findings.mjs";
+import { chainError, chainStampEvents, STRICT_UTC_STAMP } from "./task-findings.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -219,7 +219,7 @@ export function isGrandfatheredScope(record) {
   const created = recordCreatedAt(record);
   // Strict UTC ISO form only: V8's lenient parser makes "0000" a valid year zero, so shape is
   // checked before parsing — real stamps come from toISOString() and always match.
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(created)) return false;
+  if (!STRICT_UTC_STAMP.test(created)) return false;
   const createdMs = Date.parse(created);
   return Number.isFinite(createdMs) && createdMs < Date.parse(SCOPE_LAW_CUTOVER);
 }
@@ -318,7 +318,7 @@ export function recordRefusal(record) {
   if (phase === "done" && !hasValidPin(record) && !hasPinExemption(record)) {
     const doneAt = [...(record.events ?? [])].reverse().find((e) => e.type === "transition" && e.to === "done")?.at ?? "";
     const doneMs = Date.parse(doneAt);
-    if (!(Number.isFinite(doneMs) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(doneAt) && doneMs < Date.parse(PIN_LAW_CUTOVER))) {
+    if (!(Number.isFinite(doneMs) && STRICT_UTC_STAMP.test(doneAt) && doneMs < Date.parse(PIN_LAW_CUTOVER))) {
       return "done record carries no valid command pin (and no recorded exemption) — hand-edited records refuse at the fence";
     }
   }

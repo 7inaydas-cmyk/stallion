@@ -205,9 +205,10 @@ function selfTestAppendResolve(fail) {
 
 function selfTestStatusGuards(fail) {
   const base = emptyFindings("self-test");
-  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "dead wiring claimed fixed" });
-  const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["test/x.test.ts"] });
+  const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "dead wiring claimed fixed", proof: "fixture: pinned so the group is not vacuous post-cutover" });
+  const resolved = typeof appended === "string" ? appended : setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["test/x.test.ts"] });
   const cases = [
+    ["the fixture appends (not vacuous)", typeof appended !== "string"],
     ["WONT-FIX without justification refused", typeof setFindingStatus(appended, "f1", { status: "WONT-FIX" }) === "string"],
     ["status change on unknown finding id refused", typeof setFindingStatus(appended, "nope", { status: "RESOLVED", evidence: ["e"] }) === "string"],
     ["re-opening a closed finding refused", typeof setFindingStatus(resolved, "f1", { status: "UNRESOLVED" }) === "string"],
@@ -224,23 +225,24 @@ export function selfTestFindings(fail) {
 function selfTestDedup(fail) {
   const base = emptyFindings("t");
   const first = appendFinding(base, { id: "f1", lane: 1, severity: "MEDIUM", claim: "first", evidence: "tools/a.mjs:1", proof: "fixture" });
-  if (typeof first === "string") { fail(`task-findings: dedup fixture refused (${first})`); return; }
-  if (duplicateEvidenceOf(first, { evidence: "  Tools/A.mjs:1  " }) !== "f1") fail("task-findings: normalized evidence must collide across case and whitespace");
-  if (duplicateEvidenceOf(first, { evidence: "tools/a.mjs:2" }) !== null) fail("task-findings: distinct evidence must not collide");
-  if (duplicateEvidenceOf(first, { claim: "Tools/A.MJS:1" }) !== "f1") fail("task-findings: with no evidence field, the normalized claim is the dedup key");
-  if (duplicateEvidenceOf(first, {}) !== null) fail("task-findings: an empty finding collides with nothing");
-  const resolved = setFindingStatus(first, "f1", { status: "RESOLVED", evidence: ["fix.test.ts"] });
-  if (typeof resolved === "string") { fail(`task-findings: resolve fixture refused (${resolved})`); return; }
-  if (duplicateEvidenceOf(resolved, { evidence: "tools/a.mjs:1" }) !== "f1") fail("task-findings: the dedup key must SURVIVE the resolve (the array evidence must not degrade it to the claim)");
+  const resolved = typeof first === "string" ? first : setFindingStatus(first, "f1", { status: "RESOLVED", evidence: ["fix.test.ts"] });
+  const closed = typeof first === "string" ? first : setFindingStatus(first, "f1", { status: "WONT-FIX", justification: "x" });
   const claimKeyed = appendFinding(base, { id: "f2", lane: 1, severity: "LOW", claim: "stored has no evidence" });
-  if (duplicateEvidenceOf(claimKeyed, { claim: "Stored Has No Evidence" }) !== "f2") fail("task-findings: a stored finding recorded without evidence dedups on its normalized claim");
-  const raised = raiseSeverity(first, "f1", "HIGH");
-  if (typeof raised === "string") fail(`task-findings: raising a duplicate's severity refused (${raised})`);
-  if (typeof raised !== "string" && raised.findings[0].severity !== "HIGH") fail("task-findings: the strictest severity must win on duplicate evidence");
-  if (raiseSeverity(first, "f1", "LOW") === "string" || typeof raiseSeverity(first, "f1", "LOW") !== "string") fail("task-findings: weakening or equal severity on a duplicate must refuse");
-  const closed = setFindingStatus(first, "f1", { status: "WONT-FIX", justification: "x" });
-  if (typeof closed !== "string" && typeof raiseSeverity(closed, "f1", "CRITICAL") !== "string") fail("task-findings: a closed finding's severity is closed");
-  return 8;
+  const raised = typeof first === "string" ? first : raiseSeverity(first, "f1", "HIGH");
+  const cases = [
+    ["the dedup fixture appends", typeof first !== "string"],
+    ["normalized evidence collides across case and whitespace", typeof first !== "string" && duplicateEvidenceOf(first, { evidence: "  Tools/A.mjs:1  " }) === "f1"],
+    ["distinct evidence does not collide", typeof first !== "string" && duplicateEvidenceOf(first, { evidence: "tools/a.mjs:2" }) === null],
+    ["without an evidence field the normalized claim is the key", typeof first !== "string" && duplicateEvidenceOf(first, { claim: "Tools/A.MJS:1" }) === "f1"],
+    ["an empty finding collides with nothing", duplicateEvidenceOf(first, {}) === null],
+    ["the dedup key SURVIVES the resolve", typeof resolved !== "string" && duplicateEvidenceOf(resolved, { evidence: "tools/a.mjs:1" }) === "f1"],
+    ["a stored finding recorded without evidence dedups on its claim", typeof claimKeyed !== "string" && duplicateEvidenceOf(claimKeyed, { claim: "Stored Has No Evidence" }) === "f2"],
+    ["the strictest severity wins on duplicate evidence", typeof raised !== "string" && raised.findings[0].severity === "HIGH"],
+    ["weakening or equal severity on a duplicate refuses", typeof first !== "string" && typeof raiseSeverity(first, "f1", "LOW") === "string"],
+    ["a closed finding's severity is closed", typeof closed !== "string" && typeof raiseSeverity(closed, "f1", "CRITICAL") === "string"],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 function selfTestChain(fail) {
@@ -318,7 +320,7 @@ export function raiseSeverity(register, id, severity, proof) {
     return `finding ${id} already carries this normalized evidence at ${target.severity} — a duplicate may only RAISE severity (strictest wins)`;
   }
   const carriesProof = typeof target.proof === "string" && target.proof.trim().length > 0;
-  const owesProofNow = (severity === "CRITICAL" || severity === "HIGH") && owesProof({ severity, recordedAt: target.recordedAt });
+  const owesProofNow = severity === "CRITICAL" || severity === "HIGH"; // a raise happens now: post-cutover by definition
   if (owesProofNow && !carriesProof && !(typeof proof === "string" && proof.trim().length > 0)) {
     return `raising finding ${id} to ${severity} owes a proof (the concrete failure scenario) — the law travels with the severity`;
   }

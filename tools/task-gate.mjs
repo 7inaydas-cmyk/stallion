@@ -11,7 +11,7 @@
  *   --edit <file>    deny-once per file per session: the FIRST mutating touch refuses with a
  *                    fact demand (importers, affected surface, the user's instruction verbatim);
  *                    the retry passes. Marked asked; state TTLs out so a stale session re-asks.
- *   --bash <command> two classes: BYPASS (--no-verify, -c core.hocksPath= on gate-carrying git
+ *   --bash <command> two classes: BYPASS (--no-verify, -c core.hooksPath= on gate-carrying git
  *                    commands) refuses ALWAYS — it is a law, not a fact request; DESTRUCTIVE
  *                    commands (rm -rf, reset --hard, push --force, commit --amend, SQL drops…)
  *                    deny-once per session with a rollback demand. Quote-aware: a flag-looking
@@ -323,6 +323,13 @@ export function gateDecision(state, target, fullDemand, nowMs) {
   return { refuse: true, text, next: { ...state, sessionDenials: n, sessionDenialsAt: nowMs, entries: { ...state.entries, [target]: { askedAt: nowMs } } } };
 }
 
+/** The gate target for a destructive command: ONE key per session regardless of danger class
+ *  (the spec's ask-once-per-session shape) — exported so the pin drives the DISPATCH law, not
+ *  just gateDecision's unchanged same-key semantics (a sweep caught the vacuous form). */
+export function destructiveTarget() {
+  return "bash:destructive";
+}
+
 function die(message) {
   console.error(`task-gate: ✖ REFUSED — ${message}`);
   process.exit(1);
@@ -375,10 +382,12 @@ export function selfTest() {
     ["re-pointing core.hooksPath is a bypass", bypassRefusal("git -c core.hooksPath=/x commit -m y") !== null],
     ["plain commit is not a bypass", bypassRefusal('git commit -m "real message"') === null],
     ["git push --no-verify is a bypass (it skips the pre-push fence)", bypassRefusal("git push --no-verify origin main") !== null],
-    ["a second DANGEROUS command of a different class passes without re-ask (destructive is once per session)", (() => {
-      const d1 = gateDecision({ entries: {} }, "bash:destructive", "F1", 1000);
-      const d2 = gateDecision(d1.next, "bash:destructive", "F2", 2000);
-      return d1.refuse && !d2.refuse;
+    ["destructive asks once per session ACROSS danger classes (the dispatch law, not just same-key semantics)", (() => {
+      const keyForAmend = destructiveTarget("amend (rewrites an existing commit)");
+      const keyForRm = destructiveTarget("recursive forced delete");
+      const d1 = gateDecision({ entries: {} }, keyForAmend, "F1", 1000);
+      const d2 = gateDecision(d1.next, keyForRm, "F2", 2000);
+      return keyForAmend === keyForRm && d1.refuse && !d2.refuse && bashFactDemand("rm -rf x", "recursive forced delete").includes("recursive forced delete");
     })()],
     ["a SINGLE-TOKEN quoted flag IS the flag (the shell strips those quotes)", bypassRefusal("git commit '--no-verify' -m x") !== null],
     ["a quoted -c hooksPath value is still a re-point", bypassRefusal("git -c 'core.hooksPath=/tmp/x' commit -m y") !== null],
@@ -460,7 +469,7 @@ if (isEntry) {
     if (danger) {
       // Once per SESSION (the spec's shape): the first destructive command of any class asks;
       // the session's remaining destructive commands proceed. The demand names the danger.
-      runGate("bash:destructive", bashFactDemand(args.bash, danger), args.session);
+      runGate(destructiveTarget(), bashFactDemand(args.bash, danger), args.session);
       process.exit(0);
     }
     console.log("task-gate: routine command — proceeding.");
