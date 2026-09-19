@@ -1,0 +1,94 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "bench-code-work",
+  "passStartedAt": "2026-09-19T05:07:11.211Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "CRITICAL",
+      "claim": "The answer key ships to the treatment arm: setup vendors the whole tools/ tree including tools/bench/tasks.mjs (every hidden suite + reference), while control gets a plain repo — the 'hidden' grading claim is false for treatment and the 29/29-vs-28/29 delta is confounded exactly where it sits (the chunk string-join fix is spelled out in the vendored file)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:16:13.354Z",
+      "proof": "A treatment agent directed by AGENTS.md to run tools/task-state.mjs status lands inside tools/, where bench/tasks.mjs holds the exact hidden tests and a passing reference for its own task — the control arm has no tools/ at all. No exclusion filter exists in cpSync, no blindness check anywhere, and the doc asserts 'never saw' without enforcement.",
+      "dedupKey": "the answer key ships to the treatment arm: setup vendors the whole tools/ tree including tools/bench/tasks.mjs (every hidden suite + reference), while control gets a plain repo — the 'hidden' grading claim is false for treatment and the 29/29-vs-28/29 delta is confounded exactly where it sits (the chunk string-join fix is spelled out in the vendored file)",
+      "evidence": [
+        "tools/bench/setup.mjs",
+        "docs/research/2026-09-19-code-work-benchmark.md"
+      ],
+      "resolvedAt": "2026-09-19T05:18:11.166Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "Live in-flight records ride into every treatment sandbox (only lockfiles stripped): the staged gate's only refusal branch is unreachable (any in-flight record keeps it open), setup's 'needs no records' comment misdescribes it, and the gate's behavior varies with the vendor repo's own lifecycle state — an uncontrolled variable in a benchmark whose thesis is arms-differ-only-in-harness",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:16:13.436Z",
+      "dedupKey": "live in-flight records ride into every treatment sandbox (only lockfiles stripped): the staged gate's only refusal branch is unreachable (any in-flight record keeps it open), setup's 'needs no records' comment misdescribes it, and the gate's behavior varies with the vendor repo's own lifecycle state — an uncontrolled variable in a benchmark whose thesis is arms-differ-only-in-harness",
+      "evidence": [
+        "tools/bench/setup.mjs",
+        "tools/bench/tasks.mjs"
+      ],
+      "resolvedAt": "2026-09-19T05:18:11.195Z"
+    },
+    {
+      "id": "f3",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "Nothing at grade time verifies the treatment mechanism survived: hooks wired once at setup, never re-checked — a --no-verify or re-pointed hooksPath commit lands identical telemetry with the mechanism disabled; the doctor that could detect it is never invoked by the benchmark",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:16:13.466Z",
+      "dedupKey": "nothing at grade time verifies the treatment mechanism survived: hooks wired once at setup, never re-checked — a --no-verify or re-pointed hookspath commit lands identical telemetry with the mechanism disabled; the doctor that could detect it is never invoked by the benchmark",
+      "evidence": [
+        "tools/bench/setup.mjs"
+      ],
+      "resolvedAt": "2026-09-19T05:18:11.227Z"
+    },
+    {
+      "id": "f4",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The AGENTS stanza mandates \n> stallion@0.1.0 selftest\n> node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test && node tools/bench/grade.mjs --self-test\n\ntask-findings self-test: OK (51 unit cases + 8-writer race — count derived)\ntask-state self-test: OK (28 transition + 10 remedy + 32 scope cases — counts derived)\ntask-workspace self-test: OK (12 guard cases; live jj path prints its own landing law)\ntask-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 8 scan cases — all counts derived — group counts derived where arrays are local)\ntask-gate self-test: OK (48 gate cases — count derived, not maintained)\nbench grade self-test: OK (4 tasks; reference passes all, seed fails all — the grader discriminates) but the sandbox package.json ships no scripts; the 'seed fails all' self-test message overclaims (enforced: at least one); the doc's 'both chunk HIGHs are the same subtlety' is false (control's was the missing join; it walked code units correctly); dead no-op replace at the filename seam",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:16:14.427Z",
+      "dedupKey": "the agents stanza mandates > stallion@0.1.0 selftest > node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test && node tools/bench/grade.mjs --self-test task-findings self-test: ok (51 unit cases + 8-writer race — count derived) task-state self-test: ok (28 transition + 10 remedy + 32 scope cases — counts derived) task-workspace self-test: ok (12 guard cases; live jj path prints its own landing law) task-coverage self-test: ok (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 8 scan cases — all counts derived — group counts derived where arrays are local) task-gate self-test: ok (48 gate cases — count derived, not maintained) bench grade self-test: ok (4 tasks; reference passes all, seed fails all — the grader discriminates) but the sandbox package.json ships no scripts; the 'seed fails all' self-test message overclaims (enforced: at least one); the doc's 'both chunk highs are the same subtlety' is false (control's was the missing join; it walked code units correctly); dead no-op replace at the filename seam",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "resolvedAt": "2026-09-19T05:18:11.257Z"
+    },
+    {
+      "id": "f5",
+      "lane": 3,
+      "severity": "HIGH",
+      "claim": "Three surfaces disagree on filenames for both feature tasks: spec says apps/lib/chunk.mjs and csv.mjs, the visible tests import those paths, setup seeds <taskId>.mjs (the replace is a no-op), and the hidden grader imports <taskId>.mjs — a spec-faithful agent scores 0/N, and the seed-time RED for those tasks is a MODULE_NOT_FOUND, not a failing assertion",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:16:24.977Z",
+      "proof": "Run setup control chunk-generator; implement ONLY apps/lib/chunk.mjs exactly as spec and visible test direct; grade.mjs imports ./apps/lib/chunk-generator.mjs which is still the 'not implemented' stub — every test fails, 0/7, for spec-conformant visible-green work. The self-test is blind to it: it fabricates its own layout matching the hidden import by construction, never running setup or the visible suite. All four real feature runs had to invent undocumented alias files to bridge the seam (both arms' commits carry chunk.mjs/csv.mjs re-exports).",
+      "dedupKey": "three surfaces disagree on filenames for both feature tasks: spec says apps/lib/chunk.mjs and csv.mjs, the visible tests import those paths, setup seeds <taskid>.mjs (the replace is a no-op), and the hidden grader imports <taskid>.mjs — a spec-faithful agent scores 0/n, and the seed-time red for those tasks is a module_not_found, not a failing assertion",
+      "evidence": [
+        "tools/bench/tasks.mjs",
+        "tools/bench/setup.mjs"
+      ],
+      "resolvedAt": "2026-09-19T05:18:11.285Z"
+    },
+    {
+      "id": "f6",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The grader fails open on absent/partial TAP: a 60s-timeout kill or an unresolvable node yields zero 'not ok' lines, tally returns failed=0, and the CLI exits 0 — a hung implementation is certified as an acceptance pass; module stdout shares the TAP channel so forged 'ok N' lines forge a score",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-19T05:16:25.007Z",
+      "proof": "An implementation with an import-time infinite loop: node --test emits TAP only for tests completed pre-hang; execFileSync kills at 60s; the catch path tallies partial (often empty) stdout; tally returns {failed:0}; grade exits 0 — the grader rewards hangs over failures. A module printing 'ok 1..8' and exit(0) at import forges 8/8. The total>0 guard lives only in the self-test, whose inputs cannot hang.",
+      "dedupKey": "the grader fails open on absent/partial tap: a 60s-timeout kill or an unresolvable node yields zero 'not ok' lines, tally returns failed=0, and the cli exits 0 — a hung implementation is certified as an acceptance pass; module stdout shares the tap channel so forged 'ok n' lines forge a score",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "resolvedAt": "2026-09-19T05:18:11.313Z"
+    }
+  ],
+  "sweptBase": "62dbef793789034974add62ab35d8cc1398b8303",
+  "sweptHead": "ff035440106b963908b1c9b679bb8ea263b14288",
+  "sweptDiffDigest": "35f6ce24ea00"
+}

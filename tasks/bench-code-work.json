@@ -1,0 +1,77 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "bench-code-work",
+  "title": "Benchmark stallion's results for code work: two-arm kit, hidden acceptance grading, defect probe",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T04:42:01.530Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "a33ef0506535580f0b5687ab9a065e3f9ed973110eafb393fc8047f6e30bbc8f"
+    },
+    {
+      "at": "2026-09-19T04:42:01.560Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "a33ef0506535580f0b5687ab9a065e3f9ed973110eafb393fc8047f6e30bbc8f",
+      "entry_hash": "feae3db65b45d17b492cab7da1c6072156b55103e83797ab801082523d9d3339"
+    },
+    {
+      "at": "2026-09-19T04:42:01.590Z",
+      "type": "scope",
+      "patterns": [
+        "tools/bench/**",
+        "docs/research/**"
+      ],
+      "seq": 2,
+      "parent_hash": "feae3db65b45d17b492cab7da1c6072156b55103e83797ab801082523d9d3339",
+      "entry_hash": "efaa484e32ff20593ae9232af1280f88dd39feaad459bd0bede9e4f1b5920026"
+    },
+    {
+      "at": "2026-09-19T04:42:01.615Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "efaa484e32ff20593ae9232af1280f88dd39feaad459bd0bede9e4f1b5920026",
+      "entry_hash": "306dde52f27e0dc700d17899e43d64256ca911ee16cedf698c32ff9baaccc68a"
+    },
+    {
+      "at": "2026-09-19T04:42:01.643Z",
+      "type": "red-check",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "09bfff92811e",
+      "seq": 4,
+      "parent_hash": "306dde52f27e0dc700d17899e43d64256ca911ee16cedf698c32ff9baaccc68a",
+      "entry_hash": "3d53e95cc976c106e0734d36c10acbccf45eafa7f417a114ae335e42249d478c"
+    },
+    {
+      "at": "2026-09-19T05:07:11.077Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "3d53e95cc976c106e0734d36c10acbccf45eafa7f417a114ae335e42249d478c",
+      "entry_hash": "0320f94dbd78222b5ea03456e0a8b0bb15508f86be7d1ac7a5697a523ee7dc8c"
+    },
+    {
+      "at": "2026-09-19T05:07:11.128Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "0320f94dbd78222b5ea03456e0a8b0bb15508f86be7d1ac7a5697a523ee7dc8c",
+      "entry_hash": "c33d98b817e0c60f76b60d2c92e8e9fd7be8336ab2b9cec7c59c10ff07b6a3f9"
+    },
+    {
+      "at": "2026-09-19T05:18:11.941Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "c33d98b817e0c60f76b60d2c92e8e9fd7be8336ab2b9cec7c59c10ff07b6a3f9",
+      "entry_hash": "295273f3edf47e84e41cc309e0190dbb280c610ac00cbc0cbcf74b39ffe9339e"
+    }
+  ]
+}
