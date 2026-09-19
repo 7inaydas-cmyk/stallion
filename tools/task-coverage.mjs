@@ -157,6 +157,15 @@ export function registerHeadingCount(text) {
   return typeof text === "string" ? text.split("\n").filter((l) => l.startsWith("## ")).length : 0;
 }
 
+/** Pure: which self-testing tools the battery script never runs. The doctor derives the tool
+ *  list from the tree, so a tool with a --self-test that the battery omits is a WIRING failure
+ *  with a fix line — never the silent skip that let a vacuous adversarial-runner self-test ship
+ *  through a green battery (issue #16). */
+export function missingSelfTests(selftestScript, toolFiles) {
+  if (typeof selftestScript !== "string") return [...(toolFiles ?? [])];
+  return (toolFiles ?? []).filter((f) => !selftestScript.includes(`tools/${f} --self-test`));
+}
+
 /**
  * Pure: the `task: <id>` footer — TRAILER-ANCHORED: only in the message's final trailer block, so a
  * quoted example or pasted log in the body cannot authorize a commit .
@@ -722,7 +731,19 @@ function cmdDoctor() {
   } catch {
     selftestScript = "";
   }
-  check("the selftest battery runs the intervention gate's own self-test", selftestScript.includes("task-gate.mjs --self-test"), "add 'node tools/task-gate.mjs --self-test' to the selftest SCRIPT in package.json — a string elsewhere in the file wires nothing");
+  // The tool list is DERIVED from the tree (every tools/*.mjs that offers a --self-test), so the
+  // check cannot go stale when a seventh tool appears: the battery must run them all.
+  const selfTestingTools = (() => {
+    try {
+      return readdirSync(`${ROOT}tools`).filter((f) => f.endsWith(".mjs") && readFileSync(`${ROOT}tools/${f}`, "utf8").includes("--self-test"));
+    } catch {
+      return [];
+    }
+  })();
+  const notRun = missingSelfTests(selftestScript, selfTestingTools);
+  check("the selftest battery runs every self-testing tool in tools/", notRun.length === 0, notRun.length > 0
+    ? `add to the selftest SCRIPT in package.json: ${notRun.map((f) => `node tools/${f} --self-test`).join(" && ")} — a self-test the battery never runs is a silent skip (issue #16)`
+    : "add every tools/*.mjs that defines a --self-test to the selftest SCRIPT in package.json — a string elsewhere in the file wires nothing");
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
   check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
@@ -928,6 +949,9 @@ export function selfTest() {
     ["the staged detector requires --staged on a live line", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n", "staged")],
     ["a commented-out pre-commit hook wires nothing", !invokesMode("#!/bin/sh\n# node tools/task-coverage.mjs --staged\nexit 0\n", "staged")],
     ["register heading counter counts '## ' only", registerHeadingCount("## A\n### a\n## B") === 2],
+    ["battery completeness derives from the tool list, not a pinned name", missingSelfTests("node tools/a.mjs --self-test", ["a.mjs", "b.mjs"]).length === 1],
+    ["a complete battery reports nothing missing", missingSelfTests("node tools/a.mjs --self-test && node tools/b.mjs --self-test", ["a.mjs", "b.mjs"]).length === 0],
+    ["a missing script fails every tool closed", missingSelfTests("", ["a.mjs"]).length === 1],
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
 

@@ -407,23 +407,21 @@ function selfTestAggregation(fail) {
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
-  selfTestLanes(fail);
-  selfTestBundle(fail);
-  selfTestAggregation(fail);
+  const unitCases = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail);
   const laneCases = [
     ["lane beyond the checklist refused", laneRefusal(99, 8) !== null],
     ["lane within the checklist allowed", laneRefusal(3, 8) === null],
     ["lane zero refused", laneRefusal(0, 8) !== null],
   ];
   for (const [name, passes] of laneCases) if (!passes) fail(`adversarial-runner: ${name}`);
-  return laneCases.length;
   const sweptCases = [
     ["the swept range is recorded and reported", sweptRangeLine({ sweptBase: "aaa", sweptHead: "bbb", sweptDiffDigest: "abc123" }) === "swept aaa..bbb (digest abc123)"],
     ["an unmarked register reports nothing", sweptRangeLine({}) === null],
   ];
   for (const [name, passes] of sweptCases) if (!passes) fail(`adversarial-runner: ${name}`);
-  return sweptCases.length;
-  const total = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail) + laneCases.length + sweptCases.length;
+  // ONE exit, derived from the failure list — an early return shipped a truthy case COUNT once
+  // (73a8fd2) and every collected failure became invisible: exit 0, no banner, battery green.
+  const total = unitCases + laneCases.length + sweptCases.length;
   console.log(failures.length === 0 ? `adversarial-runner self-test: OK (${total} cases — count derived)` : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
