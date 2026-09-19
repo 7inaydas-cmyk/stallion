@@ -124,7 +124,35 @@ push itself. A task whose record already reads done AT THE ANCHOR is finished se
 new commits citing it refuse. A task first-landing in this push (or still in flight at the
 anchor) authorizes its own tail commits — a wave's code, written in flight, lands with it.
 
-## 7. The push control
+## 7. The intervention gate: refuse at the act, not the transport
+
+`tools/task-gate.mjs` (from the ECC study) refuses at ACT boundaries inside the agent's tool
+loop — the pattern ECC's GateGuard proved: asking "are you sure?" gets "yes"; demanding
+concrete facts gets investigation.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --edit \"$CLAUDE_FILE\" || exit 2'" } ] },
+      { "matcher": "Bash(git*)", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --bash \"$CLAUDE_COMMAND\" || exit 2'" } ] }
+    ]
+  }
+}
+```
+
+(Adapt the env names to your agent's hook contract; the `|| exit 2` translation is the Claude
+Code blocking form — see §5.) Three laws: the FIRST edit of each file per session refuses with
+a fact demand (importers, affected surface, the user's instruction verbatim — the retry passes);
+gate-bypassing git commands (`--no-verify`, `commit -n`, `-c core.hooksPath=`) refuse ALWAYS;
+destructive commands (force push, hard reset, `rm -rf`, SQL drops) deny once per session with a
+rollback demand. Denials carry a strictly increasing session ordinal — never textually
+identical, condensing after the third — because identical repeated denials feed the repetition
+loops they refuse. Session state lives in `.stallion/gate-state-*.json` (repo-local, gitignored,
+30-minute TTL); the self-test runs in the `selftest` battery. The staged-content scan (secrets,
+`debugger`) rides in the commit-msg gate (§6) — same transport, no new wiring.
+
+## 8. The push control
 
 `.githooks/pre-push`:
 
@@ -173,7 +201,7 @@ every run.)
 Pull requests are not re-fenced, on purpose: every commit reaches the default branch through a
 push, and every push is fenced.
 
-## 8. The gate for the gate: doctor
+## 9. The gate for the gate: doctor
 
 ```yaml
 - name: Wiring doctor
@@ -189,7 +217,7 @@ covers nothing — the vacuous-gate trap), no resolvable push base, no decisions
 headings, checklist not parsing to eight lanes. Each failure prints its fix. Run it locally
 too: fresh clones must re-run `git config core.hooksPath .githooks`, and the doctor says so.
 
-## 9. Knobs
+## 10. Knobs
 
 - `CODE_TREES` / `CODE_EXTS` / `CODE_NAMES` in `tools/task-coverage.mjs`: what counts as code in
   your layout. Defaults fit a typical monorepo (`apps/`, `packages/`, `tools/`, `deploy/`,

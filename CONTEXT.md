@@ -33,6 +33,12 @@ The commit-msg gate and the push fence refuse code files outside it; docs and
 state files are never scoped.
 _Avoid_: allowance, budget, permission list.
 
+**Fact gate**:
+The deny-once intervention at act boundaries: the first mutating touch of a target
+refuses with a demand for concrete facts, and the retry proceeds. Bypass flags are
+refused always; they are law, not questions.
+_Avoid_: confirmation prompt, speed bump.
+
 **Adoption base**:
 The pinned revision where the push fence starts auditing, committed as `.stallion-base` so
 CI clones can resolve it. History before it is grandfathered; a base that fences an empty

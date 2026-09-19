@@ -14,7 +14,8 @@ Code in this repo is written under the stallion task lifecycle.
   refuses if it passes); `done` needs a prepared adversarial pass that aggregates clean and
   every pin re-run GREEN.
 - Refusals print the rule, the evidence, and an exact fix command. Run the fix. Do not work
-  around a refusal.
+  around a refusal. Never bypass the hooks (`--no-verify`, `commit -n`, re-pointing
+  `core.hooksPath`) — `tools/task-gate.mjs` refuses these outright.
 - Verify changes with `npm run selftest`; verify the wiring with
   `node tools/task-coverage.mjs --doctor`.
 - Fresh clones: `git config core.hooksPath .githooks` (hooks are committed; the activation is

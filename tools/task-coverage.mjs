@@ -561,6 +561,57 @@ function cmdStaged() {
   die(`  fix: node tools/task-state.mjs new <id> --risk-class runtime-code && node tools/task-state.mjs advance <id> planned && node tools/task-state.mjs advance <id> executing\n      (existing tasks: node tools/task-state.mjs status)`);
 }
 
+/** Secret/`debugger` patterns for the staged scan (ECC's pre-bash-commit-quality, adapted):
+ *  literal shapes first (prefixes are structural), then a narrow key=value shape with a
+ *  placeholder whitelist — a scan that fires on "your_api_key_here" is a scan people disable. */
+const SECRET_PATTERNS = [
+  [/sk-ant-[A-Za-z0-9_-]{10,}/, "Anthropic API key"],
+  [/ghp_[A-Za-z0-9]{30,}/, "GitHub PAT"],
+  [/gho_[A-Za-z0-9]{30,}/, "GitHub OAuth token"],
+  [/AKIA[0-9A-Z]{16}/, "AWS access key id"],
+  [/sk-[A-Za-z0-9]{20,}/, "generic API key"],
+];
+const PLACEHOLDER_SECRET = /^(?:x{3,}|your?_|<[^>]*>|\$\{?[A-Za-z_]|example|test|dummy|changeme|redacted|\*+|n\/a)/i;
+
+/**
+ * Pure: scan ADDED diff lines for secrets and stray debugger statements. Returns null when
+ * clean, or { reason } naming file, line, and what matched — the refusal an agent can act on.
+ */
+export function stagedScanRefusal(addedLines) {
+  for (const { file, line, text } of addedLines ?? []) {
+    for (const [pattern, name] of SECRET_PATTERNS) {
+      const m = pattern.exec(text);
+      if (m && !PLACEHOLDER_SECRET.test(m[0])) {
+        return { reason: `staged content carries a ${name} at ${file}:${line} — secrets do not land in git; rotate the key and read it from the environment` };
+      }
+    }
+    if (/^\s*debugger;?\s*$/.test(text)) {
+      return { reason: `staged content carries a debugger statement at ${file}:${line} — remove it before committing` };
+    }
+  }
+  return null;
+}
+
+/** Added diff lines as {file, line, text}, tracking hunk headers — the scan's input. */
+function addedDiffLines(diffText) {
+  const out = [];
+  let file = "";
+  let line = 0;
+  for (const raw of String(diffText ?? "").split("\n")) {
+    const m = /^diff --git a\/(.*) b\/(.*)$/.exec(raw);
+    if (m) { file = m[2]; continue; }
+    const h = /^@@ -(?:\d+)(?:,\d+)? \+(\d+)/.exec(raw);
+    if (h) { line = Number(h[1]); continue; }
+    if (raw.startsWith("+") && !raw.startsWith("+++")) {
+      out.push({ file, line, text: raw.slice(1) });
+      line += 1;
+    } else if (!raw.startsWith("-")) {
+      line += 1;
+    }
+  }
+  return out;
+}
+
 /**
  * The binding gate (issue #8): at commit-msg time the `task:` footer must name a REAL, IN-FLIGHT
  * task whose DECLARED scope covers the staged code. The refusal lands within one action of the
@@ -598,6 +649,16 @@ function cmdCommitMsg(messageFile) {
   if (refusal) die(`✖ REFUSED — task '${footer}' does not authorize this commit: ${refusal}`);
   const citation = citationRefusal(record, codeFiles, true);
   if (citation) die(`✖ REFUSED — ${citation.reason}\n  fix: ${citation.remedy}`);
+  // The staged scan (ECC's pre-commit quality gate, adapted): the diff about to become history
+  // is scanned for secrets and debugger statements — refusals name file and line.
+  let cachedDiff = "";
+  try {
+    cachedDiff = gitOut("diff", "--cached");
+  } catch (e) {
+    die(`cannot read the staged diff — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass`);
+  }
+  const scan = stagedScanRefusal(addedDiffLines(cachedDiff));
+  if (scan) die(`✖ REFUSED — ${scan.reason}`);
   console.log(codeFiles.length === 0
     ? `task-coverage (commit-msg): footer cites in-flight task '${footer}' (no code staged).`
     : `task-coverage (commit-msg): ${codeFiles.length} code file(s) bound to in-flight task '${footer}' within its declared scope.`);
@@ -930,7 +991,16 @@ export function selfTest() {
   ];
   for (const [name, passes] of anchorCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const scanCases = [
+    ["a staged Anthropic key refuses with file and line", stagedScanRefusal([{ file: "apps/api/k.ts", line: 3, text: `const k = "${["sk", "ant"].join("-")}-0123456789abcdef0123"` }])?.reason.includes("apps/api/k.ts:3")],
+    ["a placeholder key passes", stagedScanRefusal([{ file: "a.ts", line: 1, text: 'const k = "your_api_key_here_xxxxxxxxxxxxx"' }]) === null],
+    ["a debugger statement refuses", stagedScanRefusal([{ file: "a.ts", line: 9, text: "  debugger;" }]) !== null],
+    ["ordinary code passes", stagedScanRefusal([{ file: "a.ts", line: 1, text: "const x = 1;" }]) === null],
+    ["a short sk- word is not a key", stagedScanRefusal([{ file: "a.ts", line: 1, text: "const sk = ski trip" }]) === null],
+  ];
+  for (const [name, passes] of scanCases) if (!passes) fail(`task-coverage: ${name}`);
+
+  console.log(failures.length === 0 ? "task-coverage self-test: OK (19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + 14 scope + 4 citation + 8 anchor + 5 scan + 9 commit-msg-wiring cases)" : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
