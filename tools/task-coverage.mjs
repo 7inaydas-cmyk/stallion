@@ -1034,7 +1034,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of scanCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  const bannerCounts = `19 path + 6 footer + 18 authorization + 6 staged + 9 doctor + 15 base + 10 glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${anchorCases.length} anchor + ${scanCases.length} scan cases`;
+  const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${anchorCases.length} anchor + ${scanCases.length} scan cases — all counts derived`;
   console.log(failures.length === 0 ? `task-coverage self-test: OK (${bannerCounts} — group counts derived where arrays are local)` : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }

@@ -44,21 +44,80 @@ const MAX_TARGETS = 500;
  * short flags) IS a command: it is appended for classification, one level deep — nested
  * wrappers beyond that are the documented boundary, not a solved problem.
  */
+const INTERPRETER = "(?:[\\w./-]*\\/)?(?:[a-z]{0,6}sh\\d?|eval)";
+const QUOTE_RE = /'([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)"/g;
+
+/** Decode ANSI-C escapes inside $'…' — bash decodes these before argv exists. */
+function decodeAnsiC(text) {
+  return text
+    .replace(/\\x([0-9a-fA-F]{1,2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\([0-7]{1,3})/g, (_, o) => String.fromCharCode(parseInt(o, 8)))
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\r/g, "\r")
+    .replace(/\\([\\'"])/g, "$1");
+}
+
+/**
+ * The classifier's view of a command — ONE quote-aware scan, not stacked regex passes (the
+ * stacked passes corrupted quote boundaries an adversarial pass caught). Walks the raw text:
+ * single/double/locale quotes yield their content as a token when it is a single token, and
+ * vanish when it is a payload or value; ANSI-C quotes decode their escapes first; backslashes
+ * outside quotes are their characters (git reset \\-\-hard IS --hard); interpreter/eval
+ * payloads are appended whole as commands, one level deep. This models COMMON quoting — it is
+ * friction that demands facts, not a shell parser; the push fence is the control.
+ */
 export function classifiedText(command) {
   const raw = String(command ?? "");
-  // Payloads worth classifying as commands: any *sh (sh, bash, zsh, dash, ksh…) and eval,
-  // each with up to a few flags, then ONE quoted payload. One level deep — the boundary.
-  const payloadRegex = /(?:^|[\s;&|])(?:[a-z]{0,6}sh\d?|eval)\s+(?:-{1,2}[a-zA-Z][\w-]*\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)"|\$'([^']*)')/g;
   const payloads = [];
-  for (const m of raw.matchAll(payloadRegex)) payloads.push(m[2] ?? m[3] ?? m[4] ?? "");
-  // Backslash-escaped characters are their characters to the shell: git reset \-\-hard IS
-  // --hard. Normalized BEFORE quote handling (an escaped quote stays structural).
-  const unescaped = raw.replace(/\\(.)/g, "$1");
-  const unwrapped = unescaped.replace(/\$?'([^']*)'|"((?:[^"\\]|\\.)*)"/g, (whole, sq, dq) => {
-    const inner = sq !== undefined ? sq.replace(/^\$/, "") : dq;
-    return /\s/.test(inner) ? " " : inner;
-  });
-  return [unwrapped, ...payloads].join("\n");
+  const payloadRegex = new RegExp(`(?:^|[\\s;&|])${INTERPRETER}\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+){0,8}('([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)")`, "g");
+  for (const m of raw.matchAll(payloadRegex)) {
+    const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
+    payloads.push(m[0].includes("$'") ? decodeAnsiC(inner) : inner);
+  }
+  let out = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const c = raw[i];
+    if (c === "\\") {
+      out += raw[i + 1] ?? "";
+      i += 1;
+      continue;
+    }
+    if (c === "'") {
+      const end = raw.indexOf("'", i + 1);
+      const inner = end === -1 ? raw.slice(i + 1) : raw.slice(i + 1, end);
+      if (!/\s/.test(inner.trim())) out += inner;
+      i = end === -1 ? raw.length : end;
+      continue;
+    }
+    if (c === '"' || (c === "$" && raw[i + 1] === '"')) {
+      const q = c === "$" ? i + 1 : i;
+      let inner = "";
+      let j = q + 1;
+      while (j < raw.length && raw[j] !== '"') {
+        if (raw[j] === "\\" && (raw[j + 1] === '"' || raw[j + 1] === "\\")) {
+          inner += raw[j + 1];
+          j += 2;
+        } else {
+          inner += raw[j];
+          j += 1;
+        }
+      }
+      if (!/\s/.test(inner.trim())) out += inner;
+      i = j;
+      continue;
+    }
+    if (c === "$" && raw[i + 1] === "'") {
+      const end = raw.indexOf("'", i + 2);
+      const inner = end === -1 ? raw.slice(i + 2) : raw.slice(i + 2, end);
+      const decoded = decodeAnsiC(inner);
+      if (!/\s/.test(decoded.trim())) out += decoded;
+      i = end === -1 ? raw.length : end;
+      continue;
+    }
+    out += c;
+  }
+  return [out, ...payloads].join("\n");
 }
 
 /** Back-compat alias: the single-view form (tests and callers). */
@@ -69,20 +128,33 @@ const GIT_HOOKED = /(?:^|\s)(?:commit|merge|cherry-pick|rebase|am)(?:\s|$)/;
 /** Pure: does this command attempt to bypass the gates? ALWAYS refused — not a fact request. */
 export function bypassRefusal(command) {
   const t = unquoted(command);
-  const git = /(?:^|\s)git\s+/.test(t);
+  const rawText = String(command ?? "");
+  const git = /(?:^|\s)git\s+/.test(t) || /GIT_CONFIG_KEY_\d+=core\.hooksPath/i.test(rawText);
   if (!git) return null;
   if (GIT_HOOKED.test(t) && (/(?:^|\s)--no-verify(?:\s|$)/.test(t) || (/(?:^|\s)commit\s/.test(t) && /(?:^|\s)-n(?:\s|$)/.test(t)))) {
     return "this command bypasses the commit hooks (--no-verify / commit -n) — the hooks ARE the gates; run them";
   }
-  if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t)) {
+  if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t) || /GIT_CONFIG_KEY_\d+=core\.hooksPath/i.test(rawText)) {
     return "this command re-points core.hooksPath — the hooks are the fence; do not move them to run without them";
   }
-  const cfg = /git\s+config\s+(?:--[\w-]+\s+)*core\.hooksPath\s+(\S+)/.exec(t);
-  if (cfg && cfg[1] !== ".githooks") {
-    return "this command re-points core.hooksPath somewhere other than the committed .githooks — the hooks are the fence; only the documented activation (git config core.hooksPath .githooks) is legal";
+  if (/core\.hooksPath\s*(?:""|'')/.test(rawText)) {
+    return "setting core.hooksPath to an empty value deactivates every committed hook — if you mean to re-activate, set it to .githooks";
   }
-  if (/git\s+config\s+(?:--[\w-]+\s+)*--unset\s+core\.hooksPath/.test(t)) {
+  if (/git\s+config\s+(?:--[\w-]+\s+)*(?:--unset(?:-all)?\s+core\.hooksPath|--remove-section\s+core)\b/.test(t)) {
     return "unsetting core.hooksPath deactivates every committed hook for this clone — if you mean to re-activate, set it back to .githooks instead";
+  }
+  // EVERY hooksPath write is judged, not just the first (a sweep caught the legal activation
+  // laundering a trailing re-point); machine-wide scope flags and non-.githooks values refuse.
+  for (const m of t.matchAll(/git\s+config\s+((?:--[\w-]+\s+)*)core\.hooksPath(?:\s+(\S+))?/g)) {
+    const flags = m[1] ?? "";
+    const value = (m[2] ?? "").replace(/^['"]|['"]$/g, "");
+    if (value === "" || value === undefined) continue; // a bare read prints, it does not write
+    if (/--(global|system|file)\b/.test(flags)) {
+      return "setting core.hooksPath with a machine-wide scope flag — the activation is local (git config core.hooksPath .githooks) and must stay local";
+    }
+    if (value !== ".githooks") {
+      return "this command re-points core.hooksPath somewhere other than the committed .githooks — the hooks are the fence; only the documented activation (git config core.hooksPath .githooks) is legal";
+    }
   }
   return null;
 }
@@ -109,12 +181,49 @@ const DESTRUCTIVE = [
  *  Compounds are judged SEGMENT by segment (an adversarial pass caught the whole-string
  *  lease exemption nullifying a chained rm -rf); --force-with-lease exempts only its own
  *  segment — the lease is that push's safety, not the compound's. */
+/** Split a compound at SEPARATOR characters OUTSIDE quotes — a pipe inside a quoted message
+ *  is data, and splitting on it stranded flags from their command heads (a regression a sweep
+ *  caught: git commit -m "a|b" --amend stopped classifying as an amend). */
+export function quoteAwareSplit(raw) {
+  const parts = [""];
+  let quote = null; // "'", '"', "$'", '$"'
+  for (let i = 0; i < raw.length; i += 1) {
+    const c = raw[i];
+    if (quote) {
+      parts[parts.length - 1] += c;
+      if (quote !== "'" && c === "\\") {
+        parts[parts.length - 1] += raw[i + 1] ?? "";
+        i += 1;
+        continue;
+      }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'") { quote = "'"; parts[parts.length - 1] += c; continue; }
+    if (c === '"') { quote = '"'; parts[parts.length - 1] += c; continue; }
+    if (c === "$" && (raw[i + 1] === "'" || raw[i + 1] === '"')) { quote = "$" + raw[i + 1]; parts[parts.length - 1] += c; continue; }
+    const two = raw.slice(i, i + 2);
+    const atSeparator = c === "\n" || c === ";" || c === "&" || two === "&&" || two === "||" || two === "|&" || c === "|";
+    if (atSeparator) {
+      if (parts[parts.length - 1].trim() !== "") parts.push("");
+      if (two === "&&" || two === "||" || two === "|&") i += 1;
+      continue;
+    }
+    parts[parts.length - 1] += c;
+  }
+  return parts.map((x) => x.trim()).filter(Boolean);
+}
+
 export function commandSegments(command) {
   const raw = String(command ?? "");
-  const segments = raw.split(/[\n;]|&&|\|\||\|&|\||&/).map((x) => x.trim()).filter(Boolean);
-  // sh -c payloads are commands too — appended as their own segments, one level deep
-  const payloadRegex = /(?:^|[\s;&|])(?:\ba|ba)?sh\s+(?:-[a-zA-Z]+\s+){0,3}('([^']*)'|"((?:[^"\\]|\\.)*)")/g;
-  for (const m of raw.matchAll(payloadRegex)) segments.push(m[2] ?? m[3] ?? "");
+  const segments = quoteAwareSplit(raw);
+  // interpreter/eval payloads are commands too — appended as their own segments, one level
+  // deep; the SAME dialect as classifiedText (one law, no drift).
+  const payloadRegex = new RegExp(`(?:^|[\\s;&|])${INTERPRETER}\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+){0,8}('([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)")`, "g");
+  for (const m of raw.matchAll(payloadRegex)) {
+    const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
+    segments.push(m[0].includes("$'") ? decodeAnsiC(inner) : inner);
+  }
   return segments;
 }
 
@@ -273,6 +382,15 @@ export function selfTest() {
     ["the documented activation (git config core.hooksPath .githooks) is allowed", bypassRefusal("git config core.hooksPath .githooks") === null],
     ["re-pointing hooksPath elsewhere still refuses", bypassRefusal("git config core.hooksPath /tmp/empty") !== null],
     ["unsetting hooksPath refuses", bypassRefusal("git config --unset core.hooksPath") !== null],
+    ["--unset-all refuses (the -all spelling)", bypassRefusal("git config --unset-all core.hooksPath") !== null],
+    ["--remove-section core refuses", bypassRefusal("git config --remove-section core") !== null],
+    ["an empty-value re-point refuses", bypassRefusal('git config core.hooksPath ""') !== null],
+    ["a LEGAL activation followed by a re-point still refuses (every write judged)", bypassRefusal("git config core.hooksPath .githooks && git config core.hooksPath /tmp/nohooks && git commit -m x") !== null],
+    ["a --global activation refuses (machine scope)", bypassRefusal("git config --global core.hooksPath .githooks") !== null],
+    ["the GIT_CONFIG env protocol refuses", bypassRefusal("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/tmp/x git commit -m y") !== null],
+    ["ANSI-C escape-decoded flags are their flags", bypassRefusal("git commit $'\\x2d\\x2dno-verify' -m x") !== null],
+    ["path-prefixed interpreter payloads are classified", bypassRefusal("/bin/bash -c 'git commit --no-verify -m x'") !== null],
+    ["a pipe inside a quoted message does not strand the amend flag", destructiveAs('git commit -m "fix a|b" --amend') !== null],
     ["rm -rf is destructive", destructiveAs("rm -rf build/") !== null],
     ["rm single file is not classed destructive", destructiveAs("rm notes.tmp") === null],
     ["git reset --hard is destructive", destructiveAs("git reset --hard HEAD~1") !== null],
