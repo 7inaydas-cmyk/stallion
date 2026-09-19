@@ -24,10 +24,12 @@ git subtree add   # or plain copy: tools/*.mjs into <your-repo>/tools/
 }
 ```
 
-Every `tools/*.mjs` that offers a `--self-test` belongs in that script: the doctor derives the
-tool list from the tree and refuses a battery that omits a member — a self-test the battery never
-runs is a silent skip, the exact regression that once shipped a vacuous adversarial-runner
-self-test through a green battery.
+(The example shows the six core members a basic vendoring carries; this repo's own battery also
+runs `tools/bench/grade.mjs` and the plugin's law checks — every `tools/**/*.mjs` that dispatches
+on `--self-test` belongs in the script.) The doctor derives the tool list from the tree and
+refuses a battery that omits a member — a self-test the battery never runs is a silent skip, the
+exact regression that once shipped a vacuous adversarial-runner self-test through a green
+battery.
 
 ## 3. Tell the agents: AGENTS.md
 

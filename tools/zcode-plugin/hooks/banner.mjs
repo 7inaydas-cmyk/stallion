@@ -7,11 +7,11 @@
  */
 import { findHarnessRoot, loadLaw } from "../lib/law-source.mjs";
 import { bannerContext, readRecords } from "../lib/gate-law.mjs";
+import { readStdin } from "../lib/io.mjs";
 
 async function main() {
   try {
-    let raw = "";
-    for await (const chunk of process.stdin) raw += chunk;
+    const raw = await readStdin();
     let cwd = process.cwd();
     try {
       const payload = JSON.parse(raw);

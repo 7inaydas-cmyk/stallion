@@ -166,6 +166,50 @@ export function missingSelfTests(selftestScript, toolFiles) {
   return (toolFiles ?? []).filter((f) => !selftestScript.includes(`tools/${f} --self-test`));
 }
 
+/** Pure: does this file DISPATCH on --self-test (as opposed to merely mentioning it)? A review
+ *  caught the first derivation blind to spelling: it matched only `.includes("--self-test")`,
+ *  while task-gate.mjs dispatches via `a === "--self-test"` — so the very tool that prompted
+ *  the law escaped it. The dispatch idioms are recognized; a bare mention inside a string
+ *  (bench/setup.mjs writes battery text into sandboxes) stays a non-member. */
+export function dispatchesSelfTest(text) {
+  if (typeof text !== "string") return false;
+  return /\.(?:includes|indexOf)\(\s*["']--self-test["']\s*\)|={2,3}\s*["']--self-test["']/.test(text);
+}
+
+/** Pure: is the ZCode plugin's authoring gate wired in its hooks manifest? Issue #14's
+ *  acceptance said "doctor sees it" and the review found the doctor only checked battery
+ *  membership — a deleted or de-fanged hook registration passed. The manifest must register
+ *  PreToolUse with a matcher that covers Edit, Write, AND ApplyPatch (the dispatch aliases),
+ *  and the banner on SessionStart + UserPromptSubmit; the scripts' existence is the caller's
+ *  fs fact. Returns null when wired, the reason when not. */
+export function pluginWiringRefusal(manifest, hooksListed) {
+  const need = ["Edit", "Write", "ApplyPatch"];
+  let parsed;
+  try {
+    parsed = typeof manifest === "string" ? JSON.parse(manifest) : manifest;
+  } catch (e) {
+    return `the plugin's hooks.json does not parse: ${e.message}`;
+  }
+  const events = parsed?.hooks ?? {};
+  if (!Array.isArray(events.PreToolUse) || events.PreToolUse.length === 0) return "the plugin registers no PreToolUse hook — the authoring gate is not wired";
+  const pre = events.PreToolUse.find((entry) => (entry?.hooks ?? []).some((h) => `${h.command} ${JSON.stringify(h.args ?? [])}`.includes("authoring-gate.mjs")));
+  if (!pre) return "no PreToolUse hook invokes authoring-gate.mjs — the gate exists but nothing dispatches it";
+  if (pre.matcher === undefined) return null; // an omitted matcher matches everything — wired
+  let matcher;
+  try {
+    matcher = new RegExp(pre.matcher);
+  } catch {
+    return `the PreToolUse matcher is not a valid regular expression: ${String(pre.matcher)} — an invalid expression never matches, the gate never fires`;
+  }
+  const missed = need.filter((tool) => !matcher.test(tool));
+  if (missed.length > 0) return `the PreToolUse matcher '${pre.matcher}' does not cover ${missed.join(", ")} — edits through those tool names escape the gate`;
+  for (const event of ["SessionStart", "UserPromptSubmit"]) {
+    const wired = Array.isArray(events[event]) && events[event].some((entry) => (entry?.hooks ?? []).some((h) => `${h.command} ${JSON.stringify(h.args ?? [])}`.includes("banner.mjs")));
+    if (!wired) return `no ${event} hook invokes banner.mjs — the turn banner is not wired on that event`;
+  }
+  return null;
+}
+
 /**
  * Pure: the `task: <id>` footer — TRAILER-ANCHORED: only in the message's final trailer block, so a
  * quoted example or pasted log in the body cannot authorize a commit .
@@ -758,10 +802,12 @@ function cmdDoctor() {
         if (entry.name.startsWith(".")) continue;
         const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
         if (entry.isDirectory()) walk(`${abs}/${entry.name}`, entryRel);
-        // Membership is the ENTRY law, not a mention: the file must DISPATCH on --self-test
-        // (`argv.includes("--self-test")`). A mere mention is a lie in the tree — bench/setup.mjs
-        // writes battery strings into sandboxes and would otherwise be demanded as a member.
-        else if (entry.name.endsWith(".mjs") && readFileSync(`${abs}/${entry.name}`, "utf8").includes('includes("--self-test")')) found.push(entryRel);
+        // Membership is the ENTRY law, not a mention: the file must DISPATCH on --self-test,
+        // in any of the dispatch idioms (`.includes("--self-test")`, `=== "--self-test"`,
+        // indexOf). A mere mention is a lie in the tree — bench/setup.mjs writes battery
+        // strings into sandboxes; and a review caught the single-idiom form blind to
+        // task-gate.mjs's `===` spelling, leaving the law unenforceable for its own tool.
+        else if (entry.name.endsWith(".mjs") && dispatchesSelfTest(readFileSync(`${abs}/${entry.name}`, "utf8"))) found.push(entryRel);
       }
     };
     try {
@@ -780,6 +826,16 @@ function cmdDoctor() {
       ? `add to the selftest SCRIPT in package.json: ${notRun.map((f) => `node tools/${f} --self-test`).join(" && ")} — a self-test the battery never runs is a silent skip (issue #16)`
       : `cannot list tools/ to derive the battery's members (${toolsListingError}) — a gate that cannot read state must not pass`,
   );
+
+  // Issue #14's acceptance, closed late by the review: "doctor sees it." The battery proves the
+  // gate's LAW runs; this proves the gate's WIRING exists — a deleted or de-fanged hook
+  // registration (matcher that covers no edit tool, missing banner event, unparseable
+  // manifest) refuses here, not at the first silently-ungated edit.
+  const pluginManifest = existsSync(`${ROOT}tools/zcode-plugin/hooks/hooks.json`) ? readFileSync(`${ROOT}tools/zcode-plugin/hooks/hooks.json`, "utf8") : null;
+  const wiringRefusal = pluginManifest === null
+    ? "tools/zcode-plugin/hooks/hooks.json does not exist — the enforcement plugin is gone while its law is still a battery member"
+    : pluginWiringRefusal(pluginManifest);
+  check("the enforcement plugin's authoring gate is wired in its manifest", wiringRefusal === null, wiringRefusal ?? "restore tools/zcode-plugin/hooks/hooks.json (PreToolUse matcher covering Edit|Write|ApplyPatch, banner on SessionStart + UserPromptSubmit)");
 
   const ciOk = committedWorkflows.some((f) => invokesMode(committedText(f) ?? "", "fence"));
   check("CI re-runs the push fence", ciOk, "add a bare 'node tools/task-coverage.mjs' step to .github/workflows (docs/WIRING.md) and commit it");
@@ -989,6 +1045,16 @@ export function selfTest() {
     ["a complete battery reports nothing missing", missingSelfTests("node tools/a.mjs --self-test && node tools/b.mjs --self-test", ["a.mjs", "b.mjs"]).length === 0],
     ["a missing script fails every tool closed", missingSelfTests("", ["a.mjs"]).length === 1],
     ["nested members are matched by their nested path", missingSelfTests("node tools/bench/grade.mjs --self-test", ["bench/grade.mjs", "zcode-plugin/lib/gate-law.mjs"]).length === 1],
+    ["dispatch detection covers the .includes spelling", dispatchesSelfTest('if (argv.includes("--self-test")) x();')],
+    ["dispatch detection covers the === spelling (task-gate's own)", dispatchesSelfTest('if (a === "--self-test") { args["self-test"] = true; }')],
+    ["dispatch detection covers indexOf", dispatchesSelfTest('if (argv.indexOf("--self-test") !== -1) x();')],
+    ["a bare mention inside a written string is NOT a member (bench/setup.mjs)", !dispatchesSelfTest('writeFileSync(p, "node tools/task-findings.mjs --self-test && node tools/task-gate.mjs --self-test")')],
+    ["the real task-gate.mjs source dispatches (the regression the review caught)", dispatchesSelfTest(readFileSync(new URL("./task-gate.mjs", import.meta.url), "utf8"))],
+    ["the plugin manifest as shipped passes the wiring judge", pluginWiringRefusal(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")) === null],
+    ["a matcher covering no edit tool refuses", (() => { const m = JSON.parse(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")); m.hooks.PreToolUse[0].matcher = "NoSuchTool"; return pluginWiringRefusal(m) !== null; })()],
+    ["a missing banner event refuses", (() => { const m = JSON.parse(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")); delete m.hooks.UserPromptSubmit; return pluginWiringRefusal(m) !== null; })()],
+    ["an unparseable manifest refuses", pluginWiringRefusal("{ nope") !== null],
+    ["a gate script nothing dispatches refuses", (() => { const m = JSON.parse(readFileSync(new URL("./zcode-plugin/hooks/hooks.json", import.meta.url), "utf8")); m.hooks.PreToolUse[0].hooks[0].args = ["${ZCODE_PLUGIN_ROOT}/hooks/somewhere-else.mjs"]; return pluginWiringRefusal(m) !== null; })()],
   ];
   for (const [name, passes] of doctorCases) if (!passes) fail(`task-coverage: ${name}`);
 

@@ -21,7 +21,7 @@
  *   3. CLASSIFICATION AGREEMENT — non-code files never need a task, on either transport.
  */
 import { findHarnessRoot, loadLaw } from "./law-source.mjs";
-import { authoringDecision } from "./gate-law.mjs";
+import { authoringDecision, authorizingPhases } from "./gate-law.mjs";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -66,7 +66,7 @@ export async function checkAgreement(verbose = false) {
   }
   const { stagedRefusal, scopeRefusal, isCodePath, recordRefusal } = law.coverage;
   const { derivePhase, PHASES } = law.state;
-  const window = PHASES.slice(PHASES.indexOf("executing"), PHASES.indexOf("done"));
+  const window = [...authorizingPhases(PHASES)]; // the gate's own derivation, imported — never re-typed here
   const CODE = "tools/agreement-probe.mjs";
   const DOC = "docs/agreement-probe.md";
   if (!isCodePath(CODE) || isCodePath(DOC)) fail(`the real law must classify ${CODE} as code and ${DOC} as not-code (got ${isCodePath(CODE)}/${isCodePath(DOC)})`);
@@ -112,12 +112,12 @@ export async function checkAgreement(verbose = false) {
   if (coveredCount === 0) fail("no fixture exercised the scope-covered half of relation 2");
   if (uncoveredActiveCount === 0) fail("no fixture exercised the scope-uncovered half of relation 2");
   if (verbose) console.log(`agreement matrix: ${checked} fixtures (${activeCount} active, ${coveredCount} covered, ${uncoveredActiveCount} uncovered-active) through the real law at ${law.root}`);
-  return { failures };
+  return { failures, checked, activeCount, coveredCount, uncoveredActiveCount };
 }
 
 export async function selfTest() {
-  const { failures } = await checkAgreement(true);
-  console.log(failures.length === 0 ? "transport-agreement self-test: OK (21 fixtures × 3 transports through the real law — the agreement is mechanical)" : `transport-agreement self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const { failures, checked } = await checkAgreement(true);
+  console.log(failures.length === 0 ? `transport-agreement self-test: OK (${checked} fixtures × 3 transports through the real law — count derived, the agreement is mechanical)` : `transport-agreement self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

@@ -383,8 +383,8 @@ export function selfTest() {
     ["plain commit is not a bypass", bypassRefusal('git commit -m "real message"') === null],
     ["git push --no-verify is a bypass (it skips the pre-push fence)", bypassRefusal("git push --no-verify origin main") !== null],
     ["destructive asks once per session ACROSS danger classes (the dispatch law, not just same-key semantics)", (() => {
-      const keyForAmend = destructiveTarget("amend (rewrites an existing commit)");
-      const keyForRm = destructiveTarget("recursive forced delete");
+      const keyForAmend = destructiveTarget();
+      const keyForRm = destructiveTarget();
       const d1 = gateDecision({ entries: {} }, keyForAmend, "F1", 1000);
       const d2 = gateDecision(d1.next, keyForRm, "F2", 2000);
       return keyForAmend === keyForRm && d1.refuse && !d2.refuse && bashFactDemand("rm -rf x", "recursive forced delete").includes("recursive forced delete");

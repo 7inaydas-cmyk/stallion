@@ -1,7 +1,8 @@
 # stallion
 
-A task lifecycle Harness for repos where AI agents write code. Six small Node tools, no dependencies,
-that refuse work which should not ship.
+A task lifecycle Harness for repos where AI agents write code. Six small Node tools, a two-arm
+benchmark kit, and a ZCode enforcement plugin — no dependencies, and everything refuses work
+which should not ship.
 
 The problem they solve is specific. Agents are reliable at producing plausible code and
 unreliable at holding process rules in their head. Told "always verify the fix with a failing

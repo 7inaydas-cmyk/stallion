@@ -10,10 +10,10 @@
  */
 import { findHarnessRoot, loadLaw } from "../lib/law-source.mjs";
 import { authoringDecision, parseEditPayload, readRecords } from "../lib/gate-law.mjs";
+import { readStdin } from "../lib/io.mjs";
 
 async function main() {
-  let raw = "";
-  for await (const chunk of process.stdin) raw += chunk;
+  const raw = await readStdin();
   let payload;
   try {
     payload = JSON.parse(raw);

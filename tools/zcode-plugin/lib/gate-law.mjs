@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * (excluding) "done". The anchors are law stated once; the set is a slice, so a repo that
  * adds a phase gets it honored by this gate without this file changing.
  */
-const authorizingPhases = (PHASES) => new Set(PHASES.slice(PHASES.indexOf("executing"), PHASES.indexOf("done")));
+export const authorizingPhases = (PHASES) => new Set(PHASES.slice(PHASES.indexOf("executing"), PHASES.indexOf("done")));
 
 /**
  * Parse a PreToolUse hook payload (the stdin JSON). Returns { ok, toolName, filePath, cwd } or

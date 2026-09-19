@@ -11,8 +11,9 @@ Code in this repo is written under the stallion task lifecycle.
   records the blast radius (append-only, declared at planned). The commit-msg gate refuses code
   staged outside it; the push fence re-judges every commit in the range.
 - `verified` needs a command pin (`red-check --command "<failing check>"` — the tool runs it and
-  refuses if it passes); `done` needs a prepared adversarial pass that aggregates clean and
-  every pin re-run GREEN.
+  refuses if it passes) AND a green run of the whole `npm run selftest` battery at the phase
+  boundary; `done` needs a prepared adversarial pass that aggregates clean and every pin re-run
+  GREEN.
 - Refusals print the rule, the evidence, and an exact fix command. Run the fix. Do not work
   around a refusal. Never bypass the hooks (`--no-verify`, `commit -n`, re-pointing
   `core.hooksPath` away from `.githooks`) — when task-gate is wired (docs/WIRING.md §7) it
