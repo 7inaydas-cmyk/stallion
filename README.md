@@ -1,6 +1,6 @@
 # stallion
 
-A task lifecycle for repos where AI agents write code. Six small Node tools, no dependencies,
+A task lifecycle Harness for repos where AI agents write code. Six small Node tools, no dependencies,
 that refuse work which should not ship.
 
 The problem they solve is specific. Agents are reliable at producing plausible code and
