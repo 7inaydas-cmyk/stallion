@@ -19,7 +19,7 @@ git subtree add   # or plain copy: tools/*.mjs into <your-repo>/tools/
     "adversarial": "node tools/adversarial-runner.mjs",
     "workspace": "node tools/task-workspace.mjs",
     "task-coverage": "node tools/task-coverage.mjs",
-    "selftest": "node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test"
+    "selftest": "node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test"
   }
 }
 ```
@@ -155,6 +155,11 @@ identical, condensing after the third — because identical repeated denials fee
 loops they refuse. Session state lives in `.stallion/gate-state-*.json` (repo-local, gitignored,
 30-minute TTL); the self-test runs in the `selftest` battery. The staged-content scan (secrets,
 `debugger`) rides in the commit-msg gate (§6) — same transport, no new wiring.
+
+Why bypass blocking lives HERE and not in the commit-msg gate: `--no-verify` never reaches a
+git hook by definition — the flag's entire effect is skipping them. A gate cannot judge a
+command it never sees, so bypass refusal belongs to the one transport that sees the command
+before the shell runs it.
 
 Honest boundary, stated rather than hidden: the classifiers read the command TEXT through one
 quote-aware scan — single-token quotes are tokens, interpreter/eval payloads are classified one

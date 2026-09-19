@@ -118,7 +118,7 @@ export function aggregateFindings(register) {
  */
 export function owesProof(f) {
   if (typeof f.recordedAt !== "string") return true;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(f.recordedAt)) return true;
+  if (!STRICT_UTC_STAMP.test(f.recordedAt)) return true;
   return Date.parse(f.recordedAt) >= Date.parse(PROOF_CUTOVER);
 }
 
@@ -182,44 +182,43 @@ function selfTestValidate(fail) {
     ["unknown severity refused", validateFindings({ ...base, findings: [{ id: "f1", severity: "MAXIMUM", status: "UNRESOLVED", claim: "x" }] }) !== null],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 function selfTestAppendResolve(fail) {
   const base = emptyFindings("self-test");
   const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "dead wiring claimed fixed", proof: "fixture proof: pinned so the battery never depends on the wall clock" });
-  if (typeof appended === "string") fail(`task-findings: appendFinding refused a good finding (${appended})`);
   const dupAppend = appendFinding(appended, { id: "f1", lane: 3, severity: "HIGH", claim: "again", proof: "fixture" });
-  if (typeof dupAppend !== "string") fail("task-findings: appendFinding accepted a duplicate id");
-  let agg = aggregateFindings(appended);
-  if (agg.clean || agg.unresolved !== 1) fail("task-findings: one UNRESOLVED finding must not aggregate clean");
-  const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["test/x.test.ts"] });
-  if (typeof resolved === "string") fail(`task-findings: resolve refused a good patch (${resolved})`);
-  agg = aggregateFindings(resolved);
-  if (!agg.clean || agg.resolved !== 1) fail("task-findings: a RESOLVED-only register must aggregate clean");
+  const resolved = typeof appended === "string" ? appended : setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["test/x.test.ts"] });
+  const aggBefore = typeof appended === "string" ? { clean: true } : aggregateFindings(appended);
+  const aggAfter = typeof resolved === "string" ? { clean: false } : aggregateFindings(resolved);
+  const cases = [
+    ["appendFinding accepts a good finding", typeof appended !== "string"],
+    ["appendFinding refuses a duplicate id", typeof dupAppend === "string"],
+    ["one UNRESOLVED finding must not aggregate clean", !aggBefore.clean],
+    ["resolve accepts a good patch", typeof resolved !== "string"],
+    ["a RESOLVED-only register aggregates clean", aggAfter.clean],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 function selfTestStatusGuards(fail) {
   const base = emptyFindings("self-test");
   const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "dead wiring claimed fixed" });
   const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["test/x.test.ts"] });
-  const bareWontFix = setFindingStatus(appended, "f1", { status: "WONT-FIX" });
-  if (typeof bareWontFix !== "string") fail("task-findings: WONT-FIX without justification accepted");
-  const unknownId = setFindingStatus(appended, "nope", { status: "RESOLVED", evidence: ["e"] });
-  if (typeof unknownId !== "string") fail("task-findings: status change on unknown finding id accepted");
-  const reLitigated = setFindingStatus(resolved, "f1", { status: "UNRESOLVED" });
-  if (typeof reLitigated !== "string") fail("task-findings: re-opening a closed finding accepted");
-  const nonObject = setFindingStatus("garbage", "f1", { status: "RESOLVED", evidence: ["e"] });
-  if (typeof nonObject !== "string") fail("task-findings: status change on a non-register accepted");
+  const cases = [
+    ["WONT-FIX without justification refused", typeof setFindingStatus(appended, "f1", { status: "WONT-FIX" }) === "string"],
+    ["status change on unknown finding id refused", typeof setFindingStatus(appended, "nope", { status: "RESOLVED", evidence: ["e"] }) === "string"],
+    ["re-opening a closed finding refused", typeof setFindingStatus(resolved, "f1", { status: "UNRESOLVED" }) === "string"],
+    ["status change on a non-register refused", typeof setFindingStatus("garbage", "f1", { status: "RESOLVED", evidence: ["e"] }) === "string"],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 export function selfTestFindings(fail) {
-  selfTestValidate(fail);
-  selfTestAppendResolve(fail);
-  selfTestStatusGuards(fail);
-  selfTestResolveEvidence(fail);
-  selfTestChain(fail);
-  selfTestProofLaw(fail);
-  selfTestDedup(fail);
+  return (selfTestValidate(fail) ?? 0) + (selfTestAppendResolve(fail) ?? 0) + (selfTestStatusGuards(fail) ?? 0) + (selfTestResolveEvidence(fail) ?? 0) + (selfTestChain(fail) ?? 0) + (selfTestProofLaw(fail) ?? 0) + (selfTestDedup(fail) ?? 0);
 }
 
 function selfTestDedup(fail) {
@@ -235,32 +234,47 @@ function selfTestDedup(fail) {
   if (duplicateEvidenceOf(resolved, { evidence: "tools/a.mjs:1" }) !== "f1") fail("task-findings: the dedup key must SURVIVE the resolve (the array evidence must not degrade it to the claim)");
   const claimKeyed = appendFinding(base, { id: "f2", lane: 1, severity: "LOW", claim: "stored has no evidence" });
   if (duplicateEvidenceOf(claimKeyed, { claim: "Stored Has No Evidence" }) !== "f2") fail("task-findings: a stored finding recorded without evidence dedups on its normalized claim");
+  const raised = raiseSeverity(first, "f1", "HIGH");
+  if (typeof raised === "string") fail(`task-findings: raising a duplicate's severity refused (${raised})`);
+  if (typeof raised !== "string" && raised.findings[0].severity !== "HIGH") fail("task-findings: the strictest severity must win on duplicate evidence");
+  if (raiseSeverity(first, "f1", "LOW") === "string" || typeof raiseSeverity(first, "f1", "LOW") !== "string") fail("task-findings: weakening or equal severity on a duplicate must refuse");
+  const closed = setFindingStatus(first, "f1", { status: "WONT-FIX", justification: "x" });
+  if (typeof closed !== "string" && typeof raiseSeverity(closed, "f1", "CRITICAL") !== "string") fail("task-findings: a closed finding's severity is closed");
+  return 8;
 }
 
 function selfTestChain(fail) {
-  if (canonicalJson({ b: 1, a: { d: 2, c: 3 } }) !== canonicalJson({ a: { c: 3, d: 2 }, b: 1 })) fail("task-findings: canonical JSON must be key-order independent");
-  if (canonicalJson({ b: 1, a: 2 }) !== '{"a":2,"b":1}') fail("task-findings: canonical JSON must sort keys with no whitespace");
   const stamped = chainStampEvents([{ type: "created", at: "2026-09-19T03:00:00.000Z" }, { type: "transition", to: "planned", at: "2026-09-19T03:01:00.000Z" }]);
-  if (chainError(stamped) !== null) fail("task-findings: a freshly stamped chain must verify clean");
-  if (stamped[0].parent_hash !== GENESIS_HASH) fail("task-findings: the first event's parent must be the 64-zero genesis");
-  if (stamped[1].parent_hash !== stamped[0].entry_hash) fail("task-findings: each event's parent must be the previous entry hash");
-  if (chainError([{ ...stamped[0], entry_hash: "0".repeat(64) }, stamped[1]]) === null) fail("task-findings: a tampered entry hash must be detected");
-  if (chainError([stamped[0], { ...stamped[1], parent_hash: "f".repeat(64) }]) === null) fail("task-findings: a broken parent link must be detected");
-  if (chainError([stamped[0], { ...stamped[1], seq: 5 }]) === null) fail("task-findings: a seq that is not the event index must be detected");
-  if (chainError([{ type: "created" }]) === null) fail("task-findings: unstamped events must fail verification");
+  const cases = [
+    ["canonical JSON is key-order independent", canonicalJson({ b: 1, a: { d: 2, c: 3 } }) === canonicalJson({ a: { c: 3, d: 2 }, b: 1 })],
+    ["canonical JSON sorts keys with no whitespace", canonicalJson({ b: 1, a: 2 }) === '{"a":2,"b":1}'],
+    ["a freshly stamped chain verifies clean", chainError(stamped) === null],
+    ["the first event's parent is the 64-zero genesis", stamped[0].parent_hash === GENESIS_HASH],
+    ["each event's parent is the previous entry hash", stamped[1].parent_hash === stamped[0].entry_hash],
+    ["a tampered entry hash is detected", chainError([{ ...stamped[0], entry_hash: "0".repeat(64) }, stamped[1]]) !== null],
+    ["a broken parent link is detected", chainError([stamped[0], { ...stamped[1], parent_hash: "f".repeat(64) }]) !== null],
+    ["a seq that is not the event index is detected", chainError([stamped[0], { ...stamped[1], seq: 5 }]) !== null],
+    ["unstamped events fail verification", chainError([{ type: "created" }]) !== null],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 function selfTestProofLaw(fail) {
   const post = { id: "f1", severity: "CRITICAL", status: "UNRESOLVED", claim: "x", recordedAt: "2026-09-19T03:00:00.000Z" };
   const pre = { id: "f1", severity: "CRITICAL", status: "UNRESOLVED", claim: "x", recordedAt: "2026-09-17T00:00:00.000Z" };
-  if (validateFindings({ ...emptyFindings("t"), findings: [post] }) === null) fail("task-findings: a post-cutover CRITICAL finding without proof must be refused");
-  if (validateFindings({ ...emptyFindings("t"), findings: [{ ...post, proof: "file:line + the input that breaks it" }] }) !== null) fail("task-findings: a CRITICAL finding with proof must validate");
-  if (validateFindings({ ...emptyFindings("t"), findings: [{ ...post, severity: "LOW" }] }) !== null) fail("task-findings: a LOW finding does not owe proof");
-  if (validateFindings({ ...emptyFindings("t"), findings: [pre] }) !== null) fail("task-findings: a pre-cutover finding is grandfathered without proof");
-  if (!owesProof({ severity: "CRITICAL" })) fail("task-findings: a finding with NO recordedAt owes a proof (fail closed)");
-  if (!owesProof({ severity: "CRITICAL", recordedAt: 123 })) fail("task-findings: a non-string recordedAt owes a proof (fail closed)");
-  if (!owesProof({ severity: "CRITICAL", recordedAt: "2026-09-18T23:00:00.000-05:00" })) fail("task-findings: an offset-spelled post-cutover stamp owes a proof (fail closed)");
-  if (owesProof({ severity: "CRITICAL", recordedAt: "2026-09-17T00:00:00.000Z" })) fail("task-findings: a strict-Z pre-cutover stamp is grandfathered");
+  const cases = [
+    ["a post-cutover CRITICAL finding without proof is refused", validateFindings({ ...emptyFindings("t"), findings: [post] }) !== null],
+    ["a CRITICAL finding with proof validates", validateFindings({ ...emptyFindings("t"), findings: [{ ...post, proof: "file:line + the input that breaks it" }] }) === null],
+    ["a LOW finding does not owe proof", validateFindings({ ...emptyFindings("t"), findings: [{ ...post, severity: "LOW" }] }) === null],
+    ["a pre-cutover finding is grandfathered without proof", validateFindings({ ...emptyFindings("t"), findings: [pre] }) === null],
+    ["a finding with NO recordedAt owes a proof (fail closed)", owesProof({ severity: "CRITICAL" })],
+    ["a non-string recordedAt owes a proof (fail closed)", owesProof({ severity: "CRITICAL", recordedAt: 123 })],
+    ["an offset-spelled post-cutover stamp owes a proof (fail closed)", owesProof({ severity: "CRITICAL", recordedAt: "2026-09-18T23:00:00.000-05:00" })],
+    ["a strict-Z pre-cutover stamp is grandfathered", !owesProof({ severity: "CRITICAL", recordedAt: "2026-09-17T00:00:00.000Z" })],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 /** The dedup key (ECC's orch-review lesson: dedup on normalized EVIDENCE, not titles or
@@ -284,6 +298,35 @@ export function duplicateEvidenceOf(register, candidate) {
   return null;
 }
 
+/** The strict UTC-ISO stamp shape every cutover law parses — ONE law, no drift (a review
+ *  caught the same regex maintained three times across two tools). */
+export const STRICT_UTC_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
+const SEVERITY_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+
+/**
+ * Pure: raise an UNRESOLVED finding's severity (the dedup merge — strictest wins, ECC's
+ * orch-review rule). Weakening, equality, unknown ids, and closed findings all refuse: the
+ * register only ever gets STRICTER from a duplicate, never softer.
+ */
+export function raiseSeverity(register, id, severity, proof) {
+  if (!SEVERITIES.includes(severity)) return `unknown severity: ${String(severity)}`;
+  const target = register?.findings?.find((f) => f.id === id);
+  if (!target) return `no such finding: ${id}`;
+  if (target.status !== "UNRESOLVED") return `finding ${id} is already ${target.status} — a closed finding's severity is closed`;
+  if (SEVERITY_ORDER[severity] <= SEVERITY_ORDER[target.severity]) {
+    return `finding ${id} already carries this normalized evidence at ${target.severity} — a duplicate may only RAISE severity (strictest wins)`;
+  }
+  const carriesProof = typeof target.proof === "string" && target.proof.trim().length > 0;
+  const owesProofNow = (severity === "CRITICAL" || severity === "HIGH") && owesProof({ severity, recordedAt: target.recordedAt });
+  if (owesProofNow && !carriesProof && !(typeof proof === "string" && proof.trim().length > 0)) {
+    return `raising finding ${id} to ${severity} owes a proof (the concrete failure scenario) — the law travels with the severity`;
+  }
+  const next = { ...register, findings: register.findings.map((f) => (f.id === id ? { ...f, severity, ...(owesProofNow && !carriesProof ? { proof } : {}) } : f)) };
+  const error = validateFindings(next);
+  return error ? error : next;
+}
+
 /**
  * Resolve evidence that no longer exists. RESOLVED findings owe their evidence at verdict time,
  * not just at resolve time (the same law RED-checks already live under). Returns one
@@ -302,16 +345,18 @@ export function missingResolveEvidence(register, existsFn) {
 function selfTestResolveEvidence(fail) {
   const base = emptyFindings("self-test");
   const appended = appendFinding(base, { id: "f1", lane: 3, severity: "HIGH", claim: "x", proof: "fixture" });
-  if (typeof appended === "string") fail(`task-findings: evidence fixture append refused (${appended})`);
-  const resolved = setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["gone.test.ts"] });
-  if (typeof resolved === "string") fail(`task-findings: evidence fixture resolve refused (${resolved})`);
-  if (typeof resolved !== "string") {
-    if (missingResolveEvidence(resolved, () => false).length !== 1) fail("task-findings: vanished resolve evidence must be reported");
-    if (missingResolveEvidence(resolved, () => true).length !== 0) fail("task-findings: present resolve evidence must not be reported");
-    if (missingResolveEvidence(appended, () => false).length !== 0) fail("task-findings: UNRESOLVED findings carry no evidence obligation");
-  }
-  if (validateFindings({ ...base, findings: [{ id: "f1", lane: 0, severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) === null) fail("task-findings: a zero lane in a stored register must be refused");
-  if (validateFindings({ ...base, findings: [{ id: "f1", lane: "3", severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) === null) fail("task-findings: a string lane in a stored register must be refused");
+  const resolved = typeof appended === "string" ? appended : setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["gone.test.ts"] });
+  const cases = [
+    ["the evidence fixture appends", typeof appended !== "string"],
+    ["the evidence fixture resolves", typeof resolved !== "string"],
+    ["vanished resolve evidence is reported", typeof resolved !== "string" && missingResolveEvidence(resolved, () => false).length === 1],
+    ["present resolve evidence is not reported", typeof resolved !== "string" && missingResolveEvidence(resolved, () => true).length === 0],
+    ["UNRESOLVED findings carry no evidence obligation", typeof appended !== "string" && missingResolveEvidence(appended, () => false).length === 0],
+    ["a zero lane in a stored register is refused", validateFindings({ ...base, findings: [{ id: "f1", lane: 0, severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) !== null],
+    ["a string lane in a stored register is refused", validateFindings({ ...base, findings: [{ id: "f1", lane: "3", severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) !== null],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 /**
@@ -474,9 +519,9 @@ const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSyn
 if (isEntry && process.argv.includes("--self-test")) {
   (async () => {
     const failures = [];
-    selfTestFindings((m) => failures.push(m));
+    const unitCases = selfTestFindings((m) => failures.push(m));
     await selfTestConcurrentWriters((m) => failures.push(m));
-    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation + 9 chain + 8 proof + 4 dedup cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
+    console.log(failures.length === 0 ? `task-findings self-test: OK (${unitCases} unit cases + 8-writer race — count derived)` : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
     process.exit(failures.length === 0 ? 0 : 1);
   })();
 }

@@ -34,7 +34,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, chainError, chainStampEvents, duplicateEvidenceOf, loadFindings, missingResolveEvidence, mutateJson } from "./task-findings.mjs";
+import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -99,7 +99,7 @@ export function recordCreatedAt(record) {
  *  strictness as every cutover law — an undated, malformed, or offset-spelled stamp MUST chain. */
 export function recordMustChain(record) {
   const created = recordCreatedAt(record);
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(created)) return true;
+  if (!STRICT_UTC_STAMP.test(created)) return true;
   return Date.parse(created) >= Date.parse(CHAIN_CUTOVER);
 }
 
@@ -208,7 +208,8 @@ function executionGuard(record) {
 
 const NON_CODE_CLASSES = new Set(["planning-only", "docs-only", "experiment"]);
 
-function verificationGuard(record, _findings, evidenceOnDisk, _resolveMissing = [], _green = [], batteryGreen = true) {
+function verificationGuard(record, _findings, evidenceOnDisk, _facts = {}) {
+  const { batteryGreen = true } = _facts;
   if (!batteryGreen) {
     return { reason: "the selftest battery is not green — verification runs the whole battery at the phase boundary (ECC's stop-time batching: checks once at the boundary, not per edit)", remedy: "npm run selftest   — fix every failing tool, then advance" };
   }
@@ -236,7 +237,8 @@ function verificationGuard(record, _findings, evidenceOnDisk, _resolveMissing = 
   return null;
 }
 
-function doneGuard(record, findings, _evidenceOnDisk, resolveEvidenceMissing = [], greenFailures = []) {
+function doneGuard(record, findings, _evidenceOnDisk, facts = {}) {
+  const { resolveEvidenceMissing = [], greenFailures = [] } = facts;
   if (!findings) {
     return {
       reason: "no adversarial findings register — the adversarial pass must be recorded before done (adversarial-runner record/verdict)",
@@ -288,7 +290,8 @@ const TRANSITION_GUARDS = {
  * caller re-verifies, so this stays testable with synthetic records.
  * Returns { ok: true } or { ok: false, reason } — the reason is the law being invoked.
  */
-export function evaluateTransition(record, findings, target, evidenceOnDisk, resolveEvidenceMissing = [], greenFailures = [], batteryGreen = true) {
+export function evaluateTransition(record, findings, target, evidenceOnDisk, facts = {}) {
+  const { resolveEvidenceMissing = [], greenFailures = [], batteryGreen = true } = facts;
   if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record", remedy: "start a real one: node tools/task-state.mjs new <id> --risk-class <class>" };
   if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}`, remedy: `phases are exactly: ${PHASES.join(", ")}` };
   const current = derivePhase(record.events);
@@ -299,7 +302,7 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, res
   }
   const guard = TRANSITION_GUARDS[`${current}->${target}`];
   if (guard) {
-    const refusal = guard(record, findings, evidenceOnDisk, resolveEvidenceMissing, greenFailures, batteryGreen);
+    const refusal = guard(record, findings, evidenceOnDisk, { resolveEvidenceMissing, greenFailures, batteryGreen });
     if (refusal) return { ok: false, reason: refusal.reason, remedy: refusal.remedy };
   }
   return { ok: true };
@@ -487,7 +490,7 @@ function cmdScope(args) {
  *  record that already carries a chain is once-only. Everything judges the locked snapshot. */
 export function adoptionRefusal(record) {
   const created = recordCreatedAt(record);
-  const strict = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(created);
+  const strict = STRICT_UTC_STAMP.test(created);
   if (!strict || Date.parse(created) < Date.parse(CHAIN_CUTOVER)) {
     return `record predates the chain cutover (${CHAIN_CUTOVER}) — grandfathered, nothing to adopt`;
   }
@@ -629,7 +632,7 @@ function cmdAdvance(args) {
     if (!ok) die(error);
     if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
     const resolveMissing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
-    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), resolveMissing, greenFailures, batteryGreen);
+    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), { resolveEvidenceMissing: resolveMissing, greenFailures, batteryGreen });
     if (!verdict.ok) die(`REFUSED — ${verdict.reason}\n  fix: ${verdict.remedy}`);
     from = derivePhase(record.events);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "transition", to: target }] };
@@ -734,8 +737,8 @@ export function selfTest() {
     ["a recorded pin exemption substitutes for the command pin", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["a.test.ts"] }, { type: "pin-exemption", justification: "cannot re-run in this env" }] }, null, "verified", true).ok],
     ["a forged pin with exit 0 is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "true", exitCode: 0, outputDigest: "x" }] }, null, "verified", true).ok],
     ["a killed pin (null exit) is not a pin", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "hang", exitCode: null, outputDigest: "x" }] }, null, "verified", true).ok],
-    ["a red battery blocks verified even WITH a valid pin (the discriminating form)", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, [], [], false).ok],
-    ["a green battery lets verified proceed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, [], [], true).ok],
+    ["a red battery blocks verified even WITH a valid pin (the discriminating form)", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, { batteryGreen: false }).ok],
+    ["a green battery lets verified proceed", evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "npm test -- x", exitCode: 1, outputDigest: "abc" }] }, null, "verified", true, { batteryGreen: true }).ok],
     ["verified with vanished evidence refused", !evaluateTransition({ ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", evidence: ["gone.test.ts"] }] }, null, "verified", false).ok],
     ["done without findings register refused", !evaluateTransition(adversarial, null, "done", true).ok],
     ["done with UNRESOLVED finding refused", !evaluateTransition(adversarial, dirtyFindings, "done", true).ok],
@@ -753,13 +756,13 @@ export function selfTest() {
     ["missing RED-check cites red-check", evaluateTransition(at(executing, "executing"), null, "verified", true).remedy?.includes("red-check t --command")],
     ["missing register cites prepare", evaluateTransition(adversarial, null, "done", true).remedy?.includes("prepare t")],
     ["unresolved findings cite resolve/wont-fix", evaluateTransition(adversarial, dirtyFindings, "done", true).remedy?.includes("resolve t")],
-    ["vanished resolve evidence blocks done at the gate", !evaluateTransition(adversarial, cleanFindings, "done", true, ["f1: gone.test.ts"]).ok],
+    ["vanished resolve evidence blocks done at the gate", !evaluateTransition(adversarial, cleanFindings, "done", true, { resolveEvidenceMissing: ["f1: gone.test.ts"] }).ok],
     ["a missing-evidence list absent (pure default) keeps the clean path pure", evaluateTransition(adversarial, cleanFindings, "done", true).ok],
-    ["a failed GREEN re-run blocks done at the gate", !evaluateTransition(adversarial, cleanFindings, "done", true, [], ['"npm test -- x" exit 1']).ok],
-    ["green pins pass the done gate", evaluateTransition(adversarial, cleanFindings, "done", true, [], []).ok],
+    ["a failed GREEN re-run blocks done at the gate", !evaluateTransition(adversarial, cleanFindings, "done", true, { greenFailures: ['"npm test -- x" exit 1'] }).ok],
+    ["green pins pass the done gate", evaluateTransition(adversarial, cleanFindings, "done", true, {}).ok],
     ["a retired pin neither verifies nor blocks done", (() => {
       const withPin = { ...at(executing, "executing"), events: [...at(executing, "executing").events, { type: "red-check", command: "bad --pin", exitCode: 1, outputDigest: "x" }, { type: "pin-retire", command: "bad --pin", justification: "demo pin" }] };
-      return !evaluateTransition(withPin, null, "verified", true).ok && evaluateTransition(adversarial, cleanFindings, "done", true, [], []).ok;
+      return !evaluateTransition(withPin, null, "verified", true).ok && evaluateTransition(adversarial, cleanFindings, "done", true, {}).ok;
     })()],
   ];
   for (const [n, passes] of remedyCases) if (!passes) fail(`task-state: ${n}`);

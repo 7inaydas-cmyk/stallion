@@ -36,13 +36,15 @@ that fails closed. An empty register is not a clean pass; only a prepared pass c
 `task-findings` is the shared seam both tools parse through, so "an unresolved finding blocks
 done" cannot drift between the tool that records findings and the tool that enforces them.
 
-`task-workspace` gives a task its own jj workspace for parallel drafting.
+`task-workspace` gives a task its own jj workspace for parallel drafting. Its one law comes
+from a real trap: jj-native commits bypass git hooks, so a workspace drafts and the primary
+working copy lands.
 
 `task-gate` refuses at the act, not the transport (from the ECC study; wire it through your
 agent's PreToolUse hooks — docs/WIRING.md §7): the first edit of a file demands facts before
 it proceeds (importers, affected surface, the user's instruction verbatim), gate-bypassing git
-commands refuse outright, destructive commands owe a rollback line — deny once, then get out
-of the way. Denials are damped with a session ordinal so they never repeat verbatim. Its one law comes from
+commands refuse outright, destructive commands owe a rollback line — asked once per session,
+then out of the way. Denials are damped with a session ordinal so they never repeat verbatim. Its one law comes from
 a real trap: jj-native commits bypass git hooks, so a workspace drafts and the primary working
 copy lands.
 

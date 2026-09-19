@@ -45,6 +45,9 @@ const MAX_TARGETS = 500;
  * wrappers beyond that are the documented boundary, not a solved problem.
  */
 const INTERPRETER = "(?:[\\w./-]*\\/)?(?:[a-z]{0,6}sh\\d?|eval)";
+/** THE payload extractor — one law, no drift: a review caught this regex maintained in two
+ *  places while the comment claimed one dialect. Both call sites build from this source. */
+const PAYLOAD_REGEX_SRC = `(?:^|[\\s;&|])${INTERPRETER}\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+){0,8}('([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)")`;
 const QUOTE_RE = /'([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)"/g;
 
 /** Decode ANSI-C escapes inside $'…' — bash decodes these before argv exists. */
@@ -70,7 +73,7 @@ function decodeAnsiC(text) {
 export function classifiedText(command) {
   const raw = String(command ?? "");
   const payloads = [];
-  const payloadRegex = new RegExp(`(?:^|[\\s;&|])${INTERPRETER}\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+){0,8}('([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)")`, "g");
+  const payloadRegex = new RegExp(PAYLOAD_REGEX_SRC, "g");
   for (const m of raw.matchAll(payloadRegex)) {
     const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
     payloads.push(m[0].includes("$'") ? decodeAnsiC(inner) : inner);
@@ -123,7 +126,7 @@ export function classifiedText(command) {
 /** Back-compat alias: the single-view form (tests and callers). */
 export const unquoted = classifiedText;
 
-const GIT_HOOKED = /(?:^|\s)(?:commit|merge|cherry-pick|rebase|am)(?:\s|$)/;
+const GIT_HOOKED = /(?:^|\s)(?:commit|merge|cherry-pick|rebase|am|push)(?:\s|$)/;
 
 /** Pure: does this command attempt to bypass the gates? ALWAYS refused — not a fact request. */
 export function bypassRefusal(command) {
@@ -219,7 +222,7 @@ export function commandSegments(command) {
   const segments = quoteAwareSplit(raw);
   // interpreter/eval payloads are commands too — appended as their own segments, one level
   // deep; the SAME dialect as classifiedText (one law, no drift).
-  const payloadRegex = new RegExp(`(?:^|[\\s;&|])${INTERPRETER}\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+){0,8}('([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)")`, "g");
+  const payloadRegex = new RegExp(PAYLOAD_REGEX_SRC, "g");
   for (const m of raw.matchAll(payloadRegex)) {
     const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
     segments.push(m[0].includes("$'") ? decodeAnsiC(inner) : inner);
@@ -246,6 +249,8 @@ export function editFactDemand(path) {
     "3. If this file reads or writes data, name the fields, their shape, and their date format.",
     "4. Quote the user's current instruction verbatim, and name the in-flight task whose scope covers this file.",
     "Other edits in this batch may already be applied — re-read the file before retrying.",
+    "rule: the first touch of a file investigates before it edits — the act of investigation creates the awareness self-evaluation never did",
+    "fix: present the facts in your reply, then retry the edit",
   ].join("\n");
 }
 
@@ -257,6 +262,8 @@ export function bashFactDemand(command, danger) {
     "1. Every file, branch, or data row this command will modify or delete.",
     "2. A one-line rollback procedure for each.",
     "3. The user's current instruction, verbatim, that authorizes exactly this.",
+    "rule: irreversible commands owe a rollback line before they run — asked once per session",
+    "fix: state the above in your reply, then retry the command",
   ].join("\n");
 }
 
@@ -367,6 +374,12 @@ export function selfTest() {
     ["a quoted --no-verify inside -m is not a flag", bypassRefusal(`git commit -m "--no-verify words"`) === null],
     ["re-pointing core.hooksPath is a bypass", bypassRefusal("git -c core.hooksPath=/x commit -m y") !== null],
     ["plain commit is not a bypass", bypassRefusal('git commit -m "real message"') === null],
+    ["git push --no-verify is a bypass (it skips the pre-push fence)", bypassRefusal("git push --no-verify origin main") !== null],
+    ["a second DANGEROUS command of a different class passes without re-ask (destructive is once per session)", (() => {
+      const d1 = gateDecision({ entries: {} }, "bash:destructive", "F1", 1000);
+      const d2 = gateDecision(d1.next, "bash:destructive", "F2", 2000);
+      return d1.refuse && !d2.refuse;
+    })()],
     ["a SINGLE-TOKEN quoted flag IS the flag (the shell strips those quotes)", bypassRefusal("git commit '--no-verify' -m x") !== null],
     ["a quoted -c hooksPath value is still a re-point", bypassRefusal("git -c 'core.hooksPath=/tmp/x' commit -m y") !== null],
     ["an sh -c payload is classified as the command it runs", bypassRefusal('sh -c "git commit --no-verify -m x"') !== null],
@@ -445,7 +458,9 @@ if (isEntry) {
     if (bypass) die(`${bypass}\n  rule: gates are not optional; fix: run the command without the bypass flag and let the hooks judge`);
     const danger = destructiveAs(args.bash);
     if (danger) {
-      runGate(`bash:${danger}`, bashFactDemand(args.bash, danger), args.session);
+      // Once per SESSION (the spec's shape): the first destructive command of any class asks;
+      // the session's remaining destructive commands proceed. The demand names the danger.
+      runGate("bash:destructive", bashFactDemand(args.bash, danger), args.session);
       process.exit(0);
     }
     console.log("task-gate: routine command — proceeding.");

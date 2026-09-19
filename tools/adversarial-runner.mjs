@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, raiseSeverity, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
 import { evidencePathIsFile } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -78,7 +78,9 @@ If you cannot determine it, do NOT refute it — uncertainty never clears a bloc
 HIGH finding must carry proof: the exact evidence (file:line or command output) AND a concrete
 failure scenario — the input or state that produces the outcome, and why the existing guards miss
 it. If you cannot produce both, demote the severity or drop the finding. Returning zero findings
-is valid and expected: manufactured findings are the primary failure mode of LLM reviewers.
+is valid and expected: manufactured findings are the primary failure mode of LLM reviewers. A
+verifier or lane that fails to return at all leaves the finding BLOCKING — silence never clears
+a blocker, and a dead verifier's findings stay exactly as they were recorded.
 
 ## Output contract (exactly one JSON object, nothing else)
 
@@ -231,23 +233,31 @@ function cmdRecord(args) {
   }
   const laneLaw = laneRefusal(lane, laneCount);
   if (laneLaw) die(`${laneLaw}\n  fix: record with --lane between 1 and ${laneCount} (the lane whose sweep produced the finding)`);
-  // The proof law (in the schema, not only in the prompt): a CRITICAL/HIGH blocker owes its
-  // concrete failure scenario at record time — noise refuses before it can gate anything.
-  if ((args.severity === "CRITICAL" || args.severity === "HIGH") && (typeof args.proof !== "string" || args.proof.trim().length === 0)) {
-    die(`record requires --proof for ${args.severity} findings — the concrete failure scenario (what input/state breaks, and why existing guards miss it); a blocker without proof is noise the schema refuses`);
-  }
   // The id mint and the append are one locked step: f{len+1} computed against a stale snapshot
   // collides with the sibling writer that already appended.
+  let mergeMsg = null;
   const next = mutateJson(findingsPath(id), (text) => {
     const register = parseRegisterForWrite(text, id);
     const dup = duplicateEvidenceOf(register, { claim: args.claim, ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
-    if (dup) die(`finding ${dup} already carries this normalized evidence — resolution lanes are not spent twice on one escape (ECC's dedup-before-verify)
-  fix: resolve/wont-fix ${dup}, or record a DISTINCT escape with its own evidence`);
+    if (dup) {
+      // The spec's severity-merge (ECC's orch-review: dedup keeps the STRICTEST severity): a
+      // stricter finding on the same evidence RAISES the existing one; an equal-or-weaker
+      // duplicate refuses — resolution lanes are not spent twice on one escape.
+      // A raise INTO a proof-owing severity carries the duplicate's proof with it (the law
+      // travels with the severity, not with which CLI path set it).
+      const proof = typeof args.proof === "string" && args.proof.trim() ? args.proof : undefined;
+      const raised = raiseSeverity(register, dup, args.severity, proof);
+      if (typeof raised === "string") die(`${raised}
+  fix: the finding is already recorded on this evidence — re-record with a STRICTER severity (adding --proof when the raise enters CRITICAL/HIGH), resolve/wont-fix ${dup}, or record a DISTINCT escape`);
+      mergeMsg = `finding ${dup} carries this normalized evidence — severity raised to ${args.severity} (strictest wins), no new lane spent`;
+      return raised;
+    }
     const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...(typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {}), ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
     if (typeof appended === "string") die(appended);
     return appended;
   });
-  console.log(`finding ${next.findings[next.findings.length - 1].id} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
+  if (mergeMsg) console.log(mergeMsg);
+  else console.log(`finding ${next.findings[next.findings.length - 1].id} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
 }
 
 /** Parse + existence-check the --evidence list (comma-split, repo-relative or cwd-relative). */
@@ -351,6 +361,7 @@ function parseArgs(argv) {
 }
 
 function selfTestLanes(fail) {
+  let checks = 0;
   const fixture = [
     "# Checklist",
     "## The escape classes",
@@ -368,14 +379,16 @@ function selfTestLanes(fail) {
   if (lanes[0]?.n !== 1 || lanes[0]?.slug !== "input-forgeability-trust-boundaries-that-believe-the-client") fail("adversarial-runner: lane 1 parsed wrong");
   if (!lanes[0]?.body.includes("Clause two.")) fail("adversarial-runner: lane body lost lines");
   if (lanes[1]?.body.includes("not a lane")) fail("adversarial-runner: content after the next ## leaked into a lane");
+  return 4;
 }
 
 function selfTestBundle(fail) {
   const lane = { n: 1, title: "Input forgeability", slug: "input", body: "Clause two." };
   const bundle = renderBundle(lane, "t9", " 3 files changed, 10 insertions(+)", "a.ts\nb.ts");
-  for (const clause of ["NO context", "REFUTE", "Clause two.", "3 files changed", "a.ts", '"findings"', '{"findings": []}', "never clears a blocker", '"proof"', "zero findings"]) {
+  for (const clause of ["NO context", "REFUTE", "Clause two.", "3 files changed", "a.ts", '"findings"', '{"findings": []}', "never clears a blocker", '"proof"', "zero findings", "leaves the finding BLOCKING"]) {
     if (!bundle.includes(clause)) fail(`adversarial-runner: bundle missing contract clause: ${clause}`);
   }
+  return 9;
 }
 
 function selfTestAggregation(fail) {
@@ -388,6 +401,7 @@ function selfTestAggregation(fail) {
   const resolved = setFindingStatus(register, "f1", { status: "WONT-FIX", justification: "duplicate of registered decision" });
   if (typeof resolved === "string") fail(`adversarial-runner: justified wont-fix refused (${resolved})`);
   if (!aggregateFindings(resolved).clean) fail("adversarial-runner: wont-fixed register must aggregate clean");
+  return 5;
 }
 
 export function selfTest() {
@@ -402,12 +416,15 @@ export function selfTest() {
     ["lane zero refused", laneRefusal(0, 8) !== null],
   ];
   for (const [name, passes] of laneCases) if (!passes) fail(`adversarial-runner: ${name}`);
+  return laneCases.length;
   const sweptCases = [
     ["the swept range is recorded and reported", sweptRangeLine({ sweptBase: "aaa", sweptHead: "bbb", sweptDiffDigest: "abc123" }) === "swept aaa..bbb (digest abc123)"],
     ["an unmarked register reports nothing", sweptRangeLine({}) === null],
   ];
   for (const [name, passes] of sweptCases) if (!passes) fail(`adversarial-runner: ${name}`);
-  console.log(failures.length === 0 ? "adversarial-runner self-test: OK (2 lanes + bundle contract + aggregation + 3 lane-bound + 2 swept-range cases)" : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
+  return sweptCases.length;
+  const total = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail) + laneCases.length + sweptCases.length;
+  console.log(failures.length === 0 ? `adversarial-runner self-test: OK (${total} cases — count derived)` : `adversarial-runner self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
