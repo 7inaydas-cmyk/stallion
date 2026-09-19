@@ -1,0 +1,22 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "transport-agreement",
+  "passStartedAt": "2026-09-19T08:26:35.793Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "the fixture ids collapse the two scoped shapes into one name (probe-<phase>-scoped), so a failure message cannot say WHICH scope shape disagreed without re-deriving it",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-19T08:26:45.421Z",
+      "evidence": "tools/zcode-plugin/lib/agreement-check.mjs record() id construction",
+      "dedupKey": "tools/zcode-plugin/lib/agreement-check.mjs record() id construction",
+      "justification": "the failure text names the record id and the disagreement verdict; the scope shape is recoverable from the fixture table one line up, and threading the shape into the id buys message cosmetics, not law",
+      "resolvedAt": "2026-09-19T08:26:45.463Z"
+    }
+  ],
+  "sweptBase": "8ddb7b1d5c651096fb30587972c5f07455763362",
+  "sweptHead": "b0e03417a578f43183a27d3c0ac191a81d120dd5",
+  "sweptDiffDigest": "d55eb513462a"
+}

@@ -1,0 +1,76 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "transport-agreement",
+  "title": "issue #21: one fixture matrix drives the staged gate, the citation seam, and the authoring gate — drift becomes mechanically impossible",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-19T08:24:46.079Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "43025ebd26a3fc6a071622bd0eb8e5c7c4a055b11246341836177668e6f8ee19"
+    },
+    {
+      "at": "2026-09-19T08:24:46.116Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "43025ebd26a3fc6a071622bd0eb8e5c7c4a055b11246341836177668e6f8ee19",
+      "entry_hash": "2152aaab7b148eeab2f61d63b20c10ba367625353672b15b1ff66ec066b1c9ed"
+    },
+    {
+      "at": "2026-09-19T08:24:46.160Z",
+      "type": "scope",
+      "patterns": [
+        "tools/zcode-plugin/**"
+      ],
+      "seq": 2,
+      "parent_hash": "2152aaab7b148eeab2f61d63b20c10ba367625353672b15b1ff66ec066b1c9ed",
+      "entry_hash": "20652540d4832f6b248c2544bb2d6307764cc717b046e33e56d17b46fdec6548"
+    },
+    {
+      "at": "2026-09-19T08:24:46.195Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "20652540d4832f6b248c2544bb2d6307764cc717b046e33e56d17b46fdec6548",
+      "entry_hash": "8c93222da563b6b34543076ff12c974d65e54b09321cc2e6f2960c7f0faaab08"
+    },
+    {
+      "at": "2026-09-19T08:24:46.226Z",
+      "type": "red-check",
+      "command": "npm run selftest 2>&1 | grep -F \"transport-agreement self-test: OK\"",
+      "exitCode": 1,
+      "outputDigest": "e3b0c44298fc",
+      "seq": 4,
+      "parent_hash": "8c93222da563b6b34543076ff12c974d65e54b09321cc2e6f2960c7f0faaab08",
+      "entry_hash": "5f990c342f2d1d24026138b06e49f22964d61e71f554e28144d7303bb30b3df8"
+    },
+    {
+      "at": "2026-09-19T08:26:35.731Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "5f990c342f2d1d24026138b06e49f22964d61e71f554e28144d7303bb30b3df8",
+      "entry_hash": "b2a08334943a113ec9cec39fbe04c3ed7fb88c300af2bf201b57237e0ac97dd8"
+    },
+    {
+      "at": "2026-09-19T08:26:45.541Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "b2a08334943a113ec9cec39fbe04c3ed7fb88c300af2bf201b57237e0ac97dd8",
+      "entry_hash": "26169477e1f682efadc51eeeab7cacae663b819c8aeccd20902639a744aeff5e"
+    },
+    {
+      "at": "2026-09-19T08:26:46.928Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "26169477e1f682efadc51eeeab7cacae663b819c8aeccd20902639a744aeff5e",
+      "entry_hash": "fe4303578b3c46d2aff274a2af56c753842addbbd298b83daa2cbc8954600c88"
+    }
+  ]
+}
