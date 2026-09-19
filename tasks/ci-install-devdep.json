@@ -1,0 +1,50 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "ci-install-devdep",
+  "title": null,
+  "riskClass": "protected",
+  "events": [
+    {
+      "at": "2026-09-19T20:32:30.349Z",
+      "type": "created",
+      "riskClass": "protected",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "5f8106c91849250154b29ce26bfb6fdf4601c5fc7ed21e09ec70cd63d8ca51b2"
+    },
+    {
+      "at": "2026-09-19T20:32:30.378Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "5f8106c91849250154b29ce26bfb6fdf4601c5fc7ed21e09ec70cd63d8ca51b2",
+      "entry_hash": "e3e8af6de752b2312157c363d551d02c4b5f767b9fbb93b64605f2ef4f14a17e"
+    },
+    {
+      "at": "2026-09-19T20:32:30.405Z",
+      "type": "approval",
+      "decision": "2026-09-20 — CI installs the dev dependency the complexity ratchet's optional peer requires",
+      "seq": 2,
+      "parent_hash": "e3e8af6de752b2312157c363d551d02c4b5f767b9fbb93b64605f2ef4f14a17e",
+      "entry_hash": "57421ccfbb039546d421cf2c4419690e293579c80e333dff42612f67b86edbe4"
+    },
+    {
+      "at": "2026-09-19T20:32:30.434Z",
+      "type": "scope",
+      "patterns": [
+        ".github/workflows/**"
+      ],
+      "seq": 3,
+      "parent_hash": "57421ccfbb039546d421cf2c4419690e293579c80e333dff42612f67b86edbe4",
+      "entry_hash": "d4a1823ece8a18dcc36c42b6a26b96bc1d05498986f21c3b66de8a88251d7fb4"
+    },
+    {
+      "at": "2026-09-19T20:32:30.460Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "d4a1823ece8a18dcc36c42b6a26b96bc1d05498986f21c3b66de8a88251d7fb4",
+      "entry_hash": "fea5c4dc2c600b7a77a1bd71558eedd73fbc63be0bea924a9fe0730d8a72c8cf"
+    }
+  ]
+}

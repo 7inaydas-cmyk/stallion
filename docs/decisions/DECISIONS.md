@@ -56,3 +56,13 @@ of `!==` — a negated test is not a dispatch — and the register's prose claim
 while the predicate recognized three. A tree that dispatches a self-test in a spelling outside
 this set has found a wiring bug: fix the dispatcher, or extend the predicate deliberately with
 a pin — never widen prose past what the machine checks.
+
+## 2026-09-20 — CI installs the dev dependency the complexity ratchet's optional peer requires
+
+Founder-directed (session 2026-09-20, harness-merge-wave1): the merge wave ported
+complexity-gate with TypeScript as an OPTIONAL peer dependency and a devDependency of this repo
+(an adversarial finding proved the battery unrunnable in any fresh clone without it — the static
+import died at member 5 with ERR_MODULE_NOT_FOUND). The gate now refuses cleanly when the
+compiler is absent, but CI's checkout carries no node_modules, so the battery would refuse on
+every push until CI installs. Authorized: one `npm ci` step in .github/workflows/selftest.yml
+ahead of the battery — dev-time only, no runtime dependency, no other workflow change.

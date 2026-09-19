@@ -12,7 +12,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Five tool self-tests (refusals included)
+      - name: Install dev dependencies (complexity-gate's optional TypeScript peer)
+        run: npm ci
+      - name: Five tool self-tests + the live gate verdicts (refusals included)
         run: npm run selftest
       - name: Lifecycle smoke (a task can travel intake to done, and the refusals fire)
         run: |
