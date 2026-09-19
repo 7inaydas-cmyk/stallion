@@ -12,7 +12,9 @@ rules out of the prompt and into tools that say no.
 
 `task-state` records each task as an event log and moves it through six phases: intake, planned,
 executing, verified, adversarial, done. The record is a JSON file under `tasks/`. Phase is
-derived from the events, never stored, so history cannot be quietly rewritten.
+derived from the events, never stored, so history cannot be quietly rewritten — and every event
+is hash-chained (seq, parent hash, entry hash over canonical JSON), so a hand edit is not just
+visible in git, it breaks the chain the tools refuse to append to.
 
 The interesting part is what it refuses:
 

@@ -34,7 +34,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, loadFindings, missingResolveEvidence, mutateJson } from "./task-findings.mjs";
+import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson } from "./task-findings.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -50,6 +50,14 @@ export const PIN_LAW_CUTOVER = "2026-09-18T20:00:00.000Z";
  *  code and the push fence re-judges it. Records created earlier are grandfathered so already-
  *  settled history keeps judging under the law it was written under (same pattern as the pin law). */
 export const SCOPE_LAW_CUTOVER = "2026-09-18T20:50:00.000Z";
+/** The moment the chain law took effect (inspired by ECC's capsule envelope): records CREATED
+ *  after this carry a hash chain — every event stamped with seq, parent_hash (the previous
+ *  event's entry_hash, 64 zeros at genesis), and entry_hash (sha256 of the canonical JSON with
+ *  the hash removed). Append-only becomes tamper-EVIDENT, not just tamper-visible in git diffs.
+ *  task-state refuses to append to a broken chain; the fence refuses broken post-cutover
+ *  records; the one record created inside the implementation window is blessed by the explicit,
+ *  recorded `adopt-chain` command. Earlier records are grandfathered. */
+export const CHAIN_CUTOVER = "2026-09-19T02:45:00.000Z";
 export const RISK_CLASSES = ["planning-only", "docs-only", "runtime-code", "protected", "migration", "experiment"];
 export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];
 /** The taxonomy is defined HERE and imported by every other tool (issue #1): one law, no drift. */
@@ -81,6 +89,14 @@ export function scopeOf(record) {
  *  boundary whose tamper trail is the record's git history. */
 export function recordCreatedAt(record) {
   return (record.events ?? []).find((e) => typeof e.at === "string")?.at ?? "";
+}
+
+/** Pure: does this record owe a chain? The creation stamp is parsed with the same fail-closed
+ *  strictness as every cutover law — an undated, malformed, or offset-spelled stamp MUST chain. */
+export function recordMustChain(record) {
+  const created = recordCreatedAt(record);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(created)) return true;
+  return Date.parse(created) >= Date.parse(CHAIN_CUTOVER);
 }
 
 /**
@@ -333,7 +349,20 @@ function loadTask(id) {
  */
 function mutateTask(id, mutate) {
   const path = taskPath(id);
-  return mutateJson(path, (text) => mutate(parseTaskRecord(text, id, path)));
+  return mutateJson(path, (text) => {
+    const current = parseTaskRecord(text, id, path);
+    if (recordMustChain(current)) {
+      const err = chainError(current.events);
+      if (err) {
+        die(`record ${id}'s chain is broken or unadopted — refusing to append (${err})
+  rule: a post-cutover record is tamper-EVIDENT; appending to an unverifiable record launders it
+  fix: if this record was created inside the chain law's implementation window, bless it once: node tools/task-state.mjs adopt-chain ${id}   — otherwise the git history of the record is the tamper trail; investigate before writing`);
+      }
+    }
+    const next = mutate(current);
+    if (recordMustChain(current) && next) return { ...next, events: chainStampEvents(next.events) };
+    return next;
+  });
 }
 
 function cmdNew(args) {
@@ -345,7 +374,7 @@ function cmdNew(args) {
   mkdirSync(STATE_DIR, { recursive: true });
   mutateJson(taskPath(id), (text) => {
     if (text !== null) die(`task already exists: ${id}\n  fix: node tools/task-state.mjs status ${id}   — see where it stands before duplicating it`);
-    return { schema: TASK_SCHEMA, id, title: args.title ?? null, riskClass, events: [{ at: new Date().toISOString(), type: "created", riskClass }] };
+    return { schema: TASK_SCHEMA, id, title: args.title ?? null, riskClass, events: chainStampEvents([{ at: new Date().toISOString(), type: "created", riskClass }]) };
   });
   console.log(`task ${id}: intake (risk class ${riskClass}) — tasks/${id}.json`);
 }
@@ -394,6 +423,26 @@ function cmdScope(args) {
   });
   const written = loadTask(id);
   console.log(`task ${id}: scope amended (append-only) — ${scopeOf(written).length} pattern(s) declared in total: ${scopeOf(written).join(", ")}`);
+}
+
+/**
+ * Bless the one record created inside the chain law's implementation window (created
+ * post-cutover, before the stamping code existed). Stamps every existing event and appends a
+ * recorded `chain-adopt` marker — the adoption is itself a chained event, visible forever.
+ * Pre-cutover records are grandfathered and refuse adoption; done records are terminal.
+ */
+function cmdAdoptChain(args) {
+  const id = args._[0];
+  if (!id) die("usage: adopt-chain <id>");
+  const path = taskPath(id);
+  const record = parseTaskRecord(existsSync(path) ? readFileSync(path, "utf8") : null, id, path);
+  if (!recordMustChain(record)) die(`task ${id} was created before the chain cutover (${CHAIN_CUTOVER}) — grandfathered, nothing to adopt`);
+  if (derivePhase(record.events) === "done") die("done is terminal — a finished record is not rewritten, even to be blessed");
+  if (record.events.some((e) => typeof e.entry_hash === "string")) die(`task ${id} already carries a chain — adoption is a once-only act`);
+  mutateJson(taskPath(id), () => ({ ...record, events: chainStampEvents([...record.events, { at: new Date().toISOString(), type: "chain-adopt" }]) }));
+  const check = chainError(loadTask(id).events);
+  if (check) die(`adoption produced an invalid chain (${check}) — the record is unchanged in git; investigate`);
+  console.log(`task ${id}: chain adopted — ${loadTask(id).events.length} events stamped, adoption recorded`);
 }
 
 const PIN_COMMAND_TIMEOUT_MS = 300_000;
@@ -623,6 +672,11 @@ export function selfTest() {
     ["recordCreatedAt reads the first timestamped event", recordCreatedAt({ events: [{ type: "created", at: "2026-09-18T20:56:00.000Z" }] }) === "2026-09-18T20:56:00.000Z"],
     ["recordCreatedAt is empty for an undated record", recordCreatedAt({ events: [{ type: "created" }] }) === ""],
     ["the scope law cut over after the pin law did", SCOPE_LAW_CUTOVER >= PIN_LAW_CUTOVER],
+    ["the chain law cut over after the scope law did", CHAIN_CUTOVER > SCOPE_LAW_CUTOVER],
+    ["an undated record MUST chain (fail closed)", recordMustChain({ events: [{ type: "created" }] }) === true],
+    ["a pre-cutover record is chain-grandfathered", recordMustChain({ events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }] }) === false],
+    ["a post-cutover record must chain", recordMustChain({ events: [{ type: "created", at: "2026-09-19T03:00:00.000Z" }] }) === true],
+    ["an offset-spelled stamp fails closed for chains", recordMustChain({ events: [{ type: "created", at: "2026-09-18T20:00:00.000-05:00" }] }) === true],
     ["globRefusal refuses a first segment of '**' (covers everything)", globRefusal("**/*") !== null],
     ["globRefusal refuses a first segment of bare '*' (covers everything)", globRefusal("*/**") !== null],
     ["globRefusal accepts a named first segment with wildcards", globRefusal("tool*/*.mjs") === null],
@@ -634,7 +688,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of scopeCases) if (!passes) fail(`task-state: ${name}`);
 
-  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy + 23 scope cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? "task-state self-test: OK (26 transition + 10 remedy + 26 scope cases)" : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
@@ -645,8 +699,8 @@ if (isEntry) {
   try {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
-    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus };
-    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|red-check|pin-exempt|pin-retire|advance|status> ... (--self-test to self-test)");
+    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus };
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check|pin-exempt|pin-retire|advance|status> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {

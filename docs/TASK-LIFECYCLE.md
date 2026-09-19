@@ -57,6 +57,21 @@ remembered.
   stored. The tool refuses illegal transitions; it cannot cryptographically stop a hand edit,
   and the git history of the record file is the tamper evidence. Records completed before the
   command-pin law carry path-only evidence; the law binds transitions from its introduction.
+- **Records are hash-chained** (in force since 2026-09-19T02:45Z, from the ECC capsule-envelope
+  study): every event carries `seq` (its index), `parent_hash` (the previous event's
+  `entry_hash`; 64 zeros at genesis), and `entry_hash` (sha256 of the canonical JSON — sorted
+  keys — with the hash removed). task-state refuses to append to a broken chain; the push fence
+  refuses broken post-cutover records; the one record created inside the implementation window
+  is blessed by the explicit, recorded `adopt-chain` command. Earlier records are grandfathered.
+  Honest boundary: findings REGISTERS are not chained — resolves mutate findings in place, so a
+  chain would demand an event-sourced register; their integrity law is shape validation plus the
+  proof requirement below.
+- **CRITICAL/HIGH adversarial findings owe a proof** (in force since 2026-09-19T03:00Z): the
+  concrete failure scenario — what input or state breaks, and why the existing guards miss it —
+  enforced by the register's validator at record time, not only in the dispatch prompt. The
+  refute bundles carry the refutation contract: refute only by affirmative demonstration;
+  uncertainty never clears a blocker; returning zero findings is valid — manufactured findings
+  are the primary failure mode of LLM reviewers.
 
 ## Commands
 

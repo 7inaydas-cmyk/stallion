@@ -71,9 +71,18 @@ ${diffStat}
 Files touched:
 ${fileList}
 
+## The refutation contract
+
+Refute a finding ONLY by affirmatively demonstrating from the change that it is a false positive.
+If you cannot determine it, do NOT refute it — uncertainty never clears a blocker. A CRITICAL or
+HIGH finding must carry proof: the exact evidence (file:line or command output) AND a concrete
+failure scenario — the input or state that produces the outcome, and why the existing guards miss
+it. If you cannot produce both, demote the severity or drop the finding. Returning zero findings
+is valid and expected: manufactured findings are the primary failure mode of LLM reviewers.
+
 ## Output contract (exactly one JSON object, nothing else)
 
-{"findings": [{"severity": "CRITICAL|HIGH|MEDIUM|LOW", "claim": "<what is wrong, where, and why it escapes>", "evidence": "<file:line or command output>"}]}
+{"findings": [{"severity": "CRITICAL|HIGH|MEDIUM|LOW", "claim": "<what is wrong, where, and why it escapes>", "evidence": "<file:line or command output>", "proof": "<REQUIRED for CRITICAL|HIGH: the concrete failure scenario — what input/state breaks, and why existing guards miss it>"}]}
 
 If your lane truly finds nothing, answer {"findings": []} — but say so only after checking every
 clause above against every file in the diff, not after the first file.
@@ -222,11 +231,16 @@ function cmdRecord(args) {
   }
   const laneLaw = laneRefusal(lane, laneCount);
   if (laneLaw) die(`${laneLaw}\n  fix: record with --lane between 1 and ${laneCount} (the lane whose sweep produced the finding)`);
+  // The proof law (in the schema, not only in the prompt): a CRITICAL/HIGH blocker owes its
+  // concrete failure scenario at record time — noise refuses before it can gate anything.
+  if ((args.severity === "CRITICAL" || args.severity === "HIGH") && (typeof args.proof !== "string" || args.proof.trim().length === 0)) {
+    die(`record requires --proof for ${args.severity} findings — the concrete failure scenario (what input/state breaks, and why existing guards miss it); a blocker without proof is noise the schema refuses`);
+  }
   // The id mint and the append are one locked step: f{len+1} computed against a stale snapshot
   // collides with the sibling writer that already appended.
   const next = mutateJson(findingsPath(id), (text) => {
     const register = parseRegisterForWrite(text, id);
-    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim });
+    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...(typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {}) });
     if (typeof appended === "string") die(appended);
     return appended;
   });
@@ -352,7 +366,7 @@ function selfTestLanes(fail) {
 function selfTestBundle(fail) {
   const lane = { n: 1, title: "Input forgeability", slug: "input", body: "Clause two." };
   const bundle = renderBundle(lane, "t9", " 3 files changed, 10 insertions(+)", "a.ts\nb.ts");
-  for (const clause of ["NO context", "REFUTE", "Clause two.", "3 files changed", "a.ts", '"findings"', '{"findings": []}']) {
+  for (const clause of ["NO context", "REFUTE", "Clause two.", "3 files changed", "a.ts", '"findings"', '{"findings": []}', "never clears a blocker", '"proof"', "zero findings"]) {
     if (!bundle.includes(clause)) fail(`adversarial-runner: bundle missing contract clause: ${clause}`);
   }
 }

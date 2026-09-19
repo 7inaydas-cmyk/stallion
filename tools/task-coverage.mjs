@@ -37,7 +37,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER } from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER, recordMustChain, CHAIN_CUTOVER } from "./task-state.mjs";
+import { chainError, chainStampEvents } from "./task-findings.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -320,6 +321,12 @@ export function recordRefusal(record) {
     if (!(Number.isFinite(doneMs) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(doneAt) && doneMs < Date.parse(PIN_LAW_CUTOVER))) {
       return "done record carries no valid command pin (and no recorded exemption) — hand-edited records refuse at the fence";
     }
+  }
+  // The chain law, re-judged here because a hand-edited record must not sail through on the
+  // append-time check alone (the same defense-in-depth as pin parity): a post-cutover record
+  // with a broken or missing chain is tampering or a laundering attempt, and refuses.
+  if (recordMustChain(record) && chainError(record.events ?? [])) {
+    return `record chain broken or unadopted (chain law in force since ${CHAIN_CUTOVER}) — tamper-evident records refuse at the fence`;
   }
   if (PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf("executing")) {
     return `task is '${phase}' — code landed before the machine authorized executing`;
@@ -757,7 +764,7 @@ export function selfTest() {
     id: "t",
     riskClass,
     events: [
-      { type: "created" },
+      { type: "created", at: "2026-09-17T00:00:00.000Z" },
       { type: "red-check", command: "npm test -- the-pin.test.ts", exitCode: 1, outputDigest: "abc" },
       ...phases.map((to) => ({ type: "transition", to })),
       ...extraEvents,
@@ -809,9 +816,15 @@ export function selfTest() {
     ["protected with an invented decision refused", recordRefusal(record("protected", ["planned", "executing"], [{ type: "approval", decision: "2026-01-16 — I NEVER SAID THIS" }])) !== null],
     ["unknown risk class refused (hand-forged record)", recordRefusal(record("totally-made-up-class", ["planned", "executing"])) !== null],
     ["docs-only cannot authorize code", recordRefusal(record("docs-only", ["planned", "executing"])) !== null],
-    ["a pin-less done record is refused at the fence (hand-edit parity)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "2026-09-19T00:00:00.000Z" }] }) !== null],
-    ["a pin-less in-flight record passes the fence (pins bind at verified, commits land at executing)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) === null],
-    ["a pre-cutover done record is grandfathered at the fence", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "2026-09-18T15:00:00.000Z" }] }) === null],
+    ["a pin-less done record is refused at the fence (hand-edit parity)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "2026-09-19T00:00:00.000Z" }] }) !== null],
+    ["a pin-less in-flight record passes the fence (pins bind at verified, commits land at executing)", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) === null],
+    ["a pre-cutover done record is grandfathered at the fence", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "2026-09-18T15:00:00.000Z" }] }) === null],
+    ["a post-chain-cutover record with a broken chain refuses at the fence", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T03:00:00.000Z", type2: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) !== null],
+    ["a post-chain-cutover record with an intact chain passes the fence chain law", (() => {
+      const stamped = chainStampEvents([{ type: "created", at: "2026-09-19T03:00:00.000Z" }, { type: "transition", to: "planned", at: "2026-09-19T03:00:01.000Z" }, { type: "transition", to: "executing", at: "2026-09-19T03:00:02.000Z" }]);
+      return recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: stamped }) === null;
+    })()],
+    ["a pre-chain-cutover record stays chain-grandfathered at the fence", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] }) === null],
     ["malformed record refused", recordRefusal(null) !== null],
     ["wrong schema refused", recordRefusal({ schema: "nope" }) !== null],
   ];
@@ -901,7 +914,7 @@ export function selfTest() {
     })()],
     ["re-judged settled history citing a done task falls through to the scope law", citationRefusal(unscopedPre, ["tools/a.mjs"], false) === null],
     ["a new commit citing an in-flight scoped task passes the seam", citationRefusal(scopedPost, ["tools/a.mjs"], false) === null && citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "transition", to: "executing" }] }, ["tools/a.mjs"], true) === null],
-    ["a malformed doneAt stamp does not grandfather the pin law", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "not-a-date" }] }) !== null],
+    ["a malformed doneAt stamp does not grandfather the pin law", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "not-a-date" }] }) !== null],
   ];
   for (const [name, passes] of citationCases) if (!passes) fail(`task-coverage: ${name}`);
 

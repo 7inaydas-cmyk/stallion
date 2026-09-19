@@ -9,12 +9,19 @@
  * read-modify-write — so every writer mutates state with the same discipline.
  */
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const FINDINGS_SCHEMA = "stallion/task-findings@1";
+/** The moment the proof law took effect: CRITICAL/HIGH findings recorded after this owe a
+ *  proof (evidence + a concrete failure scenario) at record time — enforced here, in the
+ *  validator, not only in the dispatch prompt. Earlier findings are grandfathered. */
+export const PROOF_CUTOVER = "2026-09-19T03:00:00.000Z";
+/** The chain seam (inspired by ECC's capsule envelope): the genesis parent — 64 zeros. */
+export const GENESIS_HASH = "0".repeat(64);
 export const FINDING_STATUSES = ["UNRESOLVED", "RESOLVED", "WONT-FIX"];
 export const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
@@ -44,6 +51,10 @@ function shapeError(f) {
   if (id) return id;
   if (f.lane !== null && f.lane !== undefined && (!Number.isInteger(f.lane) || f.lane < 1)) return `finding ${f.id}: lane must be a positive integer or null`;
   if (!SEVERITIES.includes(f.severity)) return `finding ${f.id}: unknown severity ${String(f.severity)}`;
+  if ((f.severity === "CRITICAL" || f.severity === "HIGH") && typeof f.proof !== "string" && f.recordedAt >= PROOF_CUTOVER) {
+    return `finding ${f.id}: ${f.severity} owes a proof (evidence + a concrete failure scenario) — enforce it in the schema, not only in the prompt`;
+  }
+  if (typeof f.proof === "string" && f.proof.trim().length === 0) return `finding ${f.id}: an empty proof is not a proof`;
   if (!FINDING_STATUSES.includes(f.status)) return `finding ${f.id}: unknown status ${String(f.status)}`;
   if (typeof f.claim !== "string" || f.claim.trim().length === 0) return `finding ${f.id}: empty claim`;
   return null;
@@ -100,12 +111,12 @@ export function aggregateFindings(register) {
 }
 
 /** Pure append. Returns a NEW register; refuses (returns a string) instead of mutating on bad input. */
-export function appendFinding(register, { id, lane, severity, claim }) {
+export function appendFinding(register, { id, lane, severity, claim, proof }) {
   const candidate = {
     ...register,
     findings: [
       ...register.findings,
-      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString() },
+      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}) },
     ],
   };
   const error = validateFindings(candidate);
@@ -194,6 +205,30 @@ export function selfTestFindings(fail) {
   selfTestAppendResolve(fail);
   selfTestStatusGuards(fail);
   selfTestResolveEvidence(fail);
+  selfTestChain(fail);
+  selfTestProofLaw(fail);
+}
+
+function selfTestChain(fail) {
+  if (canonicalJson({ b: 1, a: { d: 2, c: 3 } }) !== canonicalJson({ a: { c: 3, d: 2 }, b: 1 })) fail("task-findings: canonical JSON must be key-order independent");
+  if (canonicalJson({ b: 1, a: 2 }) !== '{"a":2,"b":1}') fail("task-findings: canonical JSON must sort keys with no whitespace");
+  const stamped = chainStampEvents([{ type: "created", at: "2026-09-19T03:00:00.000Z" }, { type: "transition", to: "planned", at: "2026-09-19T03:01:00.000Z" }]);
+  if (chainError(stamped) !== null) fail("task-findings: a freshly stamped chain must verify clean");
+  if (stamped[0].parent_hash !== GENESIS_HASH) fail("task-findings: the first event's parent must be the 64-zero genesis");
+  if (stamped[1].parent_hash !== stamped[0].entry_hash) fail("task-findings: each event's parent must be the previous entry hash");
+  if (chainError([{ ...stamped[0], entry_hash: "0".repeat(64) }, stamped[1]]) === null) fail("task-findings: a tampered entry hash must be detected");
+  if (chainError([stamped[0], { ...stamped[1], parent_hash: "f".repeat(64) }]) === null) fail("task-findings: a broken parent link must be detected");
+  if (chainError([stamped[0], { ...stamped[1], seq: 5 }]) === null) fail("task-findings: a seq that is not the event index must be detected");
+  if (chainError([{ type: "created" }]) === null) fail("task-findings: unstamped events must fail verification");
+}
+
+function selfTestProofLaw(fail) {
+  const post = { id: "f1", severity: "CRITICAL", status: "UNRESOLVED", claim: "x", recordedAt: "2026-09-19T03:00:00.000Z" };
+  const pre = { id: "f1", severity: "CRITICAL", status: "UNRESOLVED", claim: "x", recordedAt: "2026-09-17T00:00:00.000Z" };
+  if (validateFindings({ ...emptyFindings("t"), findings: [post] }) === null) fail("task-findings: a post-cutover CRITICAL finding without proof must be refused");
+  if (validateFindings({ ...emptyFindings("t"), findings: [{ ...post, proof: "file:line + the input that breaks it" }] }) !== null) fail("task-findings: a CRITICAL finding with proof must validate");
+  if (validateFindings({ ...emptyFindings("t"), findings: [{ ...post, severity: "LOW" }] }) !== null) fail("task-findings: a LOW finding does not owe proof");
+  if (validateFindings({ ...emptyFindings("t"), findings: [pre] }) !== null) fail("task-findings: a pre-cutover finding is grandfathered without proof");
 }
 
 /**
@@ -224,6 +259,65 @@ function selfTestResolveEvidence(fail) {
   }
   if (validateFindings({ ...base, findings: [{ id: "f1", lane: 0, severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) === null) fail("task-findings: a zero lane in a stored register must be refused");
   if (validateFindings({ ...base, findings: [{ id: "f1", lane: "3", severity: "LOW", status: "UNRESOLVED", claim: "x" }] }) === null) fail("task-findings: a string lane in a stored register must be refused");
+}
+
+/**
+ * Canonical JSON: object keys sorted recursively, no insignificant whitespace. The chain hashes
+ * THIS and nothing else, so formatting churn can never masquerade as content. (Chain seam
+ * inspired by ECC's capsule-envelope schema: seq = index, parent = previous hash, genesis 64
+ * zeros, entry_hash = sha256 of the entry with its own hash removed.)
+ */
+export function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** sha256 hex of the canonical JSON of one event with its entry_hash removed. */
+export function entryHashOf(event) {
+  const { entry_hash, ...rest } = event ?? {};
+  return createHash("sha256").update(canonicalJson(rest)).digest("hex");
+}
+
+/**
+ * Stamp every UNstamped event, in order, each parented on the previous event's hash (genesis
+ * for the first). Already-stamped events pass through untouched — appending stamps only the new
+ * tail; full-list stamping happens at record creation and at chain adoption.
+ */
+export function chainStampEvents(events) {
+  let parent = GENESIS_HASH;
+  return (events ?? []).map((event, i) => {
+    if (event && typeof event === "object" && typeof event.entry_hash === "string" && event.entry_hash.length === 64) {
+      parent = event.entry_hash;
+      return event;
+    }
+    const stamped = { ...event, seq: i, parent_hash: parent };
+    stamped.entry_hash = entryHashOf(stamped);
+    parent = stamped.entry_hash;
+    return stamped;
+  });
+}
+
+/**
+ * Walk the chain: every event must sit at its index, parent on the previous hash (genesis for
+ * the first), and re-hash to its recorded entry_hash. Returns null when intact, a human reason
+ * when not — unstamped events fail verification, which is the point: a post-cutover record with
+ * no chain is not a verified record.
+ */
+export function chainError(events) {
+  let parent = GENESIS_HASH;
+  for (let i = 0; i < (events ?? []).length; i += 1) {
+    const e = events[i];
+    if (!e || typeof e !== "object") return `event ${i}: not an object`;
+    if (e.seq !== i) return `event ${i}: seq is ${String(e.seq)}, expected ${i}`;
+    if (e.parent_hash !== parent) return `event ${i}: parent_hash does not chain to event ${i - 1}`;
+    if (typeof e.entry_hash !== "string" || entryHashOf(e) !== e.entry_hash) return `event ${i}: entry_hash does not match its content`;
+    parent = e.entry_hash;
+  }
+  return null;
 }
 
 /**
@@ -329,7 +423,7 @@ if (isEntry && process.argv.includes("--self-test")) {
     const failures = [];
     selfTestFindings((m) => failures.push(m));
     await selfTestConcurrentWriters((m) => failures.push(m));
-    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
+    console.log(failures.length === 0 ? "task-findings self-test: OK (8 validation + 12 mutation + 9 chain + 4 proof cases + 8-writer race)" : `task-findings self-test: FAILED\n  ${failures.join("\n  ")}`);
     process.exit(failures.length === 0 ? 0 : 1);
   })();
 }
