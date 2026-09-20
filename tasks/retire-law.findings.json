@@ -1,0 +1,79 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "retire-law",
+  "passStartedAt": "2026-09-20T14:43:02.463Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The retire law's terminality was enforced only at read seams: approve, red-check, pin-exempt, and pin-retire appended events after a retired event with exit 0 — the tool itself wrote the exact shape its fence then refused as a 'hand-edited' hand-forgery, falsifying the shipped comment and TASK-LIFECYCLE.md claim that the command law refuses appends after retirement (lanes 2f1, 4f1, 5f3, 6f1, 7f3, 8f2).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:00:40.434Z",
+      "proof": "Live repro (sandbox, committed tools): new → planned → retire --because x → each of the four commands exits 0 appending chain-stamped events after the retired event; recordRefusal on the result returns 'an event follows the retired event... hand-edited record'. No authorization escapes (retired refuses everything either way) but the tamper narrative is false for machine-written records and two of the four are remedies the machine itself prints.",
+      "dedupKey": "the retire law's terminality was enforced only at read seams: approve, red-check, pin-exempt, and pin-retire appended events after a retired event with exit 0 — the tool itself wrote the exact shape its fence then refused as a 'hand-edited' hand-forgery, falsifying the shipped comment and task-lifecycle.md claim that the command law refuses appends after retirement (lanes 2f1, 4f1, 5f3, 6f1, 7f3, 8f2).",
+      "evidence": [
+        "tools/task-state.mjs",
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "resolvedAt": "2026-09-20T15:00:50.926Z"
+    },
+    {
+      "id": "f2",
+      "lane": 3,
+      "severity": "HIGH",
+      "claim": "The wave manufactured its own reader-existence staleness: the new case helpers runRetirementSeamCases/runRetirementShapeCases sat outside the sweep's selfTest* corpus cut, their record(\"runtime-code\") fixture classified AMBIGUOUS and suppressed the member's verdict, the LIVE accepted RISK_CLASSES.runtime-code row went stale, and the wave pruned it — deleting the documented NO_CONSUMER known-limit for the DEFAULT risk class while the gate stayed green (lanes 3f1, 5f1, 6f2, 7f1, 8f1).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:00:40.469Z",
+      "proof": "Demonstrated on both trees: parent gate prints 'NO_CONSUMER RISK_CLASSES.runtime-code — 1 producer(s)'; HEAD prints no finding plus 'SUPPRESSED RISK_CLASSES — 1 unclassified use(s)'; a mutation probe adding a real consumer fails LOUDLY at the parent but silently passes at HEAD; renaming the helpers into the selfTest* cut plus restoring the row returns the finding with the gate green.",
+      "dedupKey": "the wave manufactured its own reader-existence staleness: the new case helpers runretirementseamcases/runretirementshapecases sat outside the sweep's selftest* corpus cut, their record(\"runtime-code\") fixture classified ambiguous and suppressed the member's verdict, the live accepted risk_classes.runtime-code row went stale, and the wave pruned it — deleting the documented no_consumer known-limit for the default risk class while the gate stayed green (lanes 3f1, 5f1, 6f2, 7f1, 8f1).",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "docs/gates/reader-existence.json"
+      ],
+      "resolvedAt": "2026-09-20T15:00:50.961Z"
+    },
+    {
+      "id": "f3",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The staged-gate retirement case was a vacuous pin: its planned-then-retired fixture already refused pre-fix (planned phase), so the case passed against the broken seam too; the discriminating executing-then-retired shape — the one that could have held the gate open pre-fix — was untested (lane 7f2).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:00:40.505Z",
+      "dedupKey": "the staged-gate retirement case was a vacuous pin: its planned-then-retired fixture already refused pre-fix (planned phase), so the case passed against the broken seam too; the discriminating executing-then-retired shape — the one that could have held the gate open pre-fix — was untested (lane 7f2).",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:00:50.992Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "docs/TASK-LIFECYCLE.md contradicted itself: the opening said 'six phases' beside the seven-row phase table after the retired row was added (lane 5f2).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:00:40.540Z",
+      "dedupKey": "docs/task-lifecycle.md contradicted itself: the opening said 'six phases' beside the seven-row phase table after the retired row was added (lane 5f2).",
+      "evidence": [
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "resolvedAt": "2026-09-20T15:00:51.026Z"
+    },
+    {
+      "id": "f5",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The retirement reason — the law's namesake field, demanded by the CLI refusal and promised by three remedy strings — was written to the record and read by nothing: no tool ever printed it, unlike pin-retire and wont-fix justifications which handoff surfaces (lane 3f2).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:00:40.578Z",
+      "dedupKey": "the retirement reason — the law's namesake field, demanded by the cli refusal and promised by three remedy strings — was written to the record and read by nothing: no tool ever printed it, unlike pin-retire and wont-fix justifications which handoff surfaces (lane 3f2).",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:00:51.063Z"
+    }
+  ],
+  "sweptBase": "cb89714f855be2723bf1169cdc89e8e097e47220",
+  "sweptHead": "a49d0f8e91139520366b2125880a6731555a576c",
+  "sweptDiffDigest": "557cc15f6ef9"
+}

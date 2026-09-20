@@ -1,0 +1,99 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "retire-law",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T14:28:41.073Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "d1cd67e47c9844785343e39be1ee8e58297050ccdf9f6a0ba3741d6927622b40"
+    },
+    {
+      "at": "2026-09-20T14:31:08.918Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "d1cd67e47c9844785343e39be1ee8e58297050ccdf9f6a0ba3741d6927622b40",
+      "entry_hash": "12c3e29944dd3280bf9005f8f66a07245c360284a9abec9205c1e884bdfd4012"
+    },
+    {
+      "at": "2026-09-20T14:31:08.957Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "12c3e29944dd3280bf9005f8f66a07245c360284a9abec9205c1e884bdfd4012",
+      "entry_hash": "cedf382a219b36d8e6212eb4efb0f5a6361b087ffd6e5c6edda455de880f926e"
+    },
+    {
+      "at": "2026-09-20T14:31:09.000Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "cedf382a219b36d8e6212eb4efb0f5a6361b087ffd6e5c6edda455de880f926e",
+      "entry_hash": "f802fe03ca832bb828e29e9783aa73946c7fa4a6f7be584b7fdb467a49c026b0"
+    },
+    {
+      "at": "2026-09-20T14:32:24.850Z",
+      "type": "red-check",
+      "expect": "a retired event makes derivePhase terminal",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "0c630730f6b8",
+      "seq": 4,
+      "parent_hash": "f802fe03ca832bb828e29e9783aa73946c7fa4a6f7be584b7fdb467a49c026b0",
+      "entry_hash": "b65cfde451049508cf260481d829f91cd97584d96ca284eb4fd8376de3acd9c0"
+    },
+    {
+      "at": "2026-09-20T14:32:24.923Z",
+      "type": "red-check",
+      "expect": "a scoped retired task still authorizes nothing",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "95d6eeba0b03",
+      "seq": 5,
+      "parent_hash": "b65cfde451049508cf260481d829f91cd97584d96ca284eb4fd8376de3acd9c0",
+      "entry_hash": "6de1c5e4bab32896a86dd8bf428fb7ec77ce74185ff1d03046b6937f0c7a5fbc"
+    },
+    {
+      "at": "2026-09-20T14:39:21.868Z",
+      "type": "scope",
+      "patterns": [
+        "docs/gates/reader-existence.json"
+      ],
+      "seq": 6,
+      "parent_hash": "6de1c5e4bab32896a86dd8bf428fb7ec77ce74185ff1d03046b6937f0c7a5fbc",
+      "entry_hash": "9f76ef27e63bc8eb381cd4d273edb579659a16ab86a774e65f5bfaea1b445320"
+    },
+    {
+      "at": "2026-09-20T14:42:43.699Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 7,
+      "parent_hash": "9f76ef27e63bc8eb381cd4d273edb579659a16ab86a774e65f5bfaea1b445320",
+      "entry_hash": "ea23f2421f3f9f89f36beb64d4649b0484e3e0c4c2c851d097c01e5f55169dd6"
+    },
+    {
+      "at": "2026-09-20T15:01:05.901Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "ea23f2421f3f9f89f36beb64d4649b0484e3e0c4c2c851d097c01e5f55169dd6",
+      "entry_hash": "a826d326cd8d42c723aaef2f41ecae57e6e4d0ae4fb1ca3ebb367701406f2edf"
+    },
+    {
+      "at": "2026-09-20T15:01:06.102Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "a826d326cd8d42c723aaef2f41ecae57e6e4d0ae4fb1ca3ebb367701406f2edf",
+      "entry_hash": "972f99c062c8604d4f7c2cd355124f005dccf3d52bae60e62c835b33572fe68b"
+    }
+  ]
+}
