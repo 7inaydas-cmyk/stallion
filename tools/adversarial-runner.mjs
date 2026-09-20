@@ -213,7 +213,9 @@ function cmdPrepare(args) {
   if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
   const dir = `${BUNDLE_DIR}/${id}`;
   mkdirSync(dir, { recursive: true });
-  const lessons = bundleBlock(lessonsIndex(loadRegisters(STATE_DIR).registers));
+  const { registers: lessonRegisters, skipped } = loadRegisters(STATE_DIR);
+  if (skipped > 0) console.error(`adversarial prepare: retrospective skipped ${skipped} malformed register(s) — the standing lessons in the bundles are INCOMPLETE until they parse`);
+  const lessons = bundleBlock(lessonsIndex(lessonRegisters));
   for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList, lessons));
   mintPassMarker(id, base, head, content);
   console.log(`${lanes.length} refute bundles written to adversarial/${id}/`);

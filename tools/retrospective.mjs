@@ -20,12 +20,20 @@
  * Nothing is written to the repo: the index is a derivation over committed registers, so it can
  * never drift from them.
  */
-import { readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadFindings } from "./task-findings.mjs";
 
-const STATE_DIR = "tasks";
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
+/** Anchored to the MODULE ROOT, like every sibling state tool: the advertised command must give
+ * the same answer from any cwd, never a confident empty index (the lane-1 finding). */
+const STATE_DIR = `${ROOT}tasks`;
+
+/** Severity rank for ordering: CRITICAL first, LOW last — the lane-5 finding was a lexicographic
+ * sort quietly preferring LOW over MEDIUM in every lane bundle. */
+const SEVERITY_RANK = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 const STOPWORDS = new Set(
   ("about after again against because before being below between both every from further have into just more most " +
     "other over same some such than that the their them then there these they this those through under until very " +
@@ -33,7 +41,7 @@ const STOPWORDS = new Set(
     "cannot files file path").split(" "),
 );
 
-/** Every live WONT-FIX boundary across the registers, newest law first: task, claim, justification. */
+/** Every live WONT-FIX boundary across the registers, most severe first (then task, then id). */
 export function wontFixOf(registers) {
   const rows = [];
   for (const { task, register } of registers) {
@@ -50,7 +58,7 @@ export function wontFixOf(registers) {
       }
     }
   }
-  return rows.sort((a, b) => (a.severity < b.severity ? -1 : a.severity > b.severity ? 1 : a.task < b.task ? -1 : 1));
+  return rows.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || (a.task < b.task ? -1 : a.task > b.task ? 1 : a.id < b.id ? -1 : 1));
 }
 
 /** The recurring vocabulary of past findings — where the escapes keep coming from. */
@@ -116,16 +124,21 @@ export function summaryLine(index) {
   return `${index.findings} finding(s) across ${index.registers} register(s) — ${index.wontFix.length} WONT-FIX boundar${index.wontFix.length === 1 ? "y" : "ies"} live${top.length > 0 ? `; recurring: ${top}` : ""} (node tools/retrospective.mjs)`;
 }
 
-/** The compact block every lane bundle carries: what past lanes learned. */
+/**
+ * The compact block every lane bundle carries: what past lanes learned. EVERY live WONT-FIX
+ * boundary rides along — the lane-5 finding was a slice(0,12) under a lexicographic sort
+ * quietly dropping all MEDIUM boundaries while the prose claimed exhaustiveness; the recall
+ * surface is the one place a cap must never live.
+ */
 export function bundleBlock(index) {
   if (index.registers === 0) return "";
   const lines = [`### Standing lessons from ${index.findings} past finding(s) across ${index.registers} register(s)`];
   const top = index.tokenCounts.slice(0, 8).map(([token, n]) => `${token}×${n}`).join(", ");
   if (top.length > 0) lines.push(`Recurring escape vocabulary: ${top}.`);
   if (index.wontFix.length > 0) {
-    lines.push("Accepted-risk boundaries a lane must NOT re-report as novel (they are recorded WONT-FIX):");
-    for (const w of index.wontFix.slice(0, 12)) {
-      lines.push(`- [${w.severity}] ${w.task} ${w.id}: ${w.claim.slice(0, 140)}${w.claim.length > 140 ? "…" : ""} — ${w.justification.slice(0, 120)}${w.justification.length > 120 ? "…" : ""}`);
+    lines.push(`All ${index.wontFix.length} accepted-risk boundaries a lane must NOT re-report as novel (they are recorded WONT-FIX):`);
+    for (const w of index.wontFix) {
+      lines.push(`- [${w.severity}] ${w.task} ${w.id}: ${trunc(w.claim, 160)} — ${trunc(w.justification, 140)}`);
     }
   }
   return lines.join("\n");
@@ -149,6 +162,15 @@ export function renderIndex(index, top = 12) {
 
 const trunc = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/** The composition law: EVERY boundary rides along, severity-ranked — the lane-5 finding's shape. */
+function bundleBlockCarriesAllRanked() {
+  const many = [];
+  for (let i = 0; i < 15; i += 1) many.push({ task: `t-${i}`, id: "f1", lane: 2, severity: i === 0 ? "CRITICAL" : i === 1 ? "HIGH" : i === 2 ? "MEDIUM" : "LOW", claim: "x".repeat(300), justification: "j", status: "WONT-FIX", recordedAt: "2026-09-01T00:00:00.000Z" });
+  const index = lessonsIndex([{ task: "t", register: { schema: "stallion/task-findings@1", findings: many } }]);
+  const rows = bundleBlock(index).split("\n").filter((l) => l.startsWith("- ["));
+  return rows.length === 15 && rows[0].includes("[CRITICAL]") && rows[1].includes("[HIGH]") && rows[2].includes("[MEDIUM]") && rows.every((l) => l.length <= 400);
+}
+
 /** The case matrix, split from the runner so the ratchet keeps its word. */
 function selfTestCases(registers) {
   return [
@@ -167,12 +189,37 @@ function selfTestCases(registers) {
     ["an empty index is valid, not an error", lessonsIndex([]).findings === 0 && lessonsIndex([]).wontFix.length === 0],
     ["derivation is deterministic (same registers, same JSON)", JSON.stringify(lessonsIndex(registers)) === JSON.stringify(lessonsIndex(registers))],
     ["summaryLine counts boundaries and names the top classes", summaryLine(lessonsIndex(registers)).includes("1 WONT-FIX") && summaryLine(lessonsIndex(registers)).includes("self-test×3")],
-    ["bundleBlock truncates long claims and names wont-fix boundaries", bundleBlock(lessonsIndex(registers)).includes("t-one f1") && bundleBlock(lessonsIndex(registers)).split("\n").every((l) => l.length <= 400)],
+    ["bundleBlock carries EVERY boundary ranked by severity, truncating long claims", bundleBlockCarriesAllRanked()],
+    ["bundleBlock names wont-fix boundaries with task and id", bundleBlock(lessonsIndex(registers)).includes("t-one f1")],
     ["trunc appends the ellipsis only when cutting", trunc("abcdef", 3) === "abc…" && trunc("abc", 3) === "abc"],
   ];
 }
 
-/** Pure cases first; the loader gets two real temp files (one malformed) — a vacuous sweep is visible here. */
+/** The loader's own law: a malformed register is skipped AND COUNTED — never fatal, never silent. */
+function selfTestLoader() {
+  const dir = mkdtempSync(join(tmpdir(), "retrospective-"));
+  let failures = 0;
+  try {
+    mkdirSync(join(dir, "sub"), { recursive: true }); // a directory among the files must not crash the walk
+    const valid = { schema: "stallion/task-findings@1", task: "t-real", passStartedAt: "2026-01-01T00:00:00.000Z", findings: [] };
+    writeFileSync(join(dir, "t-real.findings.json"), JSON.stringify(valid));
+    writeFileSync(join(dir, "broken.findings.json"), "{ not json");
+    const { registers, skipped } = loadRegisters(dir);
+    if (registers.length !== 1 || registers[0].task !== "t-real") {
+      failures += 1;
+      console.error("retrospective SELF-TEST FAIL (loader): the valid register must load");
+    }
+    if (skipped !== 1) {
+      failures += 1;
+      console.error(`retrospective SELF-TEST FAIL (loader): the malformed register must be counted, got skipped=${skipped}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return { failures, count: 2 };
+}
+
+/** Pure cases first; the loader gets real temp files (one malformed) — a vacuous sweep is visible here. */
 export function selfTest() {
   const reg = (task, findings) => ({ task, register: { schema: "stallion/task-findings@1", task, findings } });
   const wont = (id, claim, justification) => ({ id, lane: 3, severity: "LOW", status: "WONT-FIX", claim, justification, recordedAt: "2026-09-01T00:00:00.000Z" });
@@ -183,6 +230,7 @@ export function selfTest() {
   ];
 
   const cases = selfTestCases(registers);
+  const loader = selfTestLoader();
   let failures = 0;
   for (const [name, passes] of cases) {
     if (!passes) {
@@ -190,8 +238,9 @@ export function selfTest() {
       console.error(`retrospective SELF-TEST FAIL: ${name}`);
     }
   }
+  failures += loader.failures;
   console.log(
-    failures === 0 ? `retrospective self-test: OK (${cases.length} cases)` : `retrospective self-test: FAILED (${failures} failure(s))`,
+    failures === 0 ? `retrospective self-test: OK (${cases.length} cases + ${loader.count} loader cases)` : `retrospective self-test: FAILED (${failures} failure(s))`,
   );
   return failures === 0;
 }

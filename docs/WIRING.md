@@ -328,9 +328,11 @@ caught — which is why this paragraph carries no count to go stale.
 - `retrospective` — the cross-task lessons index (the same evaluation, gap 1): DERIVED from
   every committed findings register, never stored — every live WONT-FIX boundary with its
   justification, the recurring vocabulary of past findings, findings per escape class.
-  `adversarial prepare` injects the compact block into every lane bundle so each sweep starts
+  `adversarial prepare` injects the block into every lane bundle — ALL boundaries,
+  severity-ranked, no cap (a recall surface must never drop rows) — so each sweep starts
   standing on what past sweeps learned, and `task-state status` prints the one-line summary.
-  Write-only findings were the disease; this is the recall surface.
+  `task-state metrics` derives per-task wall-clock span and findings density from the same
+  records on demand. Write-only findings were the disease; this is the recall surface.
 
 The doctor carries one derived family check: `docs/gates/` must be non-empty and every JSON in
 it must parse. Wiring these gates into pre-push/CI is a vendor choice; gate-registry declares

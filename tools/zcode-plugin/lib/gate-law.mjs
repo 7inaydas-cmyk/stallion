@@ -262,10 +262,26 @@ export function selfTest() {
     ["a relative file_path resolves against the payload cwd", authoringDecision({ filePath: "tools/x.mjs", cwd: "/repo" }, fakeLaw, [task("executing", ["tools/**"])]).decision === "allow"],
     ["a payload without a file path refuses (fail closed, not guess)", parseEditPayload({ tool_name: "Edit", tool_input: {} }).ok === false],
     ["the frozen law pins still resolve — a harness rename must fail the battery, not a live session", (() => {
-      const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-      const cov = pathToFileURL(join(root, "tools/task-coverage.mjs")).href;
-      const st = pathToFileURL(join(root, "tools/task-state.mjs")).href;
-      const code = `const c = await import(${JSON.stringify(cov)}); const s = await import(${JSON.stringify(st)}); for (const n of ["isCodePath", "recordRefusal", "scopeRefusal", "citationRefusal"]) { if (typeof c[n] !== "function" && typeof s[n] !== "function") { console.error("missing law export: " + n); process.exit(1); } }`;
+      // Layout-aware (the lane-4/8 finding): probe every base × shape the plugin supports — the
+      // canonical stallion checkout, the vendored tools/harness shape, and the session cwd — and
+      // SKIP (pass) where no harness tree is present, so a copied-plugin install never sees a
+      // false red on its verification step.
+      const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+      const bases = [pluginRoot, process.cwd()].map((b) => JSON.stringify(b));
+      const code = `const { existsSync } = await import("node:fs"); const { pathToFileURL: p } = await import("node:url");
+const bases = [${bases.join(", ")}];
+let checked = 0;
+for (const base of bases) for (const shape of ["tools", "tools/harness"]) {
+  const cov = p(base + "/" + shape + "/task-coverage.mjs").href;
+  const st = p(base + "/" + shape + "/task-state.mjs").href;
+  if (!existsSync(cov) || !existsSync(st)) continue;
+  checked++;
+  const c = await import(cov); const s = await import(st);
+  for (const n of ["isCodePath", "recordRefusal", "scopeRefusal", "citationRefusal"]) {
+    if (typeof c[n] !== "function" && typeof s[n] !== "function") { console.error("missing law export: " + n); process.exit(1); }
+  }
+}
+if (checked === 0) console.error("(no harness tree found from the plugin location or cwd — pins unchecked here)");`;
       return spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).status === 0;
     })()],
     ["file_path, filePath, and path spellings are all read", parseEditPayload({ tool_input: { file_path: "a" } }).ok && parseEditPayload({ tool_input: { filePath: "a" } }).ok && parseEditPayload({ tool_input: { path: "a" } }).ok],

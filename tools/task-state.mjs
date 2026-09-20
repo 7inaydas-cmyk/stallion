@@ -30,7 +30,7 @@
  * the tamper evidence (editing events to skip obligations is a deliberate act against the register
  * and shows in the diff). Storage: tasks/<id>.json
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -544,15 +544,15 @@ const PIN_MAX_BUFFER = 10 * 1024 * 1024;
  *  signal, buffer overflow): a null verdict is NEVER a RED pin (an adversarial finding: real
  *  Node reports status null, not undefined, on all those paths). */
 export function runPinCommand(command) {
-  try {
-    const out = execFileSync("sh", ["-c", command], { cwd: ROOT, encoding: "utf8", timeout: PIN_COMMAND_TIMEOUT_MS, maxBuffer: PIN_MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] });
-    return { exitCode: 0, output: out };
-  } catch (e) {
-    if (!Number.isInteger(e.status)) {
-      die(`pin command delivered no verdict: ${command} (${e.code ?? e.signal ?? e.message})\n  rule: a pin that did not run to completion is not evidence of anything\n  fix: make the command complete (it hangs, explodes past ${PIN_MAX_BUFFER / 1024 / 1024}MB of output, or cannot start)`);
-    }
-    return { exitCode: e.status, output: `${e.stdout ?? ""}${e.stderr ?? ""}` };
+  // spawnSync, not execFileSync: the exit-0 path must see stderr too. execFileSync returns stdout
+  // only on success, so a check that exits 0 while printing its RED signature on stderr was
+  // invisible to the vacuous-green guard — and this repo's tools print SELF-TEST FAIL via
+  // console.error (the lane-4 finding, demonstrated live). Both channels, both outcomes.
+  const run = spawnSync("sh", ["-c", command], { cwd: ROOT, encoding: "utf8", timeout: PIN_COMMAND_TIMEOUT_MS, maxBuffer: PIN_MAX_BUFFER, stdio: ["ignore", "pipe", "pipe"] });
+  if (!Number.isInteger(run.status)) {
+    die(`pin command delivered no verdict: ${command} (${run.error?.code ?? run.signal ?? "no status"})\n  rule: a pin that did not run to completion is not evidence of anything\n  fix: make the command complete (it hangs, explodes past ${PIN_MAX_BUFFER / 1024 / 1024}MB of output, or cannot start)`);
   }
+  return { exitCode: run.status, output: `${run.stdout ?? ""}${run.stderr ?? ""}` };
 }
 
 /** Guarded regex test: a malformed recorded pattern never decides a GREEN (it refused the RED side already). */
@@ -574,7 +574,11 @@ function patternMatches(pattern, output) {
 export function greenVerdictOf(pin, runs) {
   const steady = steadyRunFailure(pin.command, runs[0], runs[1]);
   if (steady !== null) return steady;
-  return vacuousGreenOf(pin, runs[0]);
+  for (const run of runs) {
+    const vacuous = vacuousGreenOf(pin, run);
+    if (vacuous !== null) return vacuous;
+  }
+  return null;
 }
 
 /** Exit-code law: the re-run must pass TWICE — the second run surfaces intermittent greens. */
@@ -733,20 +737,23 @@ function statusObligations(record) {
   return obligations(record, ok ? register : null, redCheckEvidence(record).every(evidencePathIsFile));
 }
 
-/** One metrics row, derived from one record (and its findings register, when present). */
-function metricRow(record) {
+/** The pure half of one metrics row: span and density from a record and its findings. */
+export function metricDerivation(record, findings) {
   const first = record.events?.[0]?.at;
   const doneAts = (record.events ?? []).filter((e) => e?.to === "done").map((e) => e.at);
   const doneAt = doneAts.length > 0 ? doneAts[doneAts.length - 1] : undefined;
-  const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
-  const findings = ok && register ? register.findings : [];
   return {
-    id: record.id,
-    phase: derivePhase(record.events),
     days: first !== undefined && doneAt !== undefined ? ((Date.parse(doneAt) - Date.parse(first)) / 86_400_000).toFixed(1) : null,
     findings: findings.length,
     highs: findings.filter((x) => x.severity === "CRITICAL" || x.severity === "HIGH").length,
   };
+}
+
+/** One metrics row, derived from one record (and its findings register, when present). */
+function metricRow(record) {
+  const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
+  const findings = ok && register ? register.findings : [];
+  return { id: record.id, phase: derivePhase(record.events), ...metricDerivation(record, findings) };
 }
 
 /**
@@ -811,7 +818,14 @@ function cmdStatus(args) {
     if (record.schema !== TASK_SCHEMA) { console.error(`task-state: skipping non-task file ${f}`); continue; }
     console.log(`${derivePhase(record.events).padEnd(12)} ${record.id} (${record.riskClass})`);
   }
-  console.log(summaryLine(lessonsIndex(loadRegisters(STATE_DIR).registers)));
+  printRetrospectiveSummary();
+}
+
+/** The status tail: the buried-knowledge counter, with malformed registers visible when skipped. */
+function printRetrospectiveSummary() {
+  const { registers, skipped } = loadRegisters(STATE_DIR);
+  if (skipped > 0) console.error(`task-state status: retrospective skipped ${skipped} malformed register(s) — the summary line is INCOMPLETE until they parse`);
+  console.log(summaryLine(lessonsIndex(registers)));
 }
 
 /**
@@ -964,7 +978,16 @@ export function selfTest() {
 
 /** Runs the GREEN-half case family; returns its count for the banner. */
 function runGreenPinCases(fail) {
-  const cases = greenPinCaseFamily();
+  const cases = [
+    ...greenPinCaseFamily(),
+    ["a signature on the SECOND exit-0 run also refuses (the lane-1 finding)", greenVerdictOf({ command: "npm test", expect: "SELF-TEST FAIL" }, [{ exitCode: 0, output: "all good" }, { exitCode: 0, output: "SELF-TEST FAIL: flaky" }])?.includes("vacuous green")],
+    ["metrics derive span, density, and high counts purely", (() => {
+      const record = { events: [{ at: "2026-09-19T00:00:00Z", type: "created" }, { at: "2026-09-20T12:00:00Z", to: "done" }] };
+      const m = metricDerivation(record, [{ severity: "HIGH" }, { severity: "LOW" }, { severity: "MEDIUM" }]);
+      return m.days === "1.5" && m.findings === 3 && m.highs === 1;
+    })()],
+    ["metrics leave span null for an unfinished task", metricDerivation({ events: [{ at: "2026-09-19T00:00:00Z" }] }, []).days === null],
+  ];
   for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
   return cases.length;
 }
