@@ -33,7 +33,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
 import { lessonsIndex, loadRegisters, summaryLine } from "./retrospective.mjs";
@@ -166,8 +166,18 @@ function coversFenceSurface(p) {
   const pattern = String(p);
   const segments = pattern.split("/");
   if (FENCE_SURFACE_ROOTS.has(segments[0])) return true;
-  if (matches(".stallion-base", pattern)) return true;
+  if (surfaceFileReached(".stallion-base", segments)) return true;
   return [...FENCE_SURFACE_ROOTS].some((root) => rootReachesPattern(root, pattern));
+}
+
+/** Pure: does a pattern reach a fence-surface FILE at the repo root (.stallion-base)? The first
+ *  segment must glob-match the file's name, and the pattern must be shallow enough to cover a
+ *  root-level FILE: the exact name, or name/** where the coverage dialect's trailing ** swallows
+ *  zero segments (a wildcard-spelled stallion-base with a double-star tail escaped the tier
+ *  law while the coverage seam authorized it — an adversarial pass brute-forced the shape). */
+function surfaceFileReached(name, segments) {
+  if (!matches(name, segments[0] ?? "")) return false;
+  return segments.length === 1 || (segments.length === 2 && segments[1] === "**");
 }
 
 /** Pure per-root reach, in order of trust: the STRUCTURAL root-prefix (a multi-segment root's
@@ -188,19 +198,22 @@ function rootReachesPattern(root, pattern) {
 function rootTouchesPattern(rootDir, pattern) {
   try {
     if (!existsSync(rootDir)) return false;
-    // Walk paths RELATIVE to the root: pathspec's dialect is repo-relative, so matching the
-    // absolute walked path against a relative glob never fires (the walker shipped as
-    // "additive coverage" while structurally unable to match anything — vendor wave-2 pass).
+    // Walk paths REPO-relative (the walk seeds at the ROOT PREFIX, not the empty string):
+    // pathspec's dialect is repo-relative, and a walk seeded root-relatively matched bare
+    // entry NAMES against repo globs — "*.md" and "workflows/**" falsely refused as fence
+    // surface while no genuine reach ever needed them (an adversarial pass caught the
+    // over-arm; the pre-fix absolute walk could not fire at all).
+    const prefix = relative(ROOT, rootDir);
     const walk = (dir, rel) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = `${dir}/${entry.name}`;
-        const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`;
+        const relPath = `${rel}/${entry.name}`;
         if (matches(relPath, pattern)) return true;
         if (entry.isDirectory() && walk(full, relPath)) return true;
       }
       return false;
     };
-    return walk(rootDir, "");
+    return walk(rootDir, prefix);
   } catch {
     // NOT reaching. The pure laws above (fast path, structural root-prefix, node-match) already
     // decide every shape that matters — including all multi-segment-root spellings, which is
@@ -1133,10 +1146,25 @@ export function selfTest() {
   const greenPinCount = runGreenPinCases(fail);
 
   const retireCases = runRetireRefusalCases(fail, { base, at, executing, adversarial }) + runRetireTerminalCases(fail, { at, executing });
-  const fenceSurfaceCases = selfTestFenceSurfaceCases(fail);
+  const fenceSurfaceCases = selfTestFenceSurfaceCases(fail) + selfTestFenceSurfaceNegativeCases(fail);
 
   console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin + ${retireCases} retire + ${fenceSurfaceCases} fence-surface cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
+}
+
+
+/** The over-arm family: root-level file globs and unrelated name-shapes must NOT read as fence
+ *  surface — a walker seeded root-relatively once matched bare entry names against repo globs
+ *  and refused *.md and workflows/** as protected-tier blast radius (an adversarial pass). */
+function selfTestFenceSurfaceNegativeCases(fail) {
+  const runtime = { riskClass: "runtime-code", events: [] };
+  const cases = [
+    ["root-level file globs do NOT reach fence surface (*.md, *.json pass)", fenceSurfaceRefusal(runtime, ["*.md"]) === null && fenceSurfaceRefusal(runtime, ["*.json"]) === null],
+    ["unrelated name-shape patterns pass (workflows/**, gate-*)", fenceSurfaceRefusal(runtime, ["workflows/**"]) === null && fenceSurfaceRefusal(runtime, ["gate-*"]) === null],
+    ["non-surface trees never trip the tier law", fenceSurfaceRefusal(runtime, ["tools/**", "tasks/**"]) === null],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
 }
 
 /** The tier-law family, ported from the vendor repo's close-out: the multi-segment docs/gates
@@ -1148,11 +1176,31 @@ function selfTestFenceSurfaceCases(fail) {
   const cases = [
     ["multi-segment fence surface (docs/gates) refuses under runtime-code — the inert-entry finding", fenceSurfaceRefusal(runtime, ["docs/gates/**"]) !== null],
     ["a broad docs pattern that covers gates also refuses", fenceSurfaceRefusal(runtime, ["docs/**"]) !== null],
+    ["wildcard-spelled single-segment roots refuse (the .*hooks/** escape, found at the vendor repo's wave-2 pass)", fenceSurfaceRefusal(runtime, [".*hooks/**"]) !== null && fenceSurfaceRefusal(runtime, [".git*/*"]) !== null],
+    ["a wildcard-spelled .stallion-base refuses too — the fourth surface (the brute-forced escape)", fenceSurfaceRefusal(runtime, [".stallion*/**"]) !== null && fenceSurfaceRefusal(runtime, [".s*/**"]) !== null && fenceSurfaceRefusal(runtime, [".stallion-base"]) !== null],
+
+    ["docs/* covers the gates directory NODE and correctly refuses (a scope matching the node can delete it)", fenceSurfaceRefusal(runtime, ["docs/*"]) !== null],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length + selfTestFenceSurfaceAllowedCases(fail, approved) + selfTestFenceSurfaceStructuralCases(fail);
+}
+
+/** The structural-prefix family: docs/gates spellings refuse with NO file on disk. */
+function selfTestFenceSurfaceStructuralCases(fail) {
+  const runtime = { riskClass: "runtime-code", events: [] };
+  const cases = [
     ["name-shape-narrower patterns refuse STRUCTURALLY — the prefix law needs no file on disk (the future-file and rm'd-file doors)", fenceSurfaceRefusal(runtime, ["docs/gates/*.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/gate-*"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/brand-new-gate.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/newdir/**"]) !== null],
     ["a cwd change cannot disarm the tier law — the multi-segment decision is pure, not corpus-relative", fenceSurfaceRefusal(runtime, ["docs/gates/anything-at-all.json"]) !== null],
-    ["wildcard-spelled single-segment roots refuse (the .*hooks/** escape, found at the vendor repo's wave-2 pass)", fenceSurfaceRefusal(runtime, [".*hooks/**"]) !== null && fenceSurfaceRefusal(runtime, [".git*/*"]) !== null],
-    ["docs/* covers the gates directory NODE and correctly refuses (a scope matching the node can delete it)", fenceSurfaceRefusal(runtime, ["docs/*"]) !== null],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
+}
+
+/** The allowed half: protected-with-approval may scope the surface; nobody else is over-armed. */
+function selfTestFenceSurfaceAllowedCases(fail, approved) {
+  const cases = [
     ["a protected task WITH approval may scope the gates surface", fenceSurfaceRefusal(approved, ["docs/gates/**"]) === null],
+    ["a protected task WITH approval may scope the single-segment roots", fenceSurfaceRefusal(approved, [".githooks/**"]) === null],
   ];
   for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
   return cases.length;
