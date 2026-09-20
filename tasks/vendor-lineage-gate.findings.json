@@ -1,0 +1,84 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "vendor-lineage-gate",
+  "passStartedAt": "2026-09-20T09:14:27.993Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 3,
+      "severity": "CRITICAL",
+      "claim": "walkCorpus's manifest-skip compares a corpus-root-relative path ('VENDOR.json') against the cwd-relative manifest path ('tools/harness/VENDOR.json') — never equal in the documented layout — so bare host mode refuses EVERY honest vendored tree at the WIRING §1 location, and the manifest cannot declare itself (self-digest has no fixed point); the docstring 'The manifest's own path is skipped' is dead code",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T09:28:40.751Z",
+      "proof": "A vendor following WIRING §1 verbatim (manifest at tools/harness/VENDOR.json, correct digests) runs the documented bare invocation and is refused forever; both escape routes (self-declare → permanent 'patched'; delete → fail-closed missing-manifest) dead-end, so adopters abandon the gate, reopening the silent-drift gap it exists to close; every shipped guard is blind because the self-test injects corpusFiles and the battery's only live entry is --upstream",
+      "evidence": [
+        "tools/vendor-drift.mjs"
+      ],
+      "dedupKey": "tools/vendor-drift.mjs:153-154 rel=relative(root,full) vs manifestpath; reproduced on a clean /tmp fixture: exit 1 'undeclared: vendor.json'; only an undocumented out-of-corpus --manifest layout passes",
+      "resolvedAt": "2026-09-20T09:38:48.640Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "The manifest is fully client-authored: 'vendored' self-nominates the corpus (a manifest pointing at a trivial side directory passes green while the real harness tree drifts unpoliced beside it) and 'upstream' is accepted on 40-hex shape alone, steering the re-vendor remedy to an arbitrary sha",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T09:28:40.792Z",
+      "proof": "An agent in the host commits a born-scoped manifest: every run is green while the actual vendored harness is patched without limit — the §1 promise 'manifest is law' holds vacuously because the client chose what the law can see; nothing in the change ever compares vendored/files/upstream against actual stallion state",
+      "evidence": [
+        "tools/vendor-drift.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "executed: manifest with vendored:'corner' + upstream deadbeef... exits 0 'ok — 1 vendored file(s)' while tools/harness sits undeclared; upstream appears only in .slice(0,10) remedy text",
+      "resolvedAt": "2026-09-20T09:38:48.676Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The entire host-mode disk path (runHost, loadManifestFacts, digestCorpus, walkCorpus) is executed by nothing in the repository that ships it — no battery entry, no registry transport, no hook, no CI job, and the self-test injects every fact",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T09:28:40.827Z",
+      "proof": "Any filesystem-level defect in host mode passes the full battery green — the proven instance is the CRITICAL walkCorpus skip; a single smoke run of bare mode against a real two-file vendored tree would have failed before the verified transition",
+      "evidence": [
+        "tools/vendor-drift.mjs",
+        "package.json"
+      ],
+      "dedupKey": "grep: vendor-drift appears only in package.json (--self-test/--upstream), gate-registry.json (--upstream), wiring prose, and the task record; selftest drives only manifestshaperefusal/driftverdict/digestof",
+      "resolvedAt": "2026-09-20T09:38:48.709Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "WIRING §11 opens with 'Ten gates joined the lifecycle core' above a list that enumerated eleven before this diff and twelve after it, and vendor-drift is not 'ported from the Antitube harness' as the sentence claims",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T09:28:40.859Z",
+      "proof": "gate-registry's own header records upstream paying for exactly this drift class (a hand-copied '= EIGHT' over seven, for months); a vendor counting bullets to decide what to wire finds twelve under a header saying ten, with no machine check reconciling the prose count",
+      "evidence": [
+        "docs/WIRING.md",
+        "docs/gates/gate-registry.json"
+      ],
+      "dedupKey": "git show c772eda^:docs/wiring.md counts 11 bullets under 'ten gates'; post-diff 12; the vendor-drift bullet itself attributes the 2026-09-20 letta evaluation",
+      "resolvedAt": "2026-09-20T09:38:48.744Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "Docs claim '--upstream mode keeps stallion itself from ever carrying a forged manifest' but runUpstream inspects exactly one filesystem path",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T09:28:40.902Z",
+      "proof": "Documented-law overreach rather than a silent escape (nothing in stallion consumes manifests today): the honest failure is a false doc guarantee, not a missed gate",
+      "evidence": [
+        "tools/vendor-drift.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "runupstream = existssync(manifestpath) with default_manifest only; a forged manifest at any other path leaves the battery green",
+      "resolvedAt": "2026-09-20T09:38:48.778Z"
+    }
+  ],
+  "sweptBase": "f21e099aa6ce0329af272f52057ad6c6f657212e",
+  "sweptHead": "c772eda5d84a55717ddca48e0299d86af94404e2",
+  "sweptDiffDigest": "985adcdaa2fd"
+}
