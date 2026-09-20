@@ -1,0 +1,77 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "tier-cutover-repair",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T15:58:58.196Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "f32a11783bb2e42276934de9df66440739901cc5d02708fb8a358a69468ac90e"
+    },
+    {
+      "at": "2026-09-20T15:58:58.230Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "f32a11783bb2e42276934de9df66440739901cc5d02708fb8a358a69468ac90e",
+      "entry_hash": "15e154c5d8810081c174d01db91d6d5d9db84eb1b1d8a144b9c86e16f62b135f"
+    },
+    {
+      "at": "2026-09-20T15:58:58.261Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-coverage.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "15e154c5d8810081c174d01db91d6d5d9db84eb1b1d8a144b9c86e16f62b135f",
+      "entry_hash": "5cff63d2e4aebda058759c63dcd6fb0f63dda1eb5cab2dafdce14e2ee28a352c"
+    },
+    {
+      "at": "2026-09-20T15:58:58.297Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "5cff63d2e4aebda058759c63dcd6fb0f63dda1eb5cab2dafdce14e2ee28a352c",
+      "entry_hash": "c0933f4ec3071ca3d104fcbb9a002e43c7b9de1e90595b344a1e3e0c1bdbcb43"
+    },
+    {
+      "at": "2026-09-20T15:58:58.598Z",
+      "type": "red-check",
+      "expect": "fence's own surface",
+      "command": "node tools/task-coverage.mjs --base 73f1125",
+      "exitCode": 1,
+      "outputDigest": "2ef2a7e96d22",
+      "seq": 4,
+      "parent_hash": "c0933f4ec3071ca3d104fcbb9a002e43c7b9de1e90595b344a1e3e0c1bdbcb43",
+      "entry_hash": "ec7a445cdbe2862dbc4e7045548d4116e8e92992bbeac4e152f1a75516ce7acc"
+    },
+    {
+      "at": "2026-09-20T16:04:23.445Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "ec7a445cdbe2862dbc4e7045548d4116e8e92992bbeac4e152f1a75516ce7acc",
+      "entry_hash": "f1a07927743dc6b45c0932f3c0f1d14c28113467f1bdafa7a287cfff3a09cfda"
+    },
+    {
+      "at": "2026-09-20T16:18:08.395Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "f1a07927743dc6b45c0932f3c0f1d14c28113467f1bdafa7a287cfff3a09cfda",
+      "entry_hash": "b2f2df24583de538e442323586e8d6f28625024b73964d6f562d90d54d8a5548"
+    },
+    {
+      "at": "2026-09-20T16:18:08.865Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "b2f2df24583de538e442323586e8d6f28625024b73964d6f562d90d54d8a5548",
+      "entry_hash": "888529c3e82e0b8c87bfd6db0811fa26dc9bcfc8ac1ec82297596f1aed235a91"
+    }
+  ]
+}

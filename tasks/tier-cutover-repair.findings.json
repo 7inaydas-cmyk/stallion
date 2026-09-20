@@ -1,0 +1,23 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "tier-cutover-repair",
+  "passStartedAt": "2026-09-20T16:04:47.582Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "docs/WIRING.md's tier-law paragraph claims the fence-side re-judgment applies unconditionally at both transports, but commits 7ef774b/579236b made it conditional on the citing commit being at-or-after FENCE_TIER_CUTOVER_COMMIT (3bf3bac), and the paragraph's only grandfathering clause is record-age-based, which does not cover the nine settled fence-surface-scoped records created after the scope-law cutover (lane 5f1).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T16:17:14.740Z",
+      "dedupKey": "docs/wiring.md's tier-law paragraph claims the fence-side re-judgment applies unconditionally at both transports, but commits 7ef774b/579236b made it conditional on the citing commit being at-or-after fence_tier_cutover_commit (3bf3bac), and the paragraph's only grandfathering clause is record-age-based, which does not cover the nine settled fence-surface-scoped records created after the scope-law cutover (lane 5f1).",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-20T16:18:08.336Z"
+    }
+  ],
+  "sweptBase": "7ef774b42ba05f993361d9ec21f4b387ff6449d3",
+  "sweptHead": "579236bb52730433b007242c3636e9ff25197edc",
+  "sweptDiffDigest": "73ac96f552fc"
+}
