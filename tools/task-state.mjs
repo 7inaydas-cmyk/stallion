@@ -33,6 +33,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
 import { lessonsIndex, loadRegisters, summaryLine } from "./retrospective.mjs";
@@ -147,33 +148,53 @@ export function globRefusal(pattern) {
 
 const FENCE_SURFACE_ROOTS = new Set([".githooks", ".github", "docs/gates"]);
 /**
- * Does a scope PATTERN cover fence surface? Roots may be multi-segment (docs/gates), so the
- * first-segment lookup alone is structurally blind to them — the lane-2 finding (ported from the
- * vendor repo's close-out, where a runtime-code task scoped docs/gates/** past the first-segment
- * matcher and the gate's own configs were one self-serve amendment away).
+ * Does a scope PATTERN cover fence surface? Three laws in order of trust, each pure where it
+ * can be — the disk-dependent half is LAST and fail-closed, because the gated party controls
+ * cwd and working-tree state (an adversarial pass drove the walker-only version straight
+ * through: invoked from /tmp, after rm-ing the target file, by naming a future file, and by
+ * chmod-ing the directory):
+ *   1. single-segment fast path (.githooks, .github) — set lookup, no disk;
+ *   2. STRUCTURAL root-prefix — the pattern's leading segments coincide with a multi-segment
+ *      root (docs/gates/anything.json, docs/gates/newdir/**), so it can only match paths UNDER
+ *      the root; refuses whether or not any such file exists today (the future-file and
+ *      rm'd-file doors);
+ *   3. the real corpus, ROOT-anchored — strictly ADDITIVE coverage for exotic wildcards past the
+ *      pure laws; an unreadable root reads as not-reaching here because laws 1-2 plus node-match
+ *      already decided every shape that matters (including every docs/gates spelling).
  */
 function coversFenceSurface(p) {
   const pattern = String(p);
-  if (FENCE_SURFACE_ROOTS.has(pattern.split("/")[0])) return true;
+  const segments = pattern.split("/");
+  if (FENCE_SURFACE_ROOTS.has(segments[0])) return true;
   if (matches(".stallion-base", pattern)) return true;
-  // The real corpus, not synthetic probes (enumerating shapes cannot cover pattern space):
-  // a pattern reaches the surface iff it matches any REAL path under a root.
-  return [...FENCE_SURFACE_ROOTS].some((root) => matches(root, pattern) || rootTouchesPattern(root, pattern));
+  for (const root of FENCE_SURFACE_ROOTS) {
+    const rootSegments = root.split("/");
+    if (rootSegments.length > 1 && rootSegments.every((seg, i) => matches(seg, segments[i] ?? ""))) return true;
+    if (matches(root, pattern)) return true;
+    if (rootTouchesPattern(join(ROOT, root), pattern)) return true;
+  }
+  return false;
 }
 
-function rootTouchesPattern(root, pattern) {
+function rootTouchesPattern(rootDir, pattern) {
   try {
+    if (!existsSync(rootDir)) return false;
     const walk = (dir) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = dir + "/" + entry.name;
+        const full = `${dir}/${entry.name}`;
         if (matches(full, pattern)) return true;
         if (entry.isDirectory() && walk(full)) return true;
       }
       return false;
     };
-    return existsSync(root) && walk(root);
+    return walk(rootDir);
   } catch {
-    return false; // unreadable tree: the single-segment fast path already spoke
+    // NOT reaching. The pure laws above (fast path, structural root-prefix, node-match) already
+    // decide every shape that matters — including all multi-segment-root spellings, which is
+    // where fail-closed was owed and now lives. This walker is strictly ADDITIVE for exotic
+    // wildcard shapes; an unreadable directory must not over-arm unrelated patterns (a blanket
+    // "reaching" here refused tools/** whenever .githooks happened to be unreadable).
+    return false;
   }
 }
 
@@ -1114,7 +1135,8 @@ function selfTestFenceSurfaceCases(fail) {
   const cases = [
     ["multi-segment fence surface (docs/gates) refuses under runtime-code — the inert-entry finding", fenceSurfaceRefusal(runtime, ["docs/gates/**"]) !== null],
     ["a broad docs pattern that covers gates also refuses", fenceSurfaceRefusal(runtime, ["docs/**"]) !== null],
-    ["name-shape-narrower patterns that cover real configs refuse (the extensionless-probe finding)", fenceSurfaceRefusal(runtime, ["docs/gates/*.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/gate-*"]) !== null],
+    ["name-shape-narrower patterns refuse STRUCTURALLY — the prefix law needs no file on disk (the future-file and rm'd-file doors)", fenceSurfaceRefusal(runtime, ["docs/gates/*.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/gate-*"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/brand-new-gate.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/newdir/**"]) !== null],
+    ["a cwd change cannot disarm the tier law — the multi-segment decision is pure, not corpus-relative", fenceSurfaceRefusal(runtime, ["docs/gates/anything-at-all.json"]) !== null],
     ["docs/* covers the gates directory NODE and correctly refuses (a scope matching the node can delete it)", fenceSurfaceRefusal(runtime, ["docs/*"]) !== null],
     ["a protected task WITH approval may scope the gates surface", fenceSurfaceRefusal(approved, ["docs/gates/**"]) === null],
   ];

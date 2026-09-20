@@ -12,6 +12,8 @@
  * ADVISORY BY DESIGN: it prints, it never blocks. The obligations it names are judgement calls a
  * human/agent must discharge (or consciously decline); a hook that guesses wrong and blocks a
  * commit teaches people to pass --no-verify, which is the one habit this repo cannot afford.
+ * Run it against a change set at commit time (wiring it into pre-commit is documented in
+ * docs/WIRING.md) or by hand at wave intake — see WIRING for both invocations.
  *
  * Usage:  node tools/path-obligations.mjs [--staged | <path>...]
  */
@@ -22,7 +24,7 @@ import { pathToFileURL } from "node:url";
 /** Each rule: which paths arm it, and the obligation that follows — traceable to the incident. */
 const RULES = [
   {
-    spec: (p) => p.startsWith(".githooks/") || p.startsWith(".github/workflows/") || p.startsWith("docs/gates/"),
+    spec: (p) => p.startsWith(".githooks/") || p.startsWith(".github/") || p.startsWith("docs/gates/"),
     obligation:
       "PROTECTED-TIER FENCE SURFACE — you touched the fence's own law. This is protected blast radius: open a protected task with a recorded DECISIONS.md approval BEFORE declaring the scope (the tier law refuses the self-serve amendment; it was blind to docs/gates until the halves reunified, 2026-09-20).",
   },
@@ -91,7 +93,7 @@ const CONTEXT_CLASSES = [
   },
   {
     class: "Vendor lineage",
-    specs: ["tools/vendor-drift.mjs", "tools/harness/**"],
+    specs: ["tools/vendor-drift.mjs"],
     docs: ["docs/WIRING.md §1"],
     gates: ["host bare mode (the manifest is law)", "--freshness at every wave's intake"],
     forbidden: ["patch a vendored file instead of re-vendoring and regenerating the manifest in the same commit"],
@@ -135,17 +137,31 @@ function gitLines(args) {
  * colocated-jj shape, where `git diff --cached` is always empty and silence once read as
  * "no obligations armed" — the vendor-repo incident this fallthrough cures).
  */
+/** The working-change-set half: tracked changes plus untracked files — silence about a
+ *  brand-new file is the false-empty this tool exists to refuse. */
+function workingPaths() {
+  const wt = gitLines(["diff", "--name-only", "HEAD"]);
+  const untracked = gitLines(["ls-files", "--others", "--exclude-standard"]);
+  if (!wt.ok) return { paths: null, why: wt.why };
+  const paths = [...new Set([...wt.lines, ...(untracked.ok ? untracked.lines : [])])];
+  return { paths, untracked: untracked.ok ? untracked.lines.length : 0 };
+}
+
 export function changedPaths(argv) {
   const explicit = argv.filter((a) => !a.startsWith("--"));
   if (explicit.length > 0) return { paths: explicit, source: "arguments" };
   if (!argv.includes("--staged")) {
-    const wt = gitLines(["diff", "--name-only", "HEAD"]);
-    return wt.ok ? { paths: wt.lines, source: "working copy vs HEAD" } : { paths: [], source: null, why: wt.why };
+    const wt = workingPaths();
+    if (wt.paths === null) return { paths: [], source: null, why: wt.why };
+    return { paths: wt.paths, source: wt.untracked > 0 ? "working copy vs HEAD + untracked" : "working copy vs HEAD" };
   }
   const staged = gitLines(["diff", "--cached", "--name-only"]);
   if (staged.ok && staged.lines.length > 0) return { paths: staged.lines, source: "git index" };
+  // Nothing staged: the working copy against HEAD is the honest fallthrough (under colocated jj
+  // the git index is ALWAYS empty and this is the normal state; under git it means the caller
+  // has not staged yet — either way the changes are real and the obligations are owed).
   const wt = gitLines(["diff", "--name-only", "HEAD"]);
-  if (wt.ok) return { paths: wt.lines, source: "working copy vs HEAD (no git index — jj)" };
+  if (wt.ok) return { paths: wt.lines, source: "working copy vs HEAD (nothing staged)" };
   return { paths: [], source: null, why: wt.why };
 }
 
@@ -217,10 +233,13 @@ function selfTestContextCases(fail) {
 }
 
 const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+// The WHOLE CLI is entry-guarded (the pathspec lesson, paid for once already): an importer that
+// pulls in selectContext or changedPaths must not have obligations printed at it or its process
+// exited from under it (an adversarial pass proved the unguarded tail did exactly that).
 if (isEntry && process.argv.includes("--self-test")) {
   process.exit(selfTest() ? 0 : 1);
 }
-
+if (isEntry) {
 /**
  * SILENCE IS RESERVED FOR VERIFIED-EMPTY (the vendor-repo jj incident, graduated with the
  * engine): if this cannot determine the change set it REFUSES loudly and non-zero, because
@@ -269,3 +288,4 @@ for (const [obligation, triggeredBy] of hits) {
 }
 process.stdout.write("\n");
 process.exit(0);
+}

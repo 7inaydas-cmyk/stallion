@@ -37,7 +37,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
-import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER, recordMustChain, CHAIN_CUTOVER } from "./task-state.mjs";
+import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER, recordMustChain, CHAIN_CUTOVER, fenceSurfaceRefusal } from "./task-state.mjs";
 import { chainError, chainStampEvents, STRICT_UTC_STAMP } from "./task-findings.mjs";
 import { stripComments } from "./test-lint.mjs";
 
@@ -337,6 +337,12 @@ export function scopeRefusal(record, codeFiles) {
   if (!Array.isArray(codeFiles) || codeFiles.length === 0) return null;
   if (isGrandfatheredScope(record)) return null;
   const declared = scopeOf(record);
+  // The tier law, RE-JUDGED at both transports (an adversarial pass proved declaration-time-only
+  // enforcement was the escape: a scope that slipped past cmdScope — wrong cwd, rm'd file, future
+  // filename, hand edit — sailed through the commit-msg gate and this fence, which judged only
+  // membership. One seam, both transports, same law as cmdScope.)
+  const tier = fenceSurfaceRefusal(record, declared);
+  if (tier) return tier;
   const patterns = declared.filter((p) => globRefusal(p) === null);
   const dropped = declared.length - patterns.length;
   if (patterns.length === 0) {
@@ -1250,7 +1256,7 @@ export function selfTest() {
   ];
   for (const [name, passes] of baseCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  const scopedPost = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["tools/**", ".githooks/*"] }] };
+  const scopedPost = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["tools/**"] }] };
   const unscopedPost = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "transition", to: "executing" }] };
   const unscopedPre = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-18T12:00:00.000Z" }, { type: "transition", to: "executing" }] };
   const globCases = [
@@ -1268,7 +1274,10 @@ export function selfTest() {
   for (const [name, passes] of globCases) if (!passes) fail(`task-coverage: ${name}`);
 
   const scopeCases = [
-    ["a post-cutover task with covering scope passes", scopeRefusal(scopedPost, ["tools/a.mjs", ".githooks/pre-commit"]) === null],
+    ["a post-cutover task with covering scope passes", scopeRefusal(scopedPost, ["tools/a.mjs"]) === null],
+    ["the tier law is RE-JUDGED at the seam — a runtime-code record scoped over docs/gates refuses here too (the declaration-time-only escape)", scopeRefusal({ ...unscopedPost, events: [...unscopedPost.events, { type: "scope", patterns: ["docs/gates/*.json"] }] }, ["docs/gates/x.json"]) !== null],
+    ["the seam's tier refusal demands the protected class with approval", scopeRefusal({ ...unscopedPost, events: [...unscopedPost.events, { type: "scope", patterns: ["docs/gates/*.json"] }] }, ["docs/gates/x.json"]).remedy?.includes("--risk-class protected")],
+    ["a protected record WITH approval scopes the fence surface cleanly at the seam", scopeRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "protected", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: [".githooks/**"] }, { type: "approval", decision: "d" }] }, [".githooks/pre-push"]) === null],
     ["a post-cutover task with no declared scope refuses", scopeRefusal(unscopedPost, ["tools/a.mjs"]) !== null],
     ["code outside the declared scope refuses", scopeRefusal(scopedPost, ["apps/x.ts"]) !== null],
     ["the outside-scope refusal names the offending files", scopeRefusal(scopedPost, ["apps/x.ts", "packages/y.js"]).reason.includes("apps/x.ts")],
@@ -1280,8 +1289,8 @@ export function selfTest() {
     ["a malformed timestamp is NOT grandfathered (fail closed)", !isGrandfatheredScope({ events: [{ type: "created", at: "0000" }] })],
     ["an offset-spelled post-cutover instant is NOT grandfathered", !isGrandfatheredScope({ events: [{ type: "created", at: "2026-09-18T19:00:00.000-05:00" }] })],
     ["a parseable pre-cutover instant IS grandfathered", isGrandfatheredScope(unscopedPre)],
-    ["a hand-edited everything-pattern matches nothing and fails closed", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["**"] }] }, ["tools/a.mjs"]).reason.includes("no usable scope")],
-    ["a record mixing good and malformed patterns keeps only the good", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["**", "tools/**"] }] }, ["tools/a.mjs"]) === null],
+    ["a hand-edited everything-pattern fails closed — the tier law answers it first (it covers the fence's own surface)", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["**"] }] }, ["tools/a.mjs"]).reason.includes("fence's own surface")],
+    ["a record mixing good and malformed patterns keeps only the good", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["/tools/**", "tools/**"] }] }, ["tools/a.mjs"]) === null],
   ];
   for (const [name, passes] of scopeCases) if (!passes) fail(`task-coverage: ${name}`);
 

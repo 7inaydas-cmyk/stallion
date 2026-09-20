@@ -141,8 +141,11 @@ one segment, and the first segment must name a top-level tree — a pattern that
 anywhere (`**/*`, `*/**`) covers everything and refuses. The admission law also runs on the
 judge path: a hand-edited malformed or over-broad pattern matches NOTHING and the record fails
 closed. Docs and state files are not code — the scope binds code files only. Scope reaching the
-fence's own surface (`.githooks/**`, `.github/**`, `.stallion-base`) is protected-tier blast
-radius: only a protected or migration task with a recorded approval may declare it. Tasks
+fence's own surface (`.githooks/**`, `.github/**`, `docs/gates/**`, `.stallion-base`) is
+protected-tier blast radius: only a protected or migration task with a recorded approval may
+declare it — judged STRUCTURALLY (a pattern whose leading segments coincide with a surface root
+refuses whether or not the named file exists) and re-judged at BOTH transports, the commit-msg
+gate and the push fence, not only at declaration time. Tasks
 created before the scope-law cutover (2026-09-18T20:50:00.000Z in stallion's own history) are
 grandfathered for their settled commits — a FINISHED task never authorizes new code, whatever
 its age. The fence discriminates against the SETTLED ANCHOR — the remote tip this push is
@@ -330,6 +333,17 @@ caught — which is why this paragraph carries no count to go stale.
   vendored file, a mapped law doc that does not exist. `--upstream` mode keeps stallion itself
   from ever carrying a forged manifest. This is the tool behind §1's "superseded by
   re-vendoring, not by patching" — that sentence was prose until this gate shipped.
+  `--freshness <path-to-upstream-clone>` is the WAVE-INTAKE half: it answers "has upstream
+  moved past our pin, and did anything vendored move with it" against a local clone (fetch it
+  first — the verdict is as current as the clone), and a moved vendored source refuses with the
+  re-vendor remedy before the wave's own work lands on the stale pin. Run it at every wave's
+  intake; the two batteries' wires carry only the `--self-test`/`--upstream` halves.
+- `path-obligations` — the incident list as an executable checklist, graduated from the vendor
+  repo's PD-17: advisory, path-keyed, never blocking. `node tools/path-obligations.mjs
+  --staged` (or bare for the working change set, untracked included) prints the obligations
+  armed by the paths touched plus the minimum context set for them. Wire the `--staged` run
+  into `.githooks/pre-commit` beside the staged gate — that hook edit is fence surface and
+  rides a protected task; until wired, run it by hand at commit time and wave intake.
 - `retrospective` — the cross-task lessons index (the same evaluation, gap 1): DERIVED from
   every committed findings register, never stored — every live WONT-FIX boundary with its
   justification, the recurring vocabulary of past findings, findings per escape class.

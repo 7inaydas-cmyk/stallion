@@ -368,7 +368,12 @@ function checkReach(guard) {
   // Baseline and probe both run against a fresh copy of HEAD's index: a BUSY tree (staged,
   // uncommitted work — the normal state mid-task) must not redden the baseline naming the
   // developer's files instead of the probe (found live at the vendor repo, ported back).
-  const baselineEnv = { ...process.env, ...emptyIndexEnv() };
+  let baselineEnv;
+  try {
+    baselineEnv = { ...process.env, ...emptyIndexEnv() };
+  } catch (error) {
+    return { outcome: OUTCOME.GATE_DEFECT, detail: `guard-reach itself threw building the HEAD-index baseline env: ${error.message}` };
+  }
   const baseline = runGuard(guard.script, baselineEnv, args);
   if (baseline.code !== 0) {
     return {
@@ -402,6 +407,9 @@ function checkReach(guard) {
     return { outcome: OUTCOME.GATE_DEFECT, detail: `guard-reach itself threw while probing: ${error.message}` };
   } finally {
     cleanup(abs, rel, dirExisted, staged);
+    // The HEAD-index copy is single-use: remove it on the normal path too, not only via the
+    // signal handler (an adversarial pass caught one leaked temp index per guard per run).
+    if (baselineEnv?.GIT_INDEX_FILE) rmSync(baselineEnv.GIT_INDEX_FILE, { force: true });
   }
 }
 
@@ -570,6 +578,13 @@ function selfTest() {
     // A root-level probe must stay repo-relative — git prints no "./" prefix, and the attribution
     // check reads the guard's own output (the stallion port's root-probe case).
     ["pidPath keeps a root-level probe repo-relative", pidPath("zz-probe.mjs"), `zz-probe-${process.pid}.mjs`],
+    // The busy-tree law, call-site pinned: a token-grep pin once certified the symbol while the
+    // call site was reverted (an adversarial pass proved exactly that shape stays green) — so the
+    // case reads its own source for the CALL, not the name.
+    ["the baseline and unstaged runs carry the HEAD-index env (the busy-tree law, call-site pinned)", (() => {
+      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      return /baselineEnv = \{ \.\.\.process\.env, \.\.\.emptyIndexEnv\(\) \};/.test(src) && /runGuard\(guard\.script, baselineEnv, args\)/.test(src);
+    })(), true],
   ];
 
   rmSync(dir, { recursive: true, force: true });

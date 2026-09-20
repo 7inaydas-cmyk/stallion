@@ -551,7 +551,10 @@ function runFreshness(manifestPath, upstreamPath) {
   try {
     git(["rev-parse", "--verify", `${facts.manifest.upstream}^{commit}`]);
     head = git(["rev-parse", "HEAD"]);
-    changed = git(["diff", "--name-only", `${facts.manifest.upstream}..HEAD`]).split("\n").map((l) => l.trim()).filter(Boolean);
+    // --no-renames: under default rename detection a renamed vendored source lists only its NEW
+    // path, the old source matches nothing, and the wave reads FRESH-FOR-WAVE through a rename
+    // (an adversarial pass proved it end-to-end). Both sides of a rename are owed.
+    changed = git(["diff", "--name-only", "--no-renames", `${facts.manifest.upstream}..HEAD`]).split("\n").map((l) => l.trim()).filter(Boolean);
   } catch (error) {
     process.stderr.write(
       `\x1b[31m✖ vendor-drift: the upstream repo at ${upstreamPath} could not answer the pin.\x1b[0m\n\n` +
@@ -564,7 +567,7 @@ function runFreshness(manifestPath, upstreamPath) {
   }
   const verdict = freshnessVerdict({ manifest: facts.manifest, upstreamHead: head, upstreamChanged: changed });
   if (verdict.fresh) {
-    console.log(`vendor-drift: FRESH — the manifest pin is the upstream HEAD (${head.slice(0, 10)})`);
+    console.log(`vendor-drift: FRESH — the manifest pin is the upstream HEAD (${head.slice(0, 10)}) as of the LOCAL clone at ${upstreamPath}; fetch before trusting recency`);
     return;
   }
   if (verdict.moved.length === 0) {
@@ -590,6 +593,10 @@ if (isEntry) {
   const manifestPath = flagValue("--manifest") ?? DEFAULT_MANIFEST;
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
   const freshnessPath = flagValue("--freshness");
+  if (process.argv.includes("--freshness") && !freshnessPath) {
+    process.stderr.write("vendor-drift: --freshness requires the upstream clone's path — a flag without its value falls through to host mode and answers a different question (refused, not silently)\n");
+    process.exit(1);
+  }
   if (freshnessPath) runFreshness(manifestPath, freshnessPath);
   // Mode-exclusive: upstream returns its own verdicts and must never fall through to host mode.
   else if (process.argv.includes("--upstream")) runUpstream(manifestPath);
