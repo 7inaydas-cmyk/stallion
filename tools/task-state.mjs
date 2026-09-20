@@ -177,7 +177,10 @@ function coversFenceSurface(p) {
  *  law while the coverage seam authorized it — an adversarial pass brute-forced the shape). */
 function surfaceFileReached(name, segments) {
   if (!matches(name, segments[0] ?? "")) return false;
-  return segments.length === 1 || (segments.length === 2 && segments[1] === "**");
+  // The tail may stack double-star segments: the coverage dialect's ** swallows zero segments
+  // RECURSIVELY, so name/**, name/**/**, and deeper all cover a root-level file (an adversarial
+  // pass brute-forced the stacked-tail reopen of the single-tail fix).
+  return segments.length === 1 || segments.slice(1).every((seg) => seg === "**");
 }
 
 /** Pure per-root reach, in order of trust: the STRUCTURAL root-prefix (a multi-segment root's
@@ -1178,6 +1181,7 @@ function selfTestFenceSurfaceCases(fail) {
     ["a broad docs pattern that covers gates also refuses", fenceSurfaceRefusal(runtime, ["docs/**"]) !== null],
     ["wildcard-spelled single-segment roots refuse (the .*hooks/** escape, found at the vendor repo's wave-2 pass)", fenceSurfaceRefusal(runtime, [".*hooks/**"]) !== null && fenceSurfaceRefusal(runtime, [".git*/*"]) !== null],
     ["a wildcard-spelled .stallion-base refuses too — the fourth surface (the brute-forced escape)", fenceSurfaceRefusal(runtime, [".stallion*/**"]) !== null && fenceSurfaceRefusal(runtime, [".s*/**"]) !== null && fenceSurfaceRefusal(runtime, [".stallion-base"]) !== null],
+    ["stacked double-star tails refuse too — the coverage dialect swallows them recursively (the brute-forced reopen)", fenceSurfaceRefusal(runtime, [".s*/**/**"]) !== null && fenceSurfaceRefusal(runtime, [".stallion-base/**/**"]) !== null && fenceSurfaceRefusal(runtime, [".s*/**/**/**"]) !== null],
 
     ["docs/* covers the gates directory NODE and correctly refuses (a scope matching the node can delete it)", fenceSurfaceRefusal(runtime, ["docs/*"]) !== null],
   ];
