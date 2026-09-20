@@ -167,27 +167,40 @@ function coversFenceSurface(p) {
   const segments = pattern.split("/");
   if (FENCE_SURFACE_ROOTS.has(segments[0])) return true;
   if (matches(".stallion-base", pattern)) return true;
-  for (const root of FENCE_SURFACE_ROOTS) {
-    const rootSegments = root.split("/");
-    if (rootSegments.length > 1 && rootSegments.every((seg, i) => matches(seg, segments[i] ?? ""))) return true;
-    if (matches(root, pattern)) return true;
-    if (rootTouchesPattern(join(ROOT, root), pattern)) return true;
-  }
-  return false;
+  return [...FENCE_SURFACE_ROOTS].some((root) => rootReachesPattern(root, pattern));
+}
+
+/** Pure per-root reach, in order of trust: the STRUCTURAL root-prefix (a multi-segment root's
+ *  segments coincide with the pattern's leading segments — refuses whether or not the named
+ *  file exists, closing the future-file and rm'd-file doors), the WILDCARD first segment (a
+ *  single-segment root spelled with wildcards — ".*hooks/**" shapes an adversarial pass proved
+ *  escaped every other law), the node-match (broad patterns covering the root directory
+ *  itself), then the ROOT-anchored corpus walker for exotic shapes. */
+function rootReachesPattern(root, pattern) {
+  const rootSegments = root.split("/");
+  const segments = String(pattern).split("/");
+  if (rootSegments.length > 1 && rootSegments.every((seg, i) => matches(seg, segments[i] ?? ""))) return true;
+  if (rootSegments.length === 1 && matches(root, segments[0])) return true;
+  if (matches(root, String(pattern))) return true;
+  return rootTouchesPattern(join(ROOT, root), pattern);
 }
 
 function rootTouchesPattern(rootDir, pattern) {
   try {
     if (!existsSync(rootDir)) return false;
-    const walk = (dir) => {
+    // Walk paths RELATIVE to the root: pathspec's dialect is repo-relative, so matching the
+    // absolute walked path against a relative glob never fires (the walker shipped as
+    // "additive coverage" while structurally unable to match anything — vendor wave-2 pass).
+    const walk = (dir, rel) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = `${dir}/${entry.name}`;
-        if (matches(full, pattern)) return true;
-        if (entry.isDirectory() && walk(full)) return true;
+        const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`;
+        if (matches(relPath, pattern)) return true;
+        if (entry.isDirectory() && walk(full, relPath)) return true;
       }
       return false;
     };
-    return walk(rootDir);
+    return walk(rootDir, "");
   } catch {
     // NOT reaching. The pure laws above (fast path, structural root-prefix, node-match) already
     // decide every shape that matters — including all multi-segment-root spellings, which is
@@ -1137,6 +1150,7 @@ function selfTestFenceSurfaceCases(fail) {
     ["a broad docs pattern that covers gates also refuses", fenceSurfaceRefusal(runtime, ["docs/**"]) !== null],
     ["name-shape-narrower patterns refuse STRUCTURALLY — the prefix law needs no file on disk (the future-file and rm'd-file doors)", fenceSurfaceRefusal(runtime, ["docs/gates/*.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/gate-*"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/brand-new-gate.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/newdir/**"]) !== null],
     ["a cwd change cannot disarm the tier law — the multi-segment decision is pure, not corpus-relative", fenceSurfaceRefusal(runtime, ["docs/gates/anything-at-all.json"]) !== null],
+    ["wildcard-spelled single-segment roots refuse (the .*hooks/** escape, found at the vendor repo's wave-2 pass)", fenceSurfaceRefusal(runtime, [".*hooks/**"]) !== null && fenceSurfaceRefusal(runtime, [".git*/*"]) !== null],
     ["docs/* covers the gates directory NODE and correctly refuses (a scope matching the node can delete it)", fenceSurfaceRefusal(runtime, ["docs/*"]) !== null],
     ["a protected task WITH approval may scope the gates surface", fenceSurfaceRefusal(approved, ["docs/gates/**"]) === null],
   ];
