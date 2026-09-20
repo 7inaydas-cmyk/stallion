@@ -1,0 +1,78 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "doc-inventory-drift-repair",
+  "title": "the README tool-count inventory and WIRING's dangling §11 peer-dependency pointer",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T06:12:35.999Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "30eab49f09f8426b991678b60f5a77c4a95f75cb243aa260e9f8cf7af78e64ca"
+    },
+    {
+      "at": "2026-09-20T06:12:36.037Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "30eab49f09f8426b991678b60f5a77c4a95f75cb243aa260e9f8cf7af78e64ca",
+      "entry_hash": "349013c8a81c5259de4c0ead3155743394e2c8139b78e602624b41545d232342"
+    },
+    {
+      "at": "2026-09-20T06:12:36.065Z",
+      "type": "scope",
+      "patterns": [
+        "README.md",
+        "docs/WIRING.md"
+      ],
+      "seq": 2,
+      "parent_hash": "349013c8a81c5259de4c0ead3155743394e2c8139b78e602624b41545d232342",
+      "entry_hash": "73a9c7ca388639a23a4dfc37ef966e9df1b551e0d011790af38f9a283a836771"
+    },
+    {
+      "at": "2026-09-20T06:12:50.459Z",
+      "type": "red-check",
+      "expect": "STALE: README inventory still counts six tools",
+      "command": "n=0; grep -q \"Six small Node tools\" README.md && { echo \"STALE: README inventory still counts six tools\"; n=1; }; grep -q \"peer dependency (see §11)\" docs/WIRING.md && { echo \"STALE: WIRING still points the TypeScript peer dependency at a §11 that never covers it\"; n=1; }; exit $n",
+      "exitCode": 1,
+      "outputDigest": "504975f4de85",
+      "seq": 3,
+      "parent_hash": "73a9c7ca388639a23a4dfc37ef966e9df1b551e0d011790af38f9a283a836771",
+      "entry_hash": "f71e700c0c89dbca1513b241138a882d989d8ccab6db4ff051dbb420223be55a"
+    },
+    {
+      "at": "2026-09-20T06:12:50.499Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "f71e700c0c89dbca1513b241138a882d989d8ccab6db4ff051dbb420223be55a",
+      "entry_hash": "a3cd3f2b0f6f8581b3b649c09009039b6e8692514eefbcc89af76e0871a6cda7"
+    },
+    {
+      "at": "2026-09-20T06:13:43.014Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "a3cd3f2b0f6f8581b3b649c09009039b6e8692514eefbcc89af76e0871a6cda7",
+      "entry_hash": "c888188d7043662716891a20033f85306d125125de09ab4de6471c3fe50b6621"
+    },
+    {
+      "at": "2026-09-20T06:15:15.104Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 6,
+      "parent_hash": "c888188d7043662716891a20033f85306d125125de09ab4de6471c3fe50b6621",
+      "entry_hash": "92eab4e4e130e0e218d39150c99726f022abd20bf024a0cafd52afd636d60a08"
+    },
+    {
+      "at": "2026-09-20T06:15:15.139Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 7,
+      "parent_hash": "92eab4e4e130e0e218d39150c99726f022abd20bf024a0cafd52afd636d60a08",
+      "entry_hash": "e2e93fa8a5c7a909185cf235c67942c726ae1764f0a3dcce0926d9fc8d61b392"
+    }
+  ]
+}

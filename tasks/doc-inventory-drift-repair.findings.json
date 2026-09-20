@@ -1,0 +1,25 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "doc-inventory-drift-repair",
+  "passStartedAt": "2026-09-20T06:13:53.169Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "zero-finding pass marker: eight lanes audited against commit 7163c5a (input forgeability: the diff touches prose in README.md and docs/WIRING.md only, no value crosses a trust boundary and no tool parses the inventory sentence — verified unregistered in docs/gates/doc-claims.json which I read in full; authorization: no caller, path, or permission changed, the commit-msg gate and staged gate re-judged the commit live ('footer cites in-flight task'); dead wiring: the removed (see §11) pointer WAS the dead wiring — it pointed at content §11 does not carry — and the replacement phrase names the merge wave greppably with no section-number reference to rot; mock-vs-live: no doubles — the pin ran live RED pre-fix (exit 1, both STALE lines, digest 504975f4de85) and live GREEN post-fix (exit 0) in this session, and doc-reconcile ran live green over the edited tree; law drift: the drift WAS the finding — prose re-aligned with the tree (26 tracked tools/*.mjs), the registered anchor for runtime-dependency-free preserved verbatim and its 3 claims / 7 evidence checks re-proved green; silent correctness: both removals are visible in git and the count-free phrasing cannot silently rot again — there is no count left to drift; the repair itself: the pin discriminates both directions machine-run, and the verified boundary ran the whole npm run selftest battery green (the advance refuses otherwise); self-replacement: no gate weakened, doc-claims.json untouched, scope declared append-only before the edit) — each lane returning no findings (a manufactured finding would be the failure mode)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T06:14:46.735Z",
+      "dedupKey": "zero-finding pass marker: eight lanes audited against commit 7163c5a (input forgeability: the diff touches prose in readme.md and docs/wiring.md only, no value crosses a trust boundary and no tool parses the inventory sentence — verified unregistered in docs/gates/doc-claims.json which i read in full; authorization: no caller, path, or permission changed, the commit-msg gate and staged gate re-judged the commit live ('footer cites in-flight task'); dead wiring: the removed (see §11) pointer was the dead wiring — it pointed at content §11 does not carry — and the replacement phrase names the merge wave greppably with no section-number reference to rot; mock-vs-live: no doubles — the pin ran live red pre-fix (exit 1, both stale lines, digest 504975f4de85) and live green post-fix (exit 0) in this session, and doc-reconcile ran live green over the edited tree; law drift: the drift was the finding — prose re-aligned with the tree (26 tracked tools/*.mjs), the registered anchor for runtime-dependency-free preserved verbatim and its 3 claims / 7 evidence checks re-proved green; silent correctness: both removals are visible in git and the count-free phrasing cannot silently rot again — there is no count left to drift; the repair itself: the pin discriminates both directions machine-run, and the verified boundary ran the whole npm run selftest battery green (the advance refuses otherwise); self-replacement: no gate weakened, doc-claims.json untouched, scope declared append-only before the edit) — each lane returning no findings (a manufactured finding would be the failure mode)",
+      "evidence": [
+        "README.md",
+        "docs/WIRING.md",
+        "tasks/doc-inventory-drift-repair.json"
+      ],
+      "resolvedAt": "2026-09-20T06:14:56.505Z"
+    }
+  ],
+  "sweptBase": "eb476846750cb4ecfea1416b0fd02bc12d75e12f",
+  "sweptHead": "7163c5a1d11cf390991f9a17058a23bbc39478f6",
+  "sweptDiffDigest": "b14155c48884"
+}
