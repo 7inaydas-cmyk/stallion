@@ -83,6 +83,14 @@
       "seq": 8,
       "parent_hash": "e74d2510b24f23e2a8511d3ab7cb2c77711a31aba99b081cb64e84aa7b92e77c",
       "entry_hash": "759bd9cc51f81169b99b68c6af161ebadd757d51a31292b69dedb289f5850f64"
+    },
+    {
+      "at": "2026-09-20T13:54:01.462Z",
+      "type": "pin-exemption",
+      "justification": "the task's only pin was the vacuous-RED class, retired with justification (lane 7's f13, corroborated by lanes 5 and 8): the recorded RED was the dispatcher's unknown-command banner and bare calibrate usage-dies forever by design, so no GREEN re-run can exist. A discriminating external pin existed and went unused (calibrate-verdict harness-merge-wave1: exit 1 pre-fix as unknown command, exit 0 post as CALIBRATION PASSED — the lane's own evidence, executed both sides). The feature's standing evidence is the 35-case self-test family, the full live calibration replay (9 of 11 rediscovered, bar 8), and this very adversarial pass — fourteen findings, all repaired. The exemption is accountability, not absence of law.",
+      "seq": 9,
+      "parent_hash": "759bd9cc51f81169b99b68c6af161ebadd757d51a31292b69dedb289f5850f64",
+      "entry_hash": "7e294a273b39c957e01c5adf1c65ed207b9ae9bc96048ba05527cfc417116527"
     }
   ]
 }
