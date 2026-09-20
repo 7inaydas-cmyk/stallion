@@ -14,7 +14,7 @@
  * the lifecycle grants.
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -262,27 +262,32 @@ export function selfTest() {
     ["a relative file_path resolves against the payload cwd", authoringDecision({ filePath: "tools/x.mjs", cwd: "/repo" }, fakeLaw, [task("executing", ["tools/**"])]).decision === "allow"],
     ["a payload without a file path refuses (fail closed, not guess)", parseEditPayload({ tool_name: "Edit", tool_input: {} }).ok === false],
     ["the frozen law pins still resolve — a harness rename must fail the battery, not a live session", (() => {
-      // Layout-aware (the lane-4/8 finding): probe every base × shape the plugin supports — the
-      // canonical stallion checkout, the vendored tools/harness shape, and the session cwd — and
-      // SKIP (pass) where no harness tree is present, so a copied-plugin install never sees a
-      // false red on its verification step.
+      // Layout-aware (f5): probe every base × shape the plugin supports and SKIP where no harness
+      // tree is present, so a copied-plugin install never sees a false red. Anti-vacuous (f10):
+      // existsSync takes PATHS, not file:// URL strings (a URL string is a literal relative
+      // pathname and never matches — the repair before this one silently checked nothing), and
+      // when the plugin DOES sit in a repo, the probe must actually find a tree: the skip note in
+      // an in-repo run is a vacuous pass and fails the case.
       const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+      const inRepo = ["tools", "tools/harness"].some((shape) => existsSync(join(pluginRoot, shape, "task-coverage.mjs")));
       const bases = [pluginRoot, process.cwd()].map((b) => JSON.stringify(b));
       const code = `const { existsSync } = await import("node:fs"); const { pathToFileURL: p } = await import("node:url");
 const bases = [${bases.join(", ")}];
 let checked = 0;
 for (const base of bases) for (const shape of ["tools", "tools/harness"]) {
-  const cov = p(base + "/" + shape + "/task-coverage.mjs").href;
-  const st = p(base + "/" + shape + "/task-state.mjs").href;
+  const cov = base + "/" + shape + "/task-coverage.mjs";
+  const st = base + "/" + shape + "/task-state.mjs";
   if (!existsSync(cov) || !existsSync(st)) continue;
   checked++;
-  const c = await import(cov); const s = await import(st);
+  const c = await import(p(cov).href); const s = await import(p(st).href);
   for (const n of ["isCodePath", "recordRefusal", "scopeRefusal", "citationRefusal"]) {
     if (typeof c[n] !== "function" && typeof s[n] !== "function") { console.error("missing law export: " + n); process.exit(1); }
   }
 }
 if (checked === 0) console.error("(no harness tree found from the plugin location or cwd — pins unchecked here)");`;
-      return spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).status === 0;
+      const run = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
+      if (run.status !== 0) return false;
+      return !inRepo || !run.stderr.includes("pins unchecked here");
     })()],
     ["file_path, filePath, and path spellings are all read", parseEditPayload({ tool_input: { file_path: "a" } }).ok && parseEditPayload({ tool_input: { filePath: "a" } }).ok && parseEditPayload({ tool_input: { path: "a" } }).ok],
     ["a non-object payload refuses", parseEditPayload(null).ok === false],

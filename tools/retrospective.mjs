@@ -181,8 +181,10 @@ function selfTestCases(registers) {
     ["token counts rank findings vocabulary, stopwords out, ties alphabetical", (() => {
       const i = lessonsIndex(registers);
       const self = i.tokenCounts.find(([t]) => t === "self-test");
-      const the = i.tokenCounts.find(([t]) => t === "about");
-      return self !== undefined && self[1] === 3 && the === undefined;
+      const between = i.tokenCounts.find(([t]) => t === "between"); // occurs in the fixture AND is a stopword — the discriminating pair
+      const ones = i.tokenCounts.filter(([, n]) => n === 1).map(([t]) => t);
+      const sorted = [...ones].sort();
+      return self !== undefined && self[1] === 3 && between === undefined && JSON.stringify(ones) === JSON.stringify(sorted);
     })()],
     ["lane totals count per escape class", lessonsIndex(registers).laneTotals["1"] === 2 && lessonsIndex(registers).laneTotals["3"] === 1],
     ["totals aggregate findings and registers", (() => { const i = lessonsIndex(registers); return i.findings === 3 && i.registers === 2; })()],
