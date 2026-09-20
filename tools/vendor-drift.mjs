@@ -29,8 +29,11 @@
  * remedy. A deleted manifest is NOT an escape: bare mode fails closed on absence. `--upstream`:
  * for stallion's own battery — asserts this tree carries no vendor manifest anywhere (default
  * path plus a tracked-file sweep), because stallion does not vendor itself and a manifest here
- * would be a forged provenance marker. `--manifest <path>` overrides the location for both
- * modes.
+ * would be a forged provenance marker. `--freshness <path>`: wave-intake law — points at a local
+ * clone of the upstream repo and answers "has upstream moved past our pin, and did anything
+ * VENDORED move with it"; a moved vendored source owes a re-vendor before the wave proceeds,
+ * an upstream that moved only its own task registers owes nothing. `--manifest <path>` overrides
+ * the location for every mode.
  *
  * HONEST LIMIT (the lane-1 finding): `upstream` is recorded provenance, verified by shape only —
  * a host without stallion's git history cannot machine-check the sha offline. Every refusal
@@ -160,6 +163,21 @@ export function driftVerdict({ manifest, corpusFiles, digests, existingDocs, gat
     ...docReasons(manifest, existingDocs),
   ];
   return { refuse: reasons.length > 0, reasons };
+}
+
+/**
+ * Pure: the wave-intake freshness derivation — has the upstream repo moved past our pin, and did
+ * anything VENDORED (a file source, or a mapped doc) move with it? A pin at HEAD is fresh; a pin
+ * behind with nothing vendored touched is fresh-for-the-wave (upstream's own task registers are
+ * not our corpus); a pin behind with vendored sources moved names exactly what a re-vendor owes.
+ * The shape law runs first: a manifest without a usable pin never answers a freshness question.
+ */
+export function freshnessVerdict({ manifest, upstreamHead, upstreamChanged }) {
+  const shape = manifestShapeRefusal(manifest);
+  if (shape !== null) return { refuse: true, reason: shape };
+  const sources = new Set([...Object.values(manifest.files).map((e) => e.source), ...Object.keys(manifest.docs ?? {})]);
+  const moved = [...sources].filter((s) => upstreamChanged.includes(s));
+  return { fresh: manifest.upstream === upstreamHead, moved, pin: manifest.upstream, head: upstreamHead };
 }
 
 /**
@@ -346,7 +364,8 @@ export function selfTest() {
   const drift = selfTestDrift(good, corpus, digests, docs);
   const scope = selfTestScope(good, corpus, digests, docs);
   const e2e = selfTestEndToEnd();
-  let failures = shape.failures + drift.failures + scope.failures + e2e.failures;
+  const freshness = selfTestFreshness(good);
+  let failures = shape.failures + drift.failures + scope.failures + e2e.failures + freshness.failures;
   // The hasher is pinned to a known vector: sha256("") — if this ever changes, every manifest digest silently stops comparing.
   const empty = digestOf(new Uint8Array(0));
   if (empty !== "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
@@ -356,10 +375,47 @@ export function selfTest() {
 
   console.log(
     failures === 0
-      ? `vendor-drift self-test: OK (${shape.count} shape + ${drift.count} drift + ${scope.count} scope + ${e2e.count} e2e cases + remedy + hasher)`
+      ? `vendor-drift self-test: OK (${shape.count} shape + ${drift.count} drift + ${scope.count} scope + ${e2e.count} e2e + ${freshness.count} freshness cases + remedy + hasher)`
       : `vendor-drift self-test: FAILED (${failures} failure(s))`,
   );
   return failures === 0;
+}
+
+/** The pin-freshness family: has the upstream repo moved past our pin, and did anything VENDORED
+ *  move with it — the wave-intake law's derivation. */
+function selfTestFreshness(good) {
+  const pin = "a".repeat(40);
+  const head = "b".repeat(40);
+  let failures = 0;
+  const fail = (m) => {
+    failures += 1;
+    console.error(`vendor-drift SELF-TEST FAIL: ${m}`);
+  };
+  const cases = [
+    ["a manifest pinned to the upstream HEAD is fresh", typeof freshnessVerdict === "function" && freshnessVerdict({ manifest: good({ upstream: head }), upstreamHead: head, upstreamChanged: [] }).fresh],
+    ["a moved upstream with NO vendored source touched owes nothing (fresh-for-the-wave)", (() => {
+      if (typeof freshnessVerdict !== "function") return false;
+      const v = freshnessVerdict({ manifest: good({ upstream: pin }), upstreamHead: head, upstreamChanged: ["tasks/x.json", "README.md"] });
+      return !v.fresh && v.moved.length === 0;
+    })()],
+    ["a moved vendored source is named as owed", (() => {
+      if (typeof freshnessVerdict !== "function") return false;
+      const v = freshnessVerdict({ manifest: good({ upstream: pin }), upstreamHead: head, upstreamChanged: ["tools/task-state.mjs", "tasks/x.json"] });
+      return !v.fresh && v.moved.join() === "tools/task-state.mjs";
+    })()],
+    ["a moved doc-map upstream doc is named as owed", (() => {
+      if (typeof freshnessVerdict !== "function") return false;
+      const v = freshnessVerdict({ manifest: good({ upstream: pin }), upstreamHead: head, upstreamChanged: ["docs/TASK-LIFECYCLE.md"] });
+      return !v.fresh && v.moved.join() === "docs/TASK-LIFECYCLE.md";
+    })()],
+    ["a manifest with a null upstream pin refuses freshness (shape law first)", (() => {
+      if (typeof freshnessVerdict !== "function") return false;
+      const v = freshnessVerdict({ manifest: good({ upstream: null }), upstreamHead: head, upstreamChanged: [] });
+      return v.refuse === true;
+    })()],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(name);
+  return { failures, count: cases.length };
 }
 
 function flagValue(name) {
@@ -455,8 +511,7 @@ function runHost(manifestPath) {
  * anywhere. The default path is checked directly, and tracked *VENDOR.json files are swept
  * repo-wide, because the claim "stallion never carries a forged manifest" must not rest on
  * one existsSync. Falls back to the path check alone where git is unavailable.
- */
-function runUpstream(manifestPath) {
+ */function runUpstream(manifestPath) {
   const offenders = [];
   if (existsSync(manifestPath)) offenders.push(manifestPath);
   try {
@@ -479,6 +534,54 @@ function runUpstream(manifestPath) {
 }
 
 /**
+ * Freshness mode — the wave-intake law. Answers "has upstream moved past our pin, and did
+ * anything vendored move with it" by reading the upstream clone's git at `upstreamPath`. A pin
+ * the upstream repo no longer knows (rewritten history, wrong remote) REFUSES: a freshness
+ * answer computed against a tree that cannot see the pin is a guess wearing a verdict's clothes.
+ */
+function runFreshness(manifestPath, upstreamPath) {
+  const facts = loadManifestFacts(manifestPath);
+  if (facts.refusal !== null) {
+    process.stderr.write(`\x1b[31m✖ vendor-drift: the manifest cannot be read for a freshness answer.\x1b[0m\n\n  ✖ ${facts.refusal}\n\n`);
+    process.exit(1);
+  }
+  const git = (args) => execFileSync("git", ["-C", upstreamPath, ...args], { encoding: "utf8" }).trim();
+  let head;
+  let changed;
+  try {
+    git(["rev-parse", "--verify", `${facts.manifest.upstream}^{commit}`]);
+    head = git(["rev-parse", "HEAD"]);
+    changed = git(["diff", "--name-only", `${facts.manifest.upstream}..HEAD`]).split("\n").map((l) => l.trim()).filter(Boolean);
+  } catch (error) {
+    process.stderr.write(
+      `\x1b[31m✖ vendor-drift: the upstream repo at ${upstreamPath} could not answer the pin.\x1b[0m\n\n` +
+        `  ${String(error.message ?? error).split("\n")[0]}\n` +
+        `  rule: the pin commit must exist in that clone and HEAD must resolve — a freshness verdict\n` +
+        `        computed against a tree that cannot see the pin is a guess, not a verdict\n` +
+        `  fix: point --freshness at a current clone of the upstream (fetch first if the pin is new)\n\n`,
+    );
+    process.exit(1);
+  }
+  const verdict = freshnessVerdict({ manifest: facts.manifest, upstreamHead: head, upstreamChanged: changed });
+  if (verdict.fresh) {
+    console.log(`vendor-drift: FRESH — the manifest pin is the upstream HEAD (${head.slice(0, 10)})`);
+    return;
+  }
+  if (verdict.moved.length === 0) {
+    console.log(`vendor-drift: FRESH FOR THIS WAVE — upstream moved past the pin (${verdict.pin.slice(0, 10)} -> ${head.slice(0, 10)}) but touched no vendored source; nothing is owed by re-vendor`);
+    return;
+  }
+  process.stderr.write(
+    `\x1b[31m✖ vendor-drift: upstream moved ${verdict.moved.length} vendored source(s) past the pin — this wave's intake owes a re-vendor.\x1b[0m\n\n` +
+      verdict.moved.map((s) => `  ✖ ${s}`).join("\n") +
+      `\n\n  pin ${verdict.pin.slice(0, 10)} -> upstream HEAD ${head.slice(0, 10)}\n` +
+      `  fix: re-vendor from stallion at ${head.slice(0, 10)} and regenerate ${manifestPath} in the same\n` +
+      `       commit (WIRING §1), before this wave's own work lands on the stale pin\n\n`,
+  );
+  process.exit(1);
+}
+
+/**
  * CLI, guarded by an entry-module check (the pathspec lesson: a bare argv check fires on import
  * and exits before an importer's own self-test can run).
  */
@@ -486,7 +589,9 @@ const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileU
 if (isEntry) {
   const manifestPath = flagValue("--manifest") ?? DEFAULT_MANIFEST;
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
+  const freshnessPath = flagValue("--freshness");
+  if (freshnessPath) runFreshness(manifestPath, freshnessPath);
   // Mode-exclusive: upstream returns its own verdicts and must never fall through to host mode.
-  if (process.argv.includes("--upstream")) runUpstream(manifestPath);
+  else if (process.argv.includes("--upstream")) runUpstream(manifestPath);
   else runHost(manifestPath);
 }

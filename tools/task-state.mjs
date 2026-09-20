@@ -36,6 +36,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSyn
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
 import { lessonsIndex, loadRegisters, summaryLine } from "./retrospective.mjs";
+import { matches } from "./pathspec.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -144,15 +145,46 @@ export function globRefusal(pattern) {
   return null;
 }
 
-const FENCE_SURFACE_ROOTS = new Set([".githooks", ".github"]);
+const FENCE_SURFACE_ROOTS = new Set([".githooks", ".github", "docs/gates"]);
 /**
- * Pure: patterns reaching the fence's own surface (.githooks/**, .github/**, .stallion-base)
- * are protected-tier blast radius — only a protected or migration task WITH a recorded approval
- * may declare them. The gated party must not be able to scope over the fence with a runtime-code
- * self-serve amendment (the law isCodePath already states for the push fence).
+ * Does a scope PATTERN cover fence surface? Roots may be multi-segment (docs/gates), so the
+ * first-segment lookup alone is structurally blind to them — the lane-2 finding (ported from the
+ * vendor repo's close-out, where a runtime-code task scoped docs/gates/** past the first-segment
+ * matcher and the gate's own configs were one self-serve amendment away).
+ */
+function coversFenceSurface(p) {
+  const pattern = String(p);
+  if (FENCE_SURFACE_ROOTS.has(pattern.split("/")[0])) return true;
+  if (matches(".stallion-base", pattern)) return true;
+  // The real corpus, not synthetic probes (enumerating shapes cannot cover pattern space):
+  // a pattern reaches the surface iff it matches any REAL path under a root.
+  return [...FENCE_SURFACE_ROOTS].some((root) => matches(root, pattern) || rootTouchesPattern(root, pattern));
+}
+
+function rootTouchesPattern(root, pattern) {
+  try {
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = dir + "/" + entry.name;
+        if (matches(full, pattern)) return true;
+        if (entry.isDirectory() && walk(full)) return true;
+      }
+      return false;
+    };
+    return existsSync(root) && walk(root);
+  } catch {
+    return false; // unreadable tree: the single-segment fast path already spoke
+  }
+}
+
+/**
+ * Pure: patterns reaching the fence's own surface (.githooks/**, .github/**, docs/gates/**,
+ * .stallion-base) are protected-tier blast radius — only a protected or migration task WITH a
+ * recorded approval may declare them. The gated party must not be able to scope over the fence
+ * with a runtime-code self-serve amendment (the law isCodePath already states for the push fence).
  */
 export function fenceSurfaceRefusal(record, patterns) {
-  const reaching = (patterns ?? []).filter((p) => p === ".stallion-base" || FENCE_SURFACE_ROOTS.has(String(p).split("/")[0]));
+  const reaching = (patterns ?? []).filter((p) => p === ".stallion-base" || coversFenceSurface(p));
   if (reaching.length === 0) return null;
   if (!APPROVAL_REQUIRED.has(record.riskClass)) {
     return {
@@ -1059,7 +1091,7 @@ export function selfTest() {
     ["fence-surface scope under runtime-code refuses", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, [".githooks/**"]) !== null],
     ["fence-surface scope under protected WITHOUT approval refuses", fenceSurfaceRefusal({ riskClass: "protected", events: [] }, [".github/workflows/**"]) !== null],
     ["fence-surface scope under protected WITH approval passes", fenceSurfaceRefusal({ riskClass: "protected", events: [{ type: "approval", decision: "d" }] }, [".githooks/**", ".stallion-base"]) === null],
-    ["non-surface scope never trips the tier law", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, ["tools/**", "docs/*"]) === null],
+    ["non-surface scope never trips the tier law", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, ["tools/**", "tasks/**"]) === null],
     ["the tier refusal carries the protected-task fix", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, [".githooks/**"]).remedy?.includes("--risk-class protected")],
   ];
   for (const [n, passes] of scopeCases) if (!passes) fail(`task-state: ${n}`);
@@ -1067,9 +1099,27 @@ export function selfTest() {
   const greenPinCount = runGreenPinCases(fail);
 
   const retireCases = runRetireRefusalCases(fail, { base, at, executing, adversarial }) + runRetireTerminalCases(fail, { at, executing });
+  const fenceSurfaceCases = selfTestFenceSurfaceCases(fail);
 
-  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin + ${retireCases} retire cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin + ${retireCases} retire + ${fenceSurfaceCases} fence-surface cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
+}
+
+/** The tier-law family, ported from the vendor repo's close-out: the multi-segment docs/gates
+ *  root, the broad patterns that cover it, and the name-shape-narrower shapes that reach real
+ *  configs — the walker decides against the REAL corpus, never synthetic enumerations. */
+function selfTestFenceSurfaceCases(fail) {
+  const runtime = { riskClass: "runtime-code", events: [] };
+  const approved = { riskClass: "protected", events: [{ type: "approval", decision: "d" }] };
+  const cases = [
+    ["multi-segment fence surface (docs/gates) refuses under runtime-code — the inert-entry finding", fenceSurfaceRefusal(runtime, ["docs/gates/**"]) !== null],
+    ["a broad docs pattern that covers gates also refuses", fenceSurfaceRefusal(runtime, ["docs/**"]) !== null],
+    ["name-shape-narrower patterns that cover real configs refuse (the extensionless-probe finding)", fenceSurfaceRefusal(runtime, ["docs/gates/*.json"]) !== null && fenceSurfaceRefusal(runtime, ["docs/gates/gate-*"]) !== null],
+    ["docs/* covers the gates directory NODE and correctly refuses (a scope matching the node can delete it)", fenceSurfaceRefusal(runtime, ["docs/*"]) !== null],
+    ["a protected task WITH approval may scope the gates surface", fenceSurfaceRefusal(approved, ["docs/gates/**"]) === null],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
 }
 
 /** The retire-law refusal family: the pure retirementRefusal's every side. */

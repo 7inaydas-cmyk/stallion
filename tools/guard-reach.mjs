@@ -67,7 +67,7 @@
  *
  * Run: node tools/guard-reach.mjs [--self-test]
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -317,18 +317,27 @@ function looksLikeCrash(output) {
 
 let counter = 0;
 
+/** An env pointing GIT_INDEX_FILE at a fresh copy of HEAD's index — `git diff --cached` reads
+ *  nothing (an EMPTY index would read as every-file-deleted against HEAD, the opposite of clean). */
+function emptyIndexEnv() {
+  const empty = join(tmpdir(), `guard-reach-empty-${process.pid}-${Date.now()}`);
+  execFileSync("git", ["read-tree", "HEAD", "--index-output", empty], { cwd: ROOT });
+  inFlight.add(empty);
+  return { GIT_INDEX_FILE: empty };
+}
+
 /** Stage `rel` into a COPY of the index; the real index is never written. */
 function stagedEnv(rel) {
-  const gitDir = execFileSync("git", ["rev-parse", "--git-dir"], { cwd: ROOT, encoding: "utf8" }).trim();
-  // Honour an inherited GIT_INDEX_FILE: git sets it for hooks, and a PARTIAL commit points it at a
-  // lock file rather than <git-dir>/index. Hard-coding the latter judged a different file set than
-  // the one actually being committed.
-  const source = process.env.GIT_INDEX_FILE ?? resolve(ROOT, gitDir, "index");
   const dir = join(tmpdir(), `stallion-guard-reach-${process.pid}-${counter++}`);
   mkdirSync(dir, { recursive: true });
   const indexCopy = join(dir, "index");
   try {
-    copyFileSync(source, indexCopy);
+    // Seed the copy from HEAD, not the inherited index: during a real commit git points
+    // GIT_INDEX_FILE at the partial-commit lock holding the developer's staged work, and a probe
+    // layered on that buries itself under the refusal's three-file sample — the reach question
+    // ("can the guard see a NEW file?") is asked against the clean tree, same as the baseline
+    // (found live at the vendor repo's 2026-09-20 close-out; ported back with the fix).
+    execFileSync("git", ["read-tree", "HEAD", "--index-output", indexCopy], { cwd: ROOT });
     const env = { ...process.env, GIT_INDEX_FILE: indexCopy };
     // Staging writes a loose object into the REAL object store (the index itself is untouched). One
     // per distinct probe content, unreferenced, collected by gc. Noted so nobody re-derives it.
@@ -356,7 +365,11 @@ function checkReach(guard) {
   if (problem !== null) return problem;
 
   const args = guard.args ?? [];
-  const baseline = runGuard(guard.script, process.env, args);
+  // Baseline and probe both run against a fresh copy of HEAD's index: a BUSY tree (staged,
+  // uncommitted work — the normal state mid-task) must not redden the baseline naming the
+  // developer's files instead of the probe (found live at the vendor repo, ported back).
+  const baselineEnv = { ...process.env, ...emptyIndexEnv() };
+  const baseline = runGuard(guard.script, baselineEnv, args);
   if (baseline.code !== 0) {
     return {
       outcome: OUTCOME.INCONCLUSIVE,
@@ -373,10 +386,11 @@ function checkReach(guard) {
     writeFileSync(abs, guard.content.split(PATH_TOKEN).join(rel));
     inFlight.add(abs);
 
-    // UNSTAGED first. A guard that sees the probe here walks the DISK (or `ls-files --others`), and
-    // that is worth knowing: staging unconditionally would hide a regression to a tracked-only walk
-    // — the ls-files-vs-untracked lesson the origin harness paid for (finding 3 in the header).
-    let run = runGuard(guard.script, process.env, args);
+    // UNSTAGED first, against the same HEAD-index env as the baseline: for index-reading guards
+    // "unstaged probe" means a CLEAN index plus the probe on disk — inherited real staged work
+    // would fail the guard naming the developer's files instead. For disk walkers GIT_INDEX_FILE
+    // is inert: --cached reads HEAD's set, --others still sees the probe.
+    let run = runGuard(guard.script, baselineEnv, args);
     let mode = "disk";
     if (run.code === 0) {
       staged = stagedEnv(rel);
