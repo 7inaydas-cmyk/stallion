@@ -53,13 +53,6 @@ const CODE_TREES = ["apps/", "packages/", "tools/", "deploy/"];
  *  law), and the repo's answer to a law changing mid-history is the same cutover pattern the pin,
  *  scope, and chain laws use: grandfather what settled under the law of its day. */
 export const FENCE_SURFACE_CUTOVER_COMMIT = "484df9daebace7148e491b9ded1ae33697890f25";
-/** The commit where the fence-side TIER re-judgment took effect. The tier law itself
- *  (fence-surface scope demands a protected task with approval) is older at the declaration
- *  seam — but re-judging it at the push fence retroactively outlawed every settled commit whose
- *  record had lawfully declared .githooks/**, docs/**, or docs/gates/** under the first-segment
- *  law of its day (CI caught it live on the first push). Same cure as every mid-history law
- *  here: commits BEFORE this sha are judged under the old law, at and after under the new. */
-export const FENCE_TIER_CUTOVER_COMMIT = "3bf3bac2b2b00fc1bd82c663faaf799a649a13b2";
 const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".mts", ".cts", ".css"]);
 const CODE_NAMES = new Set(["Dockerfile", "Caddyfile"]); // no-extension executables under the four trees
 
@@ -340,21 +333,10 @@ export function isGrandfatheredScope(record) {
  * from the pushed tree); a post-hoc widening is visible as a recorded amendment event in the
  * record's git history — in timestamped histories it trails the commit it excuses.
  */
-export function scopeRefusal(record, codeFiles, tierLawApplies = true) {
-  if (!Array.isArray(codeFiles) || codeFiles.length === 0) return null;
-  if (isGrandfatheredScope(record)) return null;
+
+/** The coverage half of the scope law: usable patterns, then every code file inside one. */
+function scopeCoverageRefusal(record, codeFiles) {
   const declared = scopeOf(record);
-  // The tier law, RE-JUDGED at both transports (an adversarial pass proved declaration-time-only
-  // enforcement was the escape: a scope that slipped past cmdScope — wrong cwd, rm'd file, future
-  // filename, hand edit — sailed through the commit-msg gate and this fence, which judged only
-  // membership. One seam, both transports, same law as cmdScope.) `tierLawApplies` grandfathers
-  // commits that SETTLED before the fence-side cutover — the same mid-history-law cure every
-  // cutover constant here encodes; the commit-msg gate always passes true (a commit made now is
-  // post-cutover by definition).
-  if (tierLawApplies) {
-    const tier = fenceSurfaceRefusal(record, declared);
-    if (tier) return tier;
-  }
   const patterns = declared.filter((p) => globRefusal(p) === null);
   const dropped = declared.length - patterns.length;
   if (patterns.length === 0) {
@@ -372,6 +354,19 @@ export function scopeRefusal(record, codeFiles, tierLawApplies = true) {
     };
   }
   return null;
+}
+
+export function scopeRefusal(record, codeFiles, tierLawApplies = true) {
+  if (!Array.isArray(codeFiles) || codeFiles.length === 0) return null;
+  // Grandfathered records keep the law of their day; the tier law (fence-surface scope demands a
+  // protected task with approval) is re-judged at BOTH transports through this seam — an
+  // adversarial pass proved declaration-time-only enforcement was the escape. `tierLawApplies`
+  // grandfathers commits that settled before the fence-side cutover (the mid-history-law cure);
+  // the commit-msg gate always passes true.
+  if (isGrandfatheredScope(record)) return null;
+  const tier = tierLawApplies ? fenceSurfaceRefusal(record, scopeOf(record)) : null;
+  if (tier) return tier;
+  return scopeCoverageRefusal(record, codeFiles);
 }
 
 /**
@@ -495,6 +490,14 @@ export function retirementShapeRefusal(events) {
 export function fenceSurfaceFiles(files, preCutover) {
   return preCutover ? files.filter((f) => !f.startsWith("docs/gates/")) : files;
 }
+
+/** The commit where the fence-side TIER re-judgment took effect. The tier law itself
+ *  (fence-surface scope demands a protected task with approval) is older at the declaration
+ *  seam — but re-judging it at the push fence retroactively outlawed every settled commit whose
+ *  record had lawfully declared .githooks/**, docs/**, or docs/gates/** under the first-segment
+ *  law of its day (CI caught it live on the first push). Same cure as every mid-history law
+ *  here: commits BEFORE this sha are judged under the old law, at and after under the new. */
+export const FENCE_TIER_CUTOVER_COMMIT = "3bf3bac2b2b00fc1bd82c663faaf799a649a13b2";
 
 function gitOut(...args) {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
