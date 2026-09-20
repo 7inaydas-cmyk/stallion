@@ -1,0 +1,63 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "calibrate-lanes",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T10:28:22.555Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "3a930bb1879eb940bd9c81e92530fcc840ba14570f03bc16db81411cb0b9e4a4"
+    },
+    {
+      "at": "2026-09-20T10:28:22.601Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "3a930bb1879eb940bd9c81e92530fcc840ba14570f03bc16db81411cb0b9e4a4",
+      "entry_hash": "f30672a27f251434c2b77d173c4f1a3131550f8a32beb2ca73de8821800515d7"
+    },
+    {
+      "at": "2026-09-20T10:28:22.645Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**",
+        "docs/**",
+        "package.json"
+      ],
+      "seq": 2,
+      "parent_hash": "f30672a27f251434c2b77d173c4f1a3131550f8a32beb2ca73de8821800515d7",
+      "entry_hash": "a6e6da2eda7e01e51140d58ffb8465d9b8f6c419be5828b225e1c197de06a5aa"
+    },
+    {
+      "at": "2026-09-20T10:28:22.680Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "a6e6da2eda7e01e51140d58ffb8465d9b8f6c419be5828b225e1c197de06a5aa",
+      "entry_hash": "51cd26f9f9f0138ff9b313e435b9e56c57035ea9411856438c43efd7fc589fcc"
+    },
+    {
+      "at": "2026-09-20T10:28:22.740Z",
+      "type": "red-check",
+      "expect": "usage: adversarial-runner",
+      "command": "node tools/adversarial-runner.mjs calibrate",
+      "exitCode": 1,
+      "outputDigest": "b5f93eb8c0d6",
+      "seq": 4,
+      "parent_hash": "51cd26f9f9f0138ff9b313e435b9e56c57035ea9411856438c43efd7fc589fcc",
+      "entry_hash": "b985610aeb8f308891956e1b2f998d750641c53c13447079b116a208c2633b74"
+    },
+    {
+      "at": "2026-09-20T10:56:02.464Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "b985610aeb8f308891956e1b2f998d750641c53c13447079b116a208c2633b74",
+      "entry_hash": "f9297aae505f268aad1ae9f52327093c2b415bacc5a0486ebee0d63fcdfa81b7"
+    }
+  ]
+}

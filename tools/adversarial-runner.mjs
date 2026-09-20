@@ -419,10 +419,161 @@ function selfTestAggregation(fail) {
   return 5;
 }
 
+/**
+ * CALIBRATION (the 2026-09-20 evaluation, gap 4 — "a grader that cannot fail is not a grader",
+ * tools/bench/grade.mjs:10-11, applied to the lanes themselves): replay a RECORDED wave's diff to
+ * fresh lanes and demand they rediscover the defects the original pass found. No synthetic
+ * seeds — the known-defect set is the wave's own CRITICAL/HIGH register, and the replayed diff
+ * is the register's recorded swept range, so calibration grades the real grading instrument on
+ * real past escapes.
+ */
+
+/** The known-defect set for calibration: the CRITICAL/HIGH findings a past wave's lanes found. */
+export function knownDefectsOf(register) {
+  return (register?.findings ?? []).filter((f) => f.severity === "CRITICAL" || f.severity === "HIGH");
+}
+
+const CALIBRATION_STOP = new Set("because between cannot commits defects different finding fresh gradient instructor nothing reported rewinds severity should theoretical unsupported verified".split(" "));
+
+/** Distinctive tokens of a claim: ≥6 chars, hyphens kept, stopwords out — the matcher's vocabulary. */
+export function claimTokens(claim) {
+  const tokens = new Set();
+  for (const raw of `${claim}`.toLowerCase().split(/[^a-z-]+/)) {
+    const token = raw.replace(/^-+|-+$/g, "");
+    if (token.length >= 6 && !CALIBRATION_STOP.has(token)) tokens.add(token);
+  }
+  return tokens;
+}
+
+/**
+ * Does a reported claim rediscover a known defect? Shared distinctive vocabulary — either three
+ * shared tokens or a quarter of the union. Tuned by the shape that matters: a paraphrase of the
+ * original finding matches; a different finding about a different escape does not.
+ */
+export function rediscovers(knownClaim, reportedClaim) {
+  const a = claimTokens(knownClaim);
+  const b = claimTokens(reportedClaim);
+  if (a.size === 0 || b.size === 0) return false;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared >= 3 || shared / (a.size + b.size - shared) >= 0.25;
+}
+
+/** The rediscovery bar for a known-defect set: two-thirds, rounded up — 9 known ⇒ 6, the original grill design. */
+export function barOf(knownCount) {
+  return Math.ceil((2 * knownCount) / 3);
+}
+
+/** Pure: which known defects were rediscovered, and whether the bar holds. Fewer than three known defects pins nothing and refuses. */
+export function calibrationVerdict(known, reportedClaims, bar) {
+  const hits = known.map((f) => reportedClaims.some((c) => rediscovers(f.claim, c)));
+  const rediscovered = hits.filter(Boolean).length;
+  return { known: known.length, rediscovered, bar, refuse: known.length < 3 || rediscovered < bar };
+}
+
+function calibrationPath(id) {
+  return `${STATE_DIR}/${id}.calibration.json`;
+}
+
+/** Load a wave's register and its known-defect set, or die with the law that stops a bad calibration. */
+function replayFactsOf(id) {
+  const { ok, register, error } = loadFindings(findingsPath(id));
+  if (!ok || register === null) die(`no parsable findings register for '${id}'${error ? ` — ${error}` : ""}\n  rule: calibration replays a RECORDED wave — the known defects are the register's own CRITICAL/HIGH findings\n  fix: calibrate a task whose adversarial pass completed`);
+  const known = knownDefectsOf(register);
+  if (known.length < 3) die(`only ${known.length} CRITICAL/HIGH finding(s) on '${id}'s register — fewer than three known defects pins nothing\n  fix: calibrate a wave whose lanes found at least three CRITICAL/HIGH escapes`);
+  if (!register.sweptBase || !register.sweptHead) die(`'${id}'s register records no swept range — the replay diff cannot be reconstructed`);
+  return { register, known };
+}
+
+function cmdCalibrate(args) {
+  const id = args._[0];
+  if (!id) die("usage: calibrate <past-task-id> [--bar <n>]");
+  requireKebabId(id);
+  const { register, known } = replayFactsOf(id);
+  const { diffStat, fileList } = diffUnderAudit({ base: register.sweptBase, head: register.sweptHead });
+  const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
+  const dir = `${BUNDLE_DIR}/${id}-calibration`;
+  mkdirSync(dir, { recursive: true });
+  // The bundles are byte-identical in shape to a normal pass on purpose: a lane that could tell
+  // it was being graded would grade differently.
+  for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList));
+  console.log(`${lanes.length} calibration bundles written to adversarial/${id}-calibration/ — replaying ${register.sweptBase.slice(0, 8)}..${register.sweptHead.slice(0, 8)}, ${known.length} known defect(s), bar ${barOf(known.length)}`);
+  console.log(`next: dispatch each bundle to a FRESH-context reviewer, record with 'calibrate-record ${id} --lane <n> --severity <S> --claim <text>', then 'calibrate-verdict ${id}'`);
+}
+
+/** Validate the calibrate-record argv, or die. Split out for the ratchet's word. */
+function calibrationRecordArgs(args) {
+  const lane = Number(args.lane);
+  if (!Number.isInteger(lane) || lane < 1 || lane > 8) die("calibrate-record requires --lane <1..8> (the checklist escape class)");
+  if (!SEVERITIES.includes(args.severity)) die(`calibrate-record requires --severity in ${SEVERITIES.join(", ")}`);
+  if (!args.claim || typeof args.claim !== "string") die("calibrate-record requires --claim <what is wrong, where, why it escapes>");
+  return { lane, severity: args.severity, claim: args.claim };
+}
+
+function cmdCalibrateRecord(args) {
+  const id = args._[0];
+  if (!id) die("usage: calibrate-record <past-task-id> --lane <n> --severity <S> --claim <text>");
+  requireKebabId(id);
+  const { register } = replayFactsOf(id);
+  const { lane, severity, claim } = calibrationRecordArgs(args);
+  const registered = mutateJson(calibrationPath(id), (text) => {
+    const base = text === null
+      ? { ...emptyFindings(id), passStartedAt: new Date().toISOString(), sweptBase: register.sweptBase, sweptHead: register.sweptHead, calibration: true }
+      : JSON.parse(text);
+    const appended = appendFinding(base, { id: `f${base.findings.length + 1}`, lane, severity, claim, proof: args.proof, evidence: args.evidence });
+    if (typeof appended === "string") die(appended);
+    return appended;
+  });
+  console.log(`calibration finding recorded for ${id} — ${registered.findings[registered.findings.length - 1].id} (lane ${lane}, ${severity})`);
+}
+
+function cmdCalibrateVerdict(args) {
+  const id = args._[0];
+  if (!id) die("usage: calibrate-verdict <past-task-id> [--bar <n>]");
+  requireKebabId(id);
+  const { ok, register } = loadFindings(findingsPath(id));
+  if (!ok || register === null) die(`no findings register for '${id}' — calibrate it first`);
+  const known = knownDefectsOf(register);
+  const { ok: calibrationOk, register: calibration, error } = loadFindings(calibrationPath(id));
+  if (!calibrationOk) die(`the calibration register does not parse: ${error}`);
+  if (calibration === null) die(`no calibration register for '${id}' — run calibrate, dispatch, and calibrate-record first`);
+  const bar = Number(args.bar) > 0 ? Number(args.bar) : barOf(known.length);
+  const verdict = calibrationVerdict(known, calibration.findings.map((f) => f.claim), bar);
+  if (verdict.refuse) {
+    die(`CALIBRATION FAILED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s), bar ${verdict.bar}\n  rule: the lanes are the grader, and a grader that cannot fail is not a grader — a wave dispatched by lanes that miss two-thirds of past escapes certifies nothing\n  fix: strengthen the checklist's escape classes (docs/ADVERSARIAL-CHECKLIST.md) or the bundle's audit law, then re-calibrate`);
+  }
+  console.log(`CALIBRATION PASSED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s) (bar ${verdict.bar}); the lanes can fail, so their verdicts certify`);
+}
+
+/** The calibration case family: the matcher, the bar, and the verdict — pure, like the law. */
+function selfTestCalibration(fail) {
+  const walk = "the walkCorpus manifest-skip compares corpus-relative against cwd-relative manifest paths";
+  const cases = [
+    ["an identical claim rediscovers", rediscovers(walk, walk)],
+    ["a paraphrase rediscovers (shared distinctive vocabulary)", rediscovers(walk, "walkCorpus compares the manifest-skip against relative paths in the wrong coordinate system — the manifest path never matches")],
+    ["a different escape does not rediscover", !rediscovers(walk, "the staged gate forgets to refuse unscoped docs-only deletions in the reader census")],
+    ["claimTokens drops short and stopword tokens, keeps hyphens", (() => { const t = claimTokens("the vendor-drift self-test refuses because six tokens"); return t.has("vendor-drift") && t.has("self-test") && !t.has("the") && !t.has("six"); })()],
+    ["knownDefectsOf keeps only CRITICAL and HIGH", knownDefectsOf({ findings: [{ severity: "CRITICAL", claim: "x" }, { severity: "HIGH", claim: "y" }, { severity: "MEDIUM", claim: "z" }, { severity: "LOW", claim: "w" }] }).length === 2],
+    ["barOf is two-thirds rounded up — 9 known demand 6, the original grill design", barOf(9) === 6 && barOf(3) === 2 && barOf(4) === 3],
+    ["the verdict passes at the bar and refuses one under it", (() => {
+      const a = "walker coordinates and manifests mismatch";
+      const b = "staged reader census forgets unscoped deletions";
+      const known = [...Array.from({ length: 5 }, () => ({ severity: "HIGH", claim: a })), ...Array.from({ length: 4 }, () => ({ severity: "HIGH", claim: b }))];
+      const pass = calibrationVerdict(known, [a, b], 6);
+      const under = calibrationVerdict(known, [a], 6);
+      return !pass.refuse && pass.rediscovered === 9 && under.refuse && under.rediscovered === 5;
+    })()],
+    ["fewer than three known defects refuses — insufficient signal pins nothing", calibrationVerdict([{ severity: "HIGH", claim: "a" }], ["a"], 1).refuse],
+    ["an empty claim never matches", !rediscovers(walk, "")],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner (calibration): ${name}`);
+  return cases.length;
+}
+
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
-  const unitCases = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail);
+  const unitCases = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail) + selfTestCalibration(fail);
   const laneCases = [
     ["lane beyond the checklist refused", laneRefusal(99, 8) !== null],
     ["lane within the checklist allowed", laneRefusal(3, 8) === null],
@@ -448,8 +599,8 @@ if (isEntry) {
   try {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
-    const commands = { prepare: cmdPrepare, record: cmdRecord, resolve: cmdResolve, "wont-fix": cmdWontFix, verdict: cmdVerdict };
-    if (!commands[cmd]) die("usage: adversarial-runner.mjs <prepare|record|resolve|wont-fix|verdict> ... (--self-test to self-test)");
+    const commands = { prepare: cmdPrepare, record: cmdRecord, resolve: cmdResolve, "wont-fix": cmdWontFix, verdict: cmdVerdict, calibrate: cmdCalibrate, "calibrate-record": cmdCalibrateRecord, "calibrate-verdict": cmdCalibrateVerdict };
+    if (!commands[cmd]) die("usage: adversarial-runner.mjs <prepare|record|resolve|wont-fix|verdict|calibrate|calibrate-record|calibrate-verdict> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {
