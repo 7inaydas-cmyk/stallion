@@ -1,0 +1,196 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "memory-cures",
+  "passStartedAt": "2026-09-20T10:09:18.534Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "runPinCommand captures stdout only on an exit-0 run (execFileSync return), while the RED path concatenates stdout+stderr — so the new vacuous-green guard is structurally blind to stderr-borne signatures, and six tools print SELF-TEST FAIL via console.error",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.146Z",
+      "proof": "A pin on any stderr-printing self-test whose print and boolean decouple (a regression prints the FAIL line while selfTest() still returns true) exits 0 with the RED signature on the invisible channel — the exact vacuous condition gap 6 was written to refuse, cleared at done",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:548-549 vs :554; live probe: runpincommand of a command that exits 0 while console.error-ing 'self-test fail: x' returns {exitcode:0, output:''} and greenverdictof clears",
+      "resolvedAt": "2026-09-20T10:54:51.380Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "vacuousGreenOf inspects only runs[0].output although the law mandates two runs — a signature appearing only in the SECOND exit-0 run clears",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.184Z",
+      "proof": "A flaky sub-case that prints its FAIL line on a retried-then-passed run clears done; the second run exists precisely to catch second-run anomalies and its output is discarded",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs greenverdictof passes runs[0]; demonstrated: signature on run 2 returns null",
+      "resolvedAt": "2026-09-20T10:54:51.412Z"
+    },
+    {
+      "id": "f3",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "bundleBlock delivers only 12 of 44 live WONT-FIX boundaries and the retention rule is a string-ordering artifact: severity sorts lexicographically (CRITICAL<HIGH<LOW<MEDIUM), so every MEDIUM boundary (17 today) is silently dropped while LOW rows ride in — while the bundle text, WIRING, and the commit message claim 'every live WONT-FIX boundary'; the wontFixOf comment claims 'newest law first', which the sort also is not",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.225Z",
+      "proof": "A fresh-context lane receives only its bundle; hitting any of the 32 excluded boundaries it reports them as novel — the mechanism built to stop re-payment of recorded lessons is the component that drops them, and reverting the cap or reordering the sort leaves every battery member green",
+      "evidence": [
+        "tools/retrospective.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/retrospective.mjs:53 string sort, :127 slice(0,12); live: the dispatched lane bundles carry 6 high + 6 low, 0 medium; harness-merge-wave1 f19 absent",
+      "resolvedAt": "2026-09-20T10:54:51.444Z"
+    },
+    {
+      "id": "f4",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "retrospective anchors its corpus at the cwd-relative 'tasks' instead of the module root like every sibling tool — invoking it from any other directory prints a confident empty index with exit 0",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.263Z",
+      "proof": "The advertised command run from a subdirectory returns a wholly false 'nothing learned the hard way' from the recall surface this wave shipped, with no skip marker to distinguish it from truth",
+      "evidence": [
+        "tools/retrospective.mjs"
+      ],
+      "dedupKey": "tools/retrospective.mjs:28; reproduced from /tmp: '0 finding(s) across 0 register(s)', exit 0",
+      "resolvedAt": "2026-09-20T10:54:51.475Z"
+    },
+    {
+      "id": "f5",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "the new frozen-law-pins contract case hardcodes both the plugin's canonical location (three-up) and the stallion shape (tools/) — gate-law --self-test is red by construction on a copied-plugin install (README Install step 1) and in any vendored-shape host (tools/harness/)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.304Z",
+      "proof": "An adopter following the README's Verify block gets a failing self-test on a healthy install — the false red teaches ignoring a battery member, the --no-verify culture this repo's history treats as the primary disease",
+      "evidence": [
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/gate-law.mjs:264-270; reproduced: cp -r tools/zcode-plugin /tmp/... && self-test exits 1 with no rename anywhere; law-source layouts supports the vendored shape",
+      "resolvedAt": "2026-09-20T10:54:51.506Z"
+    },
+    {
+      "id": "f6",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "the gap-7 metrics cure is computed by nothing and consumed by nothing: no battery line, no gate-registry entry, no CI step, no doc mention, no test case — while the commit message claims 'wave ranking has a measured basis'",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.347Z",
+      "proof": "Any schema drift or bug in metricRow silently corrupts every row with no guard able to catch it — the derivation rots invisibly while the usage string advertises it",
+      "evidence": [
+        "tools/task-state.mjs",
+        "package.json",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "grep 'metrics' over docs/, package.json, gate-registry.json, .github/ returns zero; task-state selftest has no metrics family",
+      "resolvedAt": "2026-09-20T10:54:51.538Z"
+    },
+    {
+      "id": "f7",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "the trunc helper in retrospective is dead code — its only consumer is its own self-test case, while bundleBlock inlines the same logic",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.388Z",
+      "proof": "A test pinning the dead path makes it look load-bearing while the real inline truncation gets no protection — deleting the helper fails the battery",
+      "evidence": [
+        "tools/retrospective.mjs"
+      ],
+      "dedupKey": "grep -n trunc tools/retrospective.mjs → definition + one self-test case",
+      "resolvedAt": "2026-09-20T10:54:51.574Z"
+    },
+    {
+      "id": "f8",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "loadRegisters' skipped counter (malformed registers) is discarded at both injection call sites — adversarial prepare and task-state status — so a corrupted register silently vanishes from every lane bundle and the status summary, contradicting the registry entry's 'malformed registers refuse visibly, never silently'",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.433Z",
+      "proof": "Locally, prepare on a tree with a malformed register mints eight bundles silently missing that task's lessons; only CI's direct run would eventually catch it",
+      "evidence": [
+        "tools/adversarial-runner.mjs",
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:216 and tools/task-state.mjs cmdstatus destructure only .registers; visibility exists only at the direct cli call site",
+      "resolvedAt": "2026-09-20T10:54:51.609Z"
+    },
+    {
+      "id": "f9",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "retrospective's self-test docstring promises 'the loader gets two real temp files (one malformed) — a vacuous sweep is visible here', but selfTest contains zero loader cases — no temp files, no malformed register, no loadRegisters call",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:23:33.472Z",
+      "proof": "A refactor making loadFindings throw on malformed JSON (instead of {ok:false}) crashes adversarial prepare and status while every battery member stays green — the claimed coverage that would have caught it does not exist",
+      "evidence": [
+        "tools/retrospective.mjs"
+      ],
+      "dedupKey": "tools/retrospective.mjs:175 docstring vs the selftest body; the file imports no mkdtemp/writefilesync",
+      "resolvedAt": "2026-09-20T10:54:51.643Z"
+    },
+    {
+      "id": "f10",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "The f5 repair's frozen-law-pins case is vacuous everywhere: the spawned probe guards its imports with existsSync() on pathToFileURL(...).href URL STRINGS, which fs.existsSync treats as literal relative pathnames — both probes always miss, checked stays 0, the child prints the skip note and exits 0, and the case reads only status — so it verifies nothing in any install, and the pre-repair false red was traded for a silent false green",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:41:58.768Z",
+      "proof": "Rename scopeRefusal with all internal references updated: npm run selftest stays green while loadLaw refuses in every live session — authoring gate exits 2 on every edit and the banner goes silent; exactly the live-session breakage the case exists to convert into a battery failure",
+      "evidence": [
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/gate-law.mjs:275-277,284; mutation on a temp copy: un-exporting iscodepath from both harness files leaves the self-test ok (24 cases), exit 0",
+      "resolvedAt": "2026-09-20T10:54:51.681Z"
+    },
+    {
+      "id": "f11",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The token-count case asserts the stopword 'about', which never occurs in the fixture, instead of 'between', which does — deleting stopword filtering entirely leaves the self-test green, and the recurring-vocabulary surfaces can silently fill with function-word noise",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:41:58.802Z",
+      "proof": "A stopword regression passes the battery and pollutes summaryLine and every lane bundle's vocabulary line",
+      "evidence": [
+        "tools/retrospective.mjs"
+      ],
+      "dedupKey": "tools/retrospective.mjs:184-185 vs the fixture's 'the drift between refusal text and self-test'; mutation: dropping !stopwords.has(token) keeps the self-test ok",
+      "resolvedAt": "2026-09-20T10:54:51.717Z"
+    },
+    {
+      "id": "f12",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "task-state metrics silently zeroes what its sibling surfaces refuse loudly: metricRow maps a findings register that fails loadFindings to findings=0/highs=0, and cmdMetrics skips unparsable task records with a bare catch-continue — while cmdStatus prints 'skipping unparsable' and the wave's three other register readers all make a bad register visible. A corrupt register renders its task the cleanest wave in the ranking.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:54:17.758Z",
+      "proof": "A truncated or rule-breaking register makes the advertised metrics row print zero findings and zero crit+high, exit 0, ranking that task cleanest — the silent-burial disease reintroduced on the wave's own new read surface",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs metricrow and the catch-continue vs cmdstatus's warning; verified live: a register failing validation prints 0/0 with exit 0",
+      "resolvedAt": "2026-09-20T10:54:51.750Z"
+    },
+    {
+      "id": "f13",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "The frozen-law-pins battery case accepts each of the four law exports from EITHER task-coverage or task-state, but the real consumer loadLaw requires all four from task-coverage specifically — a move of one export into task-state keeps the battery green while every live session's law load refuses.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T10:54:17.793Z",
+      "proof": "A refactor moving scopeRefusal to task-state without a re-export passes the battery case while loadLaw refuses in every session — the authoring gate exits 2 on every edit and the banner goes silent; the exact rename class the case's name promises to catch",
+      "evidence": [
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "dedupKey": "gate-law.mjs's either-file check vs law-source.mjs filtering law_exports on coverage exports only; task-state currently exports none of the four",
+      "resolvedAt": "2026-09-20T10:54:51.785Z"
+    }
+  ],
+  "sweptBase": "f124bc87d9420bc3545cae68212c5b693a90b5e4",
+  "sweptHead": "b8dff7ceec32310d14891805c6c5e6e487e3d447",
+  "sweptDiffDigest": "2b1103bac759"
+}

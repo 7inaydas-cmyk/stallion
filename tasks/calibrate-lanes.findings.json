@@ -1,0 +1,203 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "calibrate-lanes",
+  "passStartedAt": "2026-09-20T10:56:02.632Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "calibrate-verdict's pass bar is a client-supplied CLI value with no floor and no durable trace: any Number > 0 passes the only gate, so one paraphrased claim flips the documented two-thirds law into a pass at bar 1 of a bar-8 instrument, and the override leaves no evidence — the register records no verdict and no bar, so a bar-1 pass is indistinguishable in the committed record from a lawful one.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:02:57.541Z",
+      "proof": "An operator closing the evaluation cheaply records one paraphrase of a committed known claim and runs --bar 1: the tool certifies the lanes at rediscovered 1 of 11, and nothing re-judges the pass at the lawful bar — the knob vanishes with the console, unlike the plain-JSON evidence boundaries whose artifacts stay reviewable in git history",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "live run: calibrate-verdict harness-merge-wave1 --bar 1 prints calibration passed (bar 1) exit 0; pure probe: a stuffed claim passes at bar 1 while the default bar 8 refuses; no selftest case pins a bar floor",
+      "resolvedAt": "2026-09-20T11:16:17.628Z"
+    },
+    {
+      "id": "f2",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The calibration register is written with full findings-register ceremony — per-finding lane/severity/proof/evidence plus UNRESOLVED statuses on all 32 findings — but its only code reader consumes f.claim alone; no other tool references calibration registers, the retrospective loads only .findings. files so these findings never enter the standing lessons, and no calibrate-resolve command exists: columns written with no reader, persistence treated as a consumer. The proof case: calibration finding f29 (guard-reach modes ratchet fail-open) describes a defect STILL LIVE at HEAD that exists in no findings register — a live escape recorded, stored, and consumed by nothing.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:04:07.480Z",
+      "proof": "A live defect found by a calibration lane can never become a standing lesson and no verdict requires its resolution — the carry-forward machinery structurally cannot see it",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "cmdcalibrateverdict reads claims only; retrospective filters .findings.; grep zero calibration references elsewhere; f29's claim in no register; guard-reach catch-fallback live",
+      "resolvedAt": "2026-09-20T11:16:17.664Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The stopword half of selfTestCalibration's pin is vacuous: the case asserts only 3-character tokens dropped by the length rule alone, while the fixture's 'because' — a stopword whose absence is exactly what the filter does — is never asserted absent. Deleting the stopword check keeps the entire battery green (mutation-proven), and the loosened matcher then accepts 13 pair-flips the real matcher refuses — generic vocabulary bridging unrelated claims past the shared threshold.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:04:07.511Z",
+      "proof": "A future edit dropping the stopwords silently costs the grader its ability to fail: a calibration that genuinely found fewer than barOf prints PASSED while the battery stays green — the identical defect class repaired for retrospective in e7d74ae, reintroduced",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "mutation probe: stopword filter deleted, all 9 cases pass; pair-flip probe: 13 known-defect/calibration-claim pairs flip to accepted",
+      "resolvedAt": "2026-09-20T11:16:17.705Z"
+    },
+    {
+      "id": "f4",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "cmdCalibrate's usage line advertises --bar <n> but its body never reads it — dead config in the advertised interface; the flag looks like it pins the bar before dispatch, but nothing consumes it there.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:04:07.545Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "usage string vs zero args.bar references in the body; the sole reader is in a different command",
+      "resolvedAt": "2026-09-20T11:16:17.743Z"
+    },
+    {
+      "id": "f5",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "guard-reach's disk-to-index mode ratchet fails OPEN on its own state file at HEAD: the modes read sits inside try/catch falling back to an empty history on any missing or unparseable read, so the downgrade detector can never fire, and the tool then rewrites the file with the narrowed mode — laundering the downgrade as the new baseline, contradicting the tool's own header law that a downgrade fails (first surfaced as calibration finding f29; live defect).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:04:07.577Z",
+      "proof": "A guard recorded as disk regresses to index-only walking while the modes file is truncated or deleted: the next run reports no downgrade and overwrites the audit trail with the narrowed mode — the family law every sibling gate follows is fail-closed on unreadable config, and only this ratchet state fail-opens",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "the try/catch fallback and the unconditional rewrite in guard-reach's main; no shape or presence check on the modes file anywhere",
+      "resolvedAt": "2026-09-20T11:16:17.779Z"
+    },
+    {
+      "id": "f6",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The calibration matcher counts token adjacency as rediscovery, and the shipped verdict is inflated by it: three shared generic tokens (commit, landed, shipped) bridge claims describing DIFFERENT escapes onto a known defect, one claim can cover many knowns for free via some(), and the recorded run's 10-of-11 includes such a false hit — the true count is 9 of 11, one matcher noise-event over the bar.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:06:59.934Z",
+      "proof": "A lane batch that detects nothing specific still files class-level complaints in the wave's recurring vocabulary: eight adjacency claims cover 8 of 11 knowns with zero specific defects rediscovered, printing CALIBRATION PASSED for a blind instrument",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "recomputed with the shipped matcher on the recorded register: known f20 covered only by cal f19 and cal f24 whose full texts describe other escapes; the self-test's different-escape case passes only because its fixtures are hand-picked disjoint",
+      "resolvedAt": "2026-09-20T11:16:17.818Z"
+    },
+    {
+      "id": "f7",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "The calibration replay hands the graded lanes the answer key: the bundles replay the recorded diff but the lanes audit the live working tree, where the wave's full findings register — the exact CRITICAL/HIGH claims the verdict matches against — is committed and one ls away from the task id in the bundle's first line; in a production pass the answers structurally cannot exist, so a PASS cannot certify detection.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:06:59.965Z",
+      "proof": "A reviewer resolving its own header's task id reads the register and records paraphrases of the eleven known claims — the matcher's score is maximized by exactly the copying the instrument is supposed to measure; the alternative of auditing the swept-head tree, where the key did not exist, was available and not taken",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "zero tasks/ files inside the replayed range, yet the 22-finding register sits in the audited tree; recorded calibration findings cite live file:line evidence proving repo access",
+      "resolvedAt": "2026-09-20T11:16:17.856Z"
+    },
+    {
+      "id": "f8",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "The byte-identical-to-a-normal-pass invariant behind the calibration's blinding rationale is false: the calibration bundles lack the Standing lessons section every production bundle now carries, so a lane can tell it is being graded from the missing section, and the calibration grades a lessons-less configuration production never dispatches.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:06:59.995Z",
+      "proof": "The graded configuration differs systematically from the production one — PASS certifies a different instrument than the one in use, and the detectability the comment claims to prevent is present in the artifact itself",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "grep over the calibration bundles finds no standing lessons while the same-day production bundles carry it; cmdcalibrate calls renderbundle without the lessons argument",
+      "resolvedAt": "2026-09-20T11:16:17.894Z"
+    },
+    {
+      "id": "f9",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "calibrate-record's lane law is hardcoded 1..8 while every sibling derives it from the live checklist — the calibration double freezes the count prepare and record re-derive.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:07:00.029Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "the hardcoded range vs cmdrecord's checklist re-read and lanerefusal",
+      "resolvedAt": "2026-09-20T11:16:17.931Z"
+    },
+    {
+      "id": "f10",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "The --bar flag is a dead advertisement in calibrate and an unrecorded dilution of the two-thirds law in calibrate-verdict: bar 1 certifies with no register trace of the bar used.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:07:00.060Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "cmdcalibrate usage vs zero args.bar reads; live run at --bar 1 passes",
+      "resolvedAt": "2026-09-20T11:16:17.966Z"
+    },
+    {
+      "id": "f11",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "The calibration verdict's pass condition saturates on generic corpus vocabulary: the 15-word stoplist excludes every dominant token of the findings corpus (battery, wiring, doctor, self-test, transport, verdict), so three broad real claims alone score rediscovered 9 of 11 against bar 8, and a dead-export claim counts as rediscovering the unrunnable-battery defect on three generic shared tokens — the exact degradation calibrate exists to detect.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:07:47.711Z",
+      "proof": "A future calibration whose lanes return degraded sweeping prose records three class-level complaints and the verdict prints CALIBRATION PASSED with zero specific defect rediscovered — the only discriminating self-test case uses one hand-picked fixture pair",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "computed against the shipped registers: three broad claims pass bar 8; a genuine lane-3 dead-export claim matches the battery defect on shared battery/member/outside; the corpus's own retrospective counts mark these tokens as the opposite of distinctive",
+      "resolvedAt": "2026-09-20T11:16:18.007Z"
+    },
+    {
+      "id": "f12",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "calibrate-verdict grades the wave register's CURRENT known-defect set against calibration claims without confirming the two correspond: the calibration register's recorded swept range and its calibration flag are written and consumed by nothing, so a re-prepare of the past wave between record and verdict silently changes what is being graded while the verdict still reports success on the stale correspondence.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:07:47.746Z",
+      "proof": "Calibrate replays range A, lanes record claims, a later repair wave re-prepares the same task against a new range and appends a CRITICAL/HIGH finding — the verdict then judges the grown known set against claims that graded the old diff and prints PASSED about a correspondence that no longer exists",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "the mint copies the range at creation; the verdict never reads it; mintpassmarker deliberately re-pins on re-prepare",
+      "resolvedAt": "2026-09-20T11:16:18.044Z"
+    },
+    {
+      "id": "f13",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "The change's only machine pin is the vacuous-RED string-presence class this repo's own law condemns, and its GREEN half is structurally impossible: the recorded red-check is the dispatcher invocation whose pre-fix failure is the unknown-command banner, discriminating only that the string appears in the commands map — and post-fix the same command still exits 1 on argument validation, so the done gate will refuse and the only lawful completion is retiring the pin, leaving the calibration grader with zero command pins.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:08:29.371Z",
+      "proof": "Once this pass aggregates clean, advance done re-runs the pin twice, both runs exit 1, and the gate refuses; no lawful replacement pin can be recorded post-fix (a pin is evidence only when it fails against pre-fix source) — the exact shape task-state's own refusal text names as proving nothing",
+      "evidence": [
+        "tasks/calibrate-lanes.json"
+      ],
+      "dedupKey": "tasks/calibrate-lanes.json seq 4; executed post-fix: exit 1 with the new usage banner; reproduced on the archived pre-fix tree: exit 1 with the old banner — the exit code never flips",
+      "resolvedAt": "2026-09-20T11:16:18.081Z"
+    },
+    {
+      "id": "f14",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "The rediscovery matcher counts known defects as rediscovered on generic-vocabulary collisions, and the committed live run already contains one: the only CRITICAL in the known set was counted as rediscovered although no lane found its escape — the 10-of-11 headline is an overcount; genuine rediscovery is 9 of 11 (still above bar 8, so the run's PASS stands), and the durable-verdict repair would persist the wrong number as if measured.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T11:08:29.406Z",
+      "proof": "A future calibration whose lanes genuinely miss a known defect still clears the bar when other claims share three generic tokens with it; a knowledge-free boilerplate claim matches 3 of 11 knowns, and stacking such boilerplate reaches bar 8 with zero genuine rediscovery",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "production matcher replay over both committed registers: the critical matched via three generic shared tokens from claims describing other escapes; grep of all 32 claims for the defect's distinctive vocabulary returns nothing",
+      "resolvedAt": "2026-09-20T11:16:18.121Z"
+    }
+  ],
+  "sweptBase": "c75dd2004b1500ebe6dd1b564afc6e0a2a797b8e",
+  "sweptHead": "0f72adccd7870ea44d9769d167eecd1aaddbe6be",
+  "sweptDiffDigest": "0c3ff613a2d5"
+}
