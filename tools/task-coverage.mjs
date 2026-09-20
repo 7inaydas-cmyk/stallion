@@ -1335,17 +1335,23 @@ export function selfTest() {
   ];
   for (const [name, passes] of scanCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  const retireSeamCount = runRetirementSeamCases(fail, record, scopedPost);
-  const retireShapeCount = runRetirementShapeCases(fail);
+  const retireSeamCount = selfTestRetirementSeamCases(fail, record, scopedPost);
+  const retireShapeCount = selfTestRetirementShapeCases(fail);
 
   const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${retireSeamCount + retireShapeCount} retirement + ${anchorCases.length} anchor + ${scanCases.length} scan cases — all counts derived`;
   console.log(failures.length === 0 ? `task-coverage self-test: OK (${bannerCounts} — group counts derived where arrays are local)` : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
-/** The retire law at the seams: citation, record naming, and the staged gate's master-key inverse. */
-function runRetirementSeamCases(fail, record, scopedPost) {
-  const retiredRecord = record("runtime-code", ["planned"], [{ type: "retired", because: "superseded by x" }]);
+/** The retire law at the seams: citation, record naming, and the staged gate's master-key inverse.
+ *  Named selfTest* so reader-existence's corpus cut treats its fixtures as tests, not production
+ *  uses — a run*-named helper once suppressed the RISK_CLASSES.runtime-code verdict and its
+ *  accepted row was pruned as stale by the very wave that blinded it (an adversarial finding). */
+function selfTestRetirementSeamCases(fail, record, scopedPost) {
+  // The DISCRIMINATING staged-gate shape: executing-then-retired. A planned-then-retired fixture
+  // proves nothing — planned already refused pre-retirement, so the case passed against the
+  // broken seam too (an adversarial finding: a vacuous pin).
+  const retiredRecord = record("runtime-code", ["planned", "executing"], [{ type: "retired", because: "superseded by x" }]);
   const cases = [
     ["a retired task refuses re-judged history too — no commit ever lawfully cited it", citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "retired", because: "x" }] }, ["tools/a.mjs"], false) !== null],
     ["recordRefusal names the retirement instead of the pre-executing line", (recordRefusal(retiredRecord) ?? "").includes("retired")],
@@ -1356,12 +1362,16 @@ function runRetirementSeamCases(fail, record, scopedPost) {
 }
 
 /** The retire law's hand-forgery shapes, re-judged at the fence like every other shape law. */
-function runRetirementShapeCases(fail) {
+function selfTestRetirementShapeCases(fail) {
   const cases = [
     ["an event after retirement is a hand-forged shape", (recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "retired", because: "x" }, { type: "scope", patterns: ["tools/**"] }] }) ?? "").includes("follows the retired event")],
     ["retirement past planned is a hand-forged shape", (retirementShapeRefusal([{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "retired", because: "x" }]) ?? "").includes("lawful only before executing")],
     ["a double retirement is caught by the once-only shape law", (retirementShapeRefusal([{ type: "created" }, { type: "retired", because: "a" }, { type: "retired", because: "b" }]) ?? "").includes("follows the retired event")],
     ["a lawful retirement record carries a clean shape", retirementShapeRefusal([{ type: "created" }, { type: "transition", to: "planned" }, { type: "retired", because: "x" }]) === null],
+    ["a lawful retired record refuses at the fence with the authorizes-nothing reason", (() => {
+      const lawful = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "retired", because: "x" }] };
+      return (recordRefusal(lawful) ?? "").includes("authorizes nothing");
+    })()],
     ["records without retirement events never trip the shape law", retirementShapeRefusal([{ type: "created" }, { type: "transition", to: "executing" }]) === null],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);

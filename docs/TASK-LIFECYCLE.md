@@ -1,6 +1,7 @@
 # The task lifecycle
 
-Work on code moves through six phases. The prose here says what each phase means;
+Work on code moves through six phases, closed by two terminal states (`done` by transition,
+`retired` by event). The prose here says what each phase means;
 `tools/task-state.mjs` refuses what this document forbids, so the rules do not depend on being
 remembered.
 

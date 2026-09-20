@@ -173,6 +173,15 @@ function hasApproval(record) {
   return record.events.some((e) => e.type === "approval");
 }
 
+/** Pure: the write-seam half of the retirement law — NO command may append to a retired record.
+ *  Without this guard the tool itself writes the post-retirement-event shape its own fence then
+ *  refuses as a hand-forgery (an adversarial finding, live-proven on four commands), poisoning
+ *  the tamper narrative for a record the machine lawfully wrote. null = append is lawful. */
+export function retiredAppendRefusal(record) {
+  if (derivePhase(record.events ?? []) !== "retired") return null;
+  return `task '${record.id}' is retired — terminal at the write seam too; no command appends to it (the fence would call this very append a hand-forgery)`;
+}
+
 /** Pure: the retirement law. A task that never executed (intake or planned) may retire with a
  *  recorded reason — the honest alternative to a planned record that misleads every future
  *  status read. A task that has begun landing code must finish its lifecycle honestly (its
@@ -356,16 +365,21 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, fac
  *  exceptions are the runs advance performs and a status read must not: `advance done` re-runs
  *  command pins, `advance verified` runs the selftest battery — status reports that each WILL
  *  happen instead (a sweep caught the silent fail-open before the note existed). */
-/** The terminal phases' status line — both close the record to further obligations. */
-function terminalObligations(current) {
+/** The terminal phases' status line — both close the record to further obligations. A retired
+ *  task's reason is SURFACED here (an adversarial finding: a law whose namesake field nothing
+ *  ever printed), flattened — client text cannot forge the machine's voice. */
+function terminalObligations(record, current) {
   if (current === "done") return ["done — reopen as a new task if more work is needed"];
-  if (current === "retired") return ["retired — never executed, authorizes nothing; the reason rides the record forever"];
+  if (current === "retired") {
+    const because = (record.events ?? []).find((e) => e.type === "retired")?.because ?? "";
+    return [`retired — never executed, authorizes nothing; reason: ${flat(because)}`];
+  }
   return null;
 }
 
 export function obligations(record, findings, evidenceOnDisk) {
   const current = derivePhase(record.events);
-  const terminal = terminalObligations(current);
+  const terminal = terminalObligations(record, current);
   if (terminal) return terminal;
   const target = PHASES[PHASES.indexOf(current) + 1];
   const verdict = evaluateTransition(record, findings, target, evidenceOnDisk);
@@ -412,6 +426,7 @@ export function handoffReport(record, findings, evidenceOnDisk = true, resolveEv
     ...resolved.filter((f) => !missing.has(f.id)).map((f) => `- finding ${f.id} RESOLVED — ${(f.evidence ?? []).map(flat).join(", ")}`),
     "",
     "## FAILED (exact reasons)",
+    ...record.events.filter((e) => e.type === "retired").map((e) => `- task retired: ${flat(e.because)}`),
     ...retired.map((e) => `- pin retired (${flat(e.command)}): ${flat(e.justification)}`),
     ...wont.map((f) => `- finding ${f.id} WONT-FIX: ${flat(f.justification)}`),
     "",
@@ -501,7 +516,11 @@ function cmdApprove(args) {
   if (!heading) {
     die(`no decisions-register entry heading equals: ${ref}\n  rule: an approval cites a FULL entry heading from docs/decisions/DECISIONS.md verbatim, MINUS its '## ' prefix — a substring is not an act\n  fix: grep "^## " docs/decisions/DECISIONS.md | sed 's/^## //'   then: node tools/task-state.mjs approve ${id} --decision "<one full line of that output>"`);
   }
-  mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] }));
+  mutateTask(id, (record) => {
+    const retired = retiredAppendRefusal(record);
+    if (retired) die(`REFUSED — ${retired}`);
+    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] };
+  });
   console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
 }
 
@@ -698,7 +717,11 @@ function cmdRedCheck(args) {
     event.outputDigest = outputDigest(run.output);
   }
   if (all.length > 0) event.evidence = all;
-  mutateTask(id, (record) => ({ ...record, events: [...record.events, event] }));
+  mutateTask(id, (record) => {
+    const retired = retiredAppendRefusal(record);
+    if (retired) die(`REFUSED — ${retired}\n  fix: the pin was run, but a retired record accepts no events; record it under the successor task`);
+    return { ...record, events: [...record.events, event] };
+  });
   console.log(command
     ? `task ${id}: command pin recorded RED (exit ${event.exitCode}, digest ${event.outputDigest}${event.expect ? `, expects /${event.expect}/` : ""}) — ${command}`
     : `task ${id}: RED-check evidence recorded (${all.length} path(s)) — supplementary, not a substitute for a command pin`);
@@ -712,6 +735,8 @@ function cmdPinRetire(args) {
   if (typeof command !== "string" || command.trim().length === 0) die("pin-retire requires --command — the exact command of the pin being retired");
   if (typeof justification !== "string" || justification.trim().length === 0) die("pin-retire requires --justification — retiring a pin without a reason is deleting evidence");
   mutateTask(id, (record) => {
+    const retired = retiredAppendRefusal(record);
+    if (retired) die(`REFUSED — ${retired}`);
     if (derivePhase(record.events) === "done") die("done is terminal — a finished task's pins cannot be retired; reopen the concern as a new task");
     const recorded = record.events.some((e) => e.type === "red-check" && e.command === command);
     if (!recorded) die(`no command pin records exactly: ${command}\n  evidence: the task's pin commands are ${commandPins(record).map((p) => JSON.stringify(p.command)).join(", ") || "none"}`);
@@ -727,7 +752,11 @@ function cmdPinExempt(args) {
   if (!id) die("usage: pin-exempt <id> --justification \"<why this task cannot carry a runnable pin>\"");
   const justification = args.justification;
   if (typeof justification !== "string" || justification.trim().length === 0) die("pin-exempt requires --justification — an exemption without a reason is not accountability");
-  mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "pin-exemption", justification }] }));
+  mutateTask(id, (record) => {
+    const retired = retiredAppendRefusal(record);
+    if (retired) die(`REFUSED — ${retired}`);
+    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "pin-exemption", justification }] };
+  });
   console.log(`task ${id}: pin exemption recorded (justification in the register, forever)`);
 }
 
@@ -1052,6 +1081,8 @@ function runRetireRefusalCases(fail, { base, at, executing, adversarial }) {
     ["done refuses retirement (terminal twice over)", (retirementRefusal(at(adversarial, "done"), "x") ?? "").includes("done is terminal")],
     ["a retired task refuses re-retirement (once-only)", (retirementRefusal({ ...base, events: [...base.events, { type: "retired", because: "first" }] }, "again") ?? "").includes("already retired")],
     ["retirement without --because refuses", (retirementRefusal(executing, "   ") ?? "").includes("--because")],
+    ["the write seam refuses appends to a retired record", retiredAppendRefusal({ ...base, events: [...base.events, { type: "retired", because: "superseded" }] }) !== null],
+    ["the write seam leaves every non-retired record alone", retiredAppendRefusal(executing) === null && retiredAppendRefusal(at(adversarial, "done")) === null],
   ];
   for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
   return cases.length;
