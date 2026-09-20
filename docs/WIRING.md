@@ -64,7 +64,12 @@ Code in this repo is written under the stallion task lifecycle.
   "tools/**"` — code commits outside the declared scope are refused at commit time and at push.
 - `verified` needs a command pin AND a green whole-battery run (`advance verified` runs
   `npm run selftest` at the boundary); `done` needs a clean adversarial pass and every pin
-  re-run GREEN; `task-state handoff <id>` prints the evidence-graded handoff.
+  re-run GREEN (twice, with the recorded RED signature gone — intermittent and vacuous greens
+  refuse); `task-state handoff <id>` prints the evidence-graded handoff.
+- The lanes themselves are gradeable: `adversarial-runner calibrate <past-task-id>` replays a
+  recorded wave's real diff to fresh lane bundles, and `calibrate-verdict` refuses unless they
+  rediscover two-thirds (rounded up) of the wave's CRITICAL/HIGH findings — a grader that
+  cannot fail is not a grader.
 - Refusals print the exact fix command. Run it. Do not work around a refusal.
 - Self-check the wiring: `node tools/task-coverage.mjs --doctor`
 ```

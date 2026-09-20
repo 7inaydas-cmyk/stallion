@@ -123,12 +123,12 @@ export function owesProof(f) {
 }
 
 /** Pure append. Returns a NEW register; refuses (returns a string) instead of mutating on bad input. */
-export function appendFinding(register, { id, lane, severity, claim, proof, evidence }) {
+export function appendFinding(register, { id, lane, severity, claim, proof, evidence, rediscoverOf }) {
   const candidate = {
     ...register,
     findings: [
       ...register.findings,
-      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}), ...(evidence ? { evidence } : {}), dedupKey: normalizedEvidenceOf({ claim, evidence }) },
+      { id, lane: lane ?? null, severity, claim, status: "UNRESOLVED", recordedAt: new Date().toISOString(), ...(proof ? { proof } : {}), ...(evidence ? { evidence } : {}), ...(rediscoverOf ? { rediscoverOf } : {}), dedupKey: normalizedEvidenceOf({ claim, evidence }) },
     ],
   };
   const error = validateFindings(candidate);

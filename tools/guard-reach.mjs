@@ -588,6 +588,18 @@ function selfTest() {
  * seeing more is never a regression. The mode stays an OBSERVATION; what is enforced is that the
  * observation never narrows silently.
  */
+/** The recorded disk/index mode per guard, or a loud refusal: unreadable ratchet state is a defect. */
+function readRecordedModes() {
+  try {
+    return JSON.parse(readFileSync(MODES_PATH, "utf8")).modes ?? {};
+  } catch (error) {
+    console.error(`guard-reach: cannot read the modes ratchet state at ${MODES_PATH} — ${String(error.message ?? error)}`);
+    console.error("  rule: a missing or unparseable ratchet history is a defect, not an empty history — the downgrade law cannot run blind");
+    console.error("  fix: restore the file from git (git checkout -- docs/gates/guard-reach-modes.json) and re-run");
+    process.exit(1);
+  }
+}
+
 function main() {
   if (!selfTest()) process.exit(1);
 
@@ -602,12 +614,11 @@ function main() {
   const results = guards.map((guard) => ({ guard, ...checkReach(guard) }));
   const bad = results.filter((r) => r.outcome !== OUTCOME.REACHABLE);
 
-  let recorded = {};
-  try {
-    recorded = JSON.parse(readFileSync(MODES_PATH, "utf8")).modes ?? {};
-  } catch {
-    recorded = {};
-  }
+  // Fail CLOSED on unreadable ratchet state (the f5 finding, first surfaced by a calibration
+  // lane replaying the merge wave): an empty-history fallback meant a truncated or deleted modes
+  // file silently disarmed the downgrade detector and the tool then re-blessed the narrowed mode.
+  // Every sibling gate fails closed on unreadable config; this state is not the exception.
+  const recorded = readRecordedModes();
   const downgrades = results.filter((r) => r.outcome === OUTCOME.REACHABLE && recorded[r.guard.name] === "disk" && r.mode === "index");
   if (downgrades.length > 0) {
     console.error(`\nguard-reach — ${downgrades.length} guard(s) DOWNGRADED from walking the disk to the index only:\n`);

@@ -12,7 +12,8 @@
       "recordedAt": "2026-09-20T10:47:51.574Z",
       "proof": "Any of the three executed scenarios lands on a real push: npm run selftest runs every gate's fixture suite, the battery is green, and the genuine violation ships — the debt row decays unshipped (the tool's own header documents that exact 168-commit upstream decay), the orphan file is invisible from birth, and the deploy-script backtick goes unscanned; the guards that should catch the dead-gate state are themselves part of the escape (the registry declares none of the ten, the doctor only parses the JSON)",
       "evidence": "package.json:13 at 0a6dede; debt-gate.mjs:169-171; gate-coverage.mjs:31-34; executed in a clone: overdue OPEN row → --self-test EXIT 0 while the live debt-gate EXITs 1 OVERDUE; tracked orphan → self-test EXIT 0 while the live census EXITs 1; planted deploy backtick → self-test EXIT 0 while the live lint EXITs 1",
-      "dedupKey": "package.json:13 at 0a6dede; debt-gate.mjs:169-171; gate-coverage.mjs:31-34; executed in a clone: overdue open row → --self-test exit 0 while the live debt-gate exits 1 overdue; tracked orphan → self-test exit 0 while the live census exits 1; planted deploy backtick → self-test exit 0 while the live lint exits 1"
+      "dedupKey": "package.json:13 at 0a6dede; debt-gate.mjs:169-171; gate-coverage.mjs:31-34; executed in a clone: overdue open row → --self-test exit 0 while the live debt-gate exits 1 overdue; tracked orphan → self-test exit 0 while the live census exits 1; planted deploy backtick → self-test exit 0 while the live lint exits 1",
+      "rediscoverOf": "f21"
     },
     {
       "id": "f2",
@@ -88,7 +89,8 @@
       "recordedAt": "2026-09-20T10:48:59.924Z",
       "proof": "Demonstrated in a clone: a MODULE_NOT_FOUND command records as a RED pin with no --expect and the task advances to verified, exit 0 — while §11 told the verifier this exact shape was closed",
       "evidence": "task-state.mjs at 0a6dede: hasValidPin accepts any nonzero integer exitCode, no expect condition; executed MODULE_NOT_FOUND pin advancing to verified",
-      "dedupKey": "task-state.mjs at 0a6dede: hasvalidpin accepts any nonzero integer exitcode, no expect condition; executed module_not_found pin advancing to verified"
+      "dedupKey": "task-state.mjs at 0a6dede: hasvalidpin accepts any nonzero integer exitcode, no expect condition; executed module_not_found pin advancing to verified",
+      "rediscoverOf": "f18"
     },
     {
       "id": "f9",
@@ -143,18 +145,20 @@
       "recordedAt": "2026-09-20T10:50:09.990Z",
       "proof": "Demonstrated in a worktree at the audited revision: an overdue OPEN debt row makes the real debt-gate exit 1 while --self-test, the doctor, and the full battery all exit 0 with the same register on disk — the exact decay the gates were ported to stop replays silently",
       "evidence": "package.json self-test spellings; gate-coverage/guard-reach/reader-existence/doc-reconcile fixture-only comments; worktree demo with overdue row",
-      "dedupKey": "package.json self-test spellings; gate-coverage/guard-reach/reader-existence/doc-reconcile fixture-only comments; worktree demo with overdue row"
+      "dedupKey": "package.json self-test spellings; gate-coverage/guard-reach/reader-existence/doc-reconcile fixture-only comments; worktree demo with overdue row",
+      "rediscoverOf": "f4"
     },
     {
       "id": "f14",
       "lane": 3,
       "severity": "HIGH",
-      "claim": "guard-reach's committed proof artifacts are read by nothing any transport executes: loadRegistry and the modes-ratchet read exist only inside main(), which no hook, CI step, or battery member runs — 'each registered guard is PROVEN to reach' is a stored claim with no consumer, and six ported tools sit in neither guards nor notRegistered at the audited tree.",
+      "claim": "guard-reach's committed proof artifacts — docs/gates/guard-reach.json (the guards registry with probe content) and docs/gates/guard-reach-modes.json (the disk-to-index downgrade ratchet) — are read by nothing that any transport executes: loadRegistry(CONFIG_PATH) and the MODES_PATH read exist only inside main(), main() is reachable only via a bare CLI call no hook/CI/battery step makes, and the battery member returns at --self-test before touching either file. 'Each registered guard is PROVEN to reach' is therefore a stored claim with no consumer; the ratchet that FAILs on a disk-to-index downgrade never runs, so the modes snapshot is stale-on-arrival.",
       "status": "UNRESOLVED",
       "recordedAt": "2026-09-20T10:50:10.021Z",
       "proof": "Demonstrated: pointing the flagship registered guard at a nonexistent script (registry still parses) passes the entire battery and doctor while the real guard-reach exits 1 naming the vanished gate — a control built to catch guards that never fire, that itself never fires",
       "evidence": "guard-reach.mjs main-only reads at :594,:607; worktree demo with tools/vanished-gate.mjs",
-      "dedupKey": "guard-reach.mjs main-only reads at :594,:607; worktree demo with tools/vanished-gate.mjs"
+      "dedupKey": "guard-reach.mjs main-only reads at :594,:607; worktree demo with tools/vanished-gate.mjs",
+      "rediscoverOf": "f14"
     },
     {
       "id": "f15",
@@ -165,7 +169,8 @@
       "recordedAt": "2026-09-20T10:50:10.057Z",
       "proof": "Demonstrated: a claim whose anchor matches no file anywhere (doc-reconcile live exits 1) leaves the full battery and doctor at exit 0 — any prose/code drift the registry exists to catch sails through green",
       "evidence": "doc-reconcile selfTest fixtures at :344; worktree demo with a false anchor",
-      "dedupKey": "doc-reconcile selftest fixtures at :344; worktree demo with a false anchor"
+      "dedupKey": "doc-reconcile selftest fixtures at :344; worktree demo with a false anchor",
+      "rediscoverOf": "f10"
     },
     {
       "id": "f16",
@@ -186,7 +191,8 @@
       "recordedAt": "2026-09-20T10:50:46.840Z",
       "proof": "Any push at this revision: CI's battery step exits 1 at member 5, every later workflow step is skipped, and the doctor exits 0 in the exact tree where the battery exits 1 — the doctor's battery law is textual membership only, never runnability in a clean clone; the verified phase ran locally where node_modules exists, so the lifecycle stayed green while CI was red on every push",
       "evidence": "Worktree at 0a6dede with no node_modules: npm run selftest dies at complexity-gate with ERR_MODULE_NOT_FOUND; workflow has no npm ci; doctor exits 0 alongside",
-      "dedupKey": "worktree at 0a6dede with no node_modules: npm run selftest dies at complexity-gate with err_module_not_found; workflow has no npm ci; doctor exits 0 alongside"
+      "dedupKey": "worktree at 0a6dede with no node_modules: npm run selftest dies at complexity-gate with err_module_not_found; workflow has no npm ci; doctor exits 0 alongside",
+      "rediscoverOf": "f7"
     },
     {
       "id": "f18",
@@ -219,7 +225,8 @@
       "recordedAt": "2026-09-20T10:53:25.362Z",
       "proof": "Demonstrated on an extracted audited tree: deleting reader-existence.json (or guard-reach.json, remote-string.json, coverage.json, doc-claims.json) leaves the full battery exit 0 and the doctor green, while the live gate exits 1 with GATE_DEFECT — a one-file merge-conflict mistake produces CI green as five gates silently stop producing verdicts",
       "evidence": "the self-test early-returns before live config in five gates; extraction demo with deleted configs",
-      "dedupKey": "the self-test early-returns before live config in five gates; extraction demo with deleted configs"
+      "dedupKey": "the self-test early-returns before live config in five gates; extraction demo with deleted configs",
+      "rediscoverOf": "f9"
     },
     {
       "id": "f21",
@@ -263,7 +270,8 @@
       "recordedAt": "2026-09-20T10:55:09.776Z",
       "proof": "Executed in a scratch clone of the audited tree: a threshold bump in docs/gates/complexity.json committed with no task footer passes all three fence surfaces (exit 0 each) and every guard stays green — the gated party rewrites the fence's own law in a commit no fence binds, the exact smuggle class the repo already closed for hooks and workflows",
       "evidence": "CODE_TREES and isCodePath exclude docs; fence range skip; live reproduction with a footer-less threshold commit passing all three surfaces",
-      "dedupKey": "code_trees and iscodepath exclude docs; fence range skip; live reproduction with a footer-less threshold commit passing all three surfaces"
+      "dedupKey": "code_trees and iscodepath exclude docs; fence range skip; live reproduction with a footer-less threshold commit passing all three surfaces",
+      "rediscoverOf": "f1"
     },
     {
       "id": "f25",
@@ -274,7 +282,8 @@
       "recordedAt": "2026-09-20T10:55:09.815Z",
       "proof": "Executed in a scratch clone: a MODULE_NOT_FOUND command records as a RED pin and status reports verified unblocked — the gate believes the client's nonzero exit is assertion evidence, and at done the same vacuous command trivially exits 0 so the GREEN re-run also passes",
       "evidence": "hasValidPin accepts any nonzero integer exitCode with no expect condition; expectationRefusal applied only when the author volunteers the flag; executed MODULE_NOT_FOUND pin",
-      "dedupKey": "hasvalidpin accepts any nonzero integer exitcode with no expect condition; expectationrefusal applied only when the author volunteers the flag; executed module_not_found pin"
+      "dedupKey": "hasvalidpin accepts any nonzero integer exitcode with no expect condition; expectationrefusal applied only when the author volunteers the flag; executed module_not_found pin",
+      "rediscoverOf": "f22"
     },
     {
       "id": "f26",
@@ -356,5 +365,12 @@
   ],
   "sweptBase": "f502259d30c585aad5efc3809cd36cd7397b9cf2",
   "sweptHead": "0a6dede3ca0f2071ef9ee10d6231b4de5bb5c3f6",
-  "calibration": true
+  "calibration": true,
+  "calibrationVerdict": {
+    "rediscovered": 9,
+    "known": 11,
+    "bar": 8,
+    "passed": true,
+    "at": "2026-09-20T11:15:48.741Z"
+  }
 }

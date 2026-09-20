@@ -435,28 +435,44 @@ export function knownDefectsOf(register) {
 
 const CALIBRATION_STOP = new Set("because between cannot commits defects different finding fresh gradient instructor nothing reported rewinds severity should theoretical unsupported verified".split(" "));
 
-/** Distinctive tokens of a claim: ≥6 chars, hyphens kept, stopwords out — the matcher's vocabulary. */
+/** Distinctive tokens of a claim: ≥6 chars, hyphens kept, plural-stemmed, stopwords out. */
 export function claimTokens(claim) {
   const tokens = new Set();
   for (const raw of `${claim}`.toLowerCase().split(/[^a-z-]+/)) {
     const token = raw.replace(/^-+|-+$/g, "");
-    if (token.length >= 6 && !CALIBRATION_STOP.has(token)) tokens.add(token);
+    if (token.length < 6 || CALIBRATION_STOP.has(token)) continue;
+    // Light plural stemming: invocation/invocations are one vocabulary unit, and the link
+    // substance floor was failing on exactly that pair.
+    const stemmed = token.length >= 7 && token.endsWith("s") && !token.endsWith("ss") ? token.slice(0, -1) : token;
+    tokens.add(stemmed);
   }
   return tokens;
 }
 
 /**
- * Does a reported claim rediscover a known defect? Shared distinctive vocabulary — either three
- * shared tokens or a quarter of the union. Tuned by the shape that matters: a paraphrase of the
- * original finding matches; a different finding about a different escape does not.
+ * Shared-distinctive-token count between two claims, or 0 when the overlap is not a rediscovery.
+ * TWO bars, tuned on the real replay matrix (where clear rediscoveries share ≥4 tokens or 3
+ * dense ones, and the false adjacency hits the lanes flagged share exactly 3 sparse): at least
+ * four shared tokens, or three when they own a quarter of the smaller claim's vocabulary.
+ * Generic class-level prose (battery, wiring, commit) shares threes across unrelated escapes
+ * but never owns a quarter of a specific one. A heuristic, honestly labeled: the verdict lists
+ * the unmatched knowns so a human reviews what tokens cannot see.
  */
-export function rediscovers(knownClaim, reportedClaim) {
+export function overlapOf(knownClaim, reportedClaim) {
   const a = claimTokens(knownClaim);
   const b = claimTokens(reportedClaim);
-  if (a.size === 0 || b.size === 0) return false;
+  if (a.size === 0 || b.size === 0) return 0;
   let shared = 0;
   for (const token of a) if (b.has(token)) shared += 1;
-  return shared >= 3 || shared / (a.size + b.size - shared) >= 0.25;
+  return shared >= 4 || (shared >= 3 && shared / Math.min(a.size, b.size) >= 0.25) ? shared : 0;
+}
+
+/**
+ * Does a reported claim rediscover a known defect? A paraphrase of the original finding matches
+ * (specific vocabulary, densely shared); a different finding about a different escape does not.
+ */
+export function rediscovers(knownClaim, reportedClaim) {
+  return overlapOf(knownClaim, reportedClaim) > 0;
 }
 
 /** The rediscovery bar for a known-defect set: two-thirds, rounded up — 9 known ⇒ 6, the original grill design. */
@@ -464,11 +480,51 @@ export function barOf(knownCount) {
   return Math.ceil((2 * knownCount) / 3);
 }
 
-/** Pure: which known defects were rediscovered, and whether the bar holds. Fewer than three known defects pins nothing and refuses. */
-export function calibrationVerdict(known, reportedClaims, bar) {
-  const hits = known.map((f) => reportedClaims.some((c) => rediscovers(f.claim, c)));
-  const rediscovered = hits.filter(Boolean).length;
-  return { known: known.length, rediscovered, bar, refuse: known.length < 3 || rediscovered < bar };
+/** Raw count of shared distinctive tokens, no density bars — the substance floor an explicit link owes. */
+function rawSharedTokens(knownClaim, reportedClaim) {
+  const a = claimTokens(knownClaim);
+  let shared = 0;
+  for (const token of claimTokens(reportedClaim)) if (a.has(token)) shared += 1;
+  return shared;
+}
+
+/**
+ * Pure: which known defects were rediscovered, and whether the bar holds. TWO counting paths:
+ * (a) MUTUAL best-match over token overlap — each claim can win at most ONE known this way, so
+ * generic prose cannot blanket the set (the f6 finding); (b) EXPLICIT LINKS — a claim recorded
+ * with `rediscoverOf: <known-id>` counts only when the token overlap is non-empty, because the
+ * dispatcher's asserted correspondence still owes substance. A token heuristic cannot read
+ * paraphrase; the honest instrument records the human/LLM judgment and machine-verifies it.
+ * Fewer than three known defects pins nothing.
+ */
+export function calibrationVerdict(known, reported, bar) {
+  const claims = reported.map((r) => (typeof r === "string" ? { claim: r } : r));
+  const pairs = [];
+  known.forEach((finding, ki) => {
+    claims.forEach((entry, ci) => {
+      const overlap = overlapOf(finding.claim, entry.claim);
+      if (overlap > 0) pairs.push({ ki, ci, overlap });
+    });
+  });
+  pairs.sort((x, y) => y.overlap - x.overlap);
+  const covered = new Set();
+  const spent = new Set();
+  for (const pair of pairs) {
+    if (covered.has(pair.ki) || spent.has(pair.ci)) continue;
+    covered.add(pair.ki);
+    spent.add(pair.ci);
+  }
+  claims.forEach((entry, ci) => {
+    // No spent-guard here, deliberately: mutual matching spends a claim on its densest known,
+    // but a claim that genuinely describes two defects shows substance for both — the link is
+    // the dispatcher's asserted correspondence and the raw-token floor is its proof of substance.
+    if (typeof entry.rediscoverOf !== "string") return;
+    const ki = known.findIndex((f) => f.id === entry.rediscoverOf);
+    if (ki >= 0 && rawSharedTokens(known[ki].claim, entry.claim) >= 2) covered.add(ki);
+  });
+  const rediscovered = covered.size;
+  const unmatched = known.filter((_, ki) => !covered.has(ki)).map((f) => f.id);
+  return { known: known.length, rediscovered, bar, refuse: known.length < 3 || rediscovered < bar, unmatched };
 }
 
 function calibrationPath(id) {
@@ -487,27 +543,52 @@ function replayFactsOf(id) {
 
 function cmdCalibrate(args) {
   const id = args._[0];
-  if (!id) die("usage: calibrate <past-task-id> [--bar <n>]");
+  if (!id) die("usage: calibrate <past-task-id>");
   requireKebabId(id);
   const { register, known } = replayFactsOf(id);
   const { diffStat, fileList } = diffUnderAudit({ base: register.sweptBase, head: register.sweptHead });
   const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
+  if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes — the same pin prepare and record enforce)\n  fix: keep exactly eight '### N. Title' headings in docs/ADVERSARIAL-CHECKLIST.md`);
   const dir = `${BUNDLE_DIR}/${id}-calibration`;
   mkdirSync(dir, { recursive: true });
-  // The bundles are byte-identical in shape to a normal pass on purpose: a lane that could tell
-  // it was being graded would grade differently.
-  for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList));
+  // Production-shaped (the f8 finding): the bundles carry the standing lessons like every
+  // normal pass — EXCLUDING the replayed task's own register, which is the answer key (the f7
+  // finding). The one calibration-specific difference is the tree note below: the graded lanes
+  // must read the SWEPT HEAD, not the live tree, because the live tree carries the register.
+  const { registers: lessonRegisters } = loadRegisters(STATE_DIR);
+  const lessons = bundleBlock(lessonsIndex(lessonRegisters.filter((r) => r.task !== id)));
+  const treeNote = [
+    "## The tree under audit",
+    "",
+    `This pass audits the recorded range ${register.sweptBase.slice(0, 10)}..${register.sweptHead.slice(0, 10)}. Read file`,
+    "states AS OF THE SWEPT HEAD — `git show <head>:<path>` or a `git worktree add <tmp> <head>` — not the",
+    "live working tree, which carries later history.",
+    "",
+  ].join("\n");
+  for (const lane of lanes) {
+    const slug = `lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`;
+    writeFileSync(`${dir}/${slug}`, `${renderBundle(lane, id, diffStat, fileList, lessons)}\n${treeNote}`);
+  }
   console.log(`${lanes.length} calibration bundles written to adversarial/${id}-calibration/ — replaying ${register.sweptBase.slice(0, 8)}..${register.sweptHead.slice(0, 8)}, ${known.length} known defect(s), bar ${barOf(known.length)}`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, record with 'calibrate-record ${id} --lane <n> --severity <S> --claim <text>', then 'calibrate-verdict ${id}'`);
 }
 
-/** Validate the calibrate-record argv, or die. Split out for the ratchet's word. */
-function calibrationRecordArgs(args) {
+/** Validate the calibrate-record argv, or die. The lane law is DERIVED from the checklist (the f9 finding). */
+function calibrationRecordArgs(args, known) {
   const lane = Number(args.lane);
-  if (!Number.isInteger(lane) || lane < 1 || lane > 8) die("calibrate-record requires --lane <1..8> (the checklist escape class)");
+  const laneCount = lanesFromChecklist(readFileSync(CHECKLIST, "utf8")).length;
+  const laneLaw = laneRefusal(lane, laneCount);
+  if (laneLaw) die(`${laneLaw}\n  fix: record with --lane between 1 and ${laneCount} (the lane whose sweep produced the finding)`);
   if (!SEVERITIES.includes(args.severity)) die(`calibrate-record requires --severity in ${SEVERITIES.join(", ")}`);
   if (!args.claim || typeof args.claim !== "string") die("calibrate-record requires --claim <what is wrong, where, why it escapes>");
-  return { lane, severity: args.severity, claim: args.claim };
+  let rediscoverOf = undefined;
+  if (args.rediscovers !== undefined) {
+    if (!known.some((f) => f.id === args.rediscovers)) {
+      die(`--rediscovers names '${args.rediscovers}', which is not a known CRITICAL/HIGH finding id on the wave's register\n  fix: link one of ${known.map((f) => f.id).join(", ")}`);
+    }
+    rediscoverOf = args.rediscovers;
+  }
+  return { lane, severity: args.severity, claim: args.claim, rediscoverOf };
 }
 
 function cmdCalibrateRecord(args) {
@@ -515,34 +596,53 @@ function cmdCalibrateRecord(args) {
   if (!id) die("usage: calibrate-record <past-task-id> --lane <n> --severity <S> --claim <text>");
   requireKebabId(id);
   const { register } = replayFactsOf(id);
-  const { lane, severity, claim } = calibrationRecordArgs(args);
+  const { lane, severity, claim, rediscoverOf } = calibrationRecordArgs(args, knownDefectsOf(register));
   const registered = mutateJson(calibrationPath(id), (text) => {
     const base = text === null
       ? { ...emptyFindings(id), passStartedAt: new Date().toISOString(), sweptBase: register.sweptBase, sweptHead: register.sweptHead, calibration: true }
       : JSON.parse(text);
-    const appended = appendFinding(base, { id: `f${base.findings.length + 1}`, lane, severity, claim, proof: args.proof, evidence: args.evidence });
+    const appended = appendFinding(base, { id: `f${base.findings.length + 1}`, lane, severity, claim, proof: args.proof, evidence: args.evidence, rediscoverOf });
     if (typeof appended === "string") die(appended);
     return appended;
   });
   console.log(`calibration finding recorded for ${id} — ${registered.findings[registered.findings.length - 1].id} (lane ${lane}, ${severity})`);
 }
 
-function cmdCalibrateVerdict(args) {
-  const id = args._[0];
-  if (!id) die("usage: calibrate-verdict <past-task-id> [--bar <n>]");
-  requireKebabId(id);
+/** Load both registers for a calibration verdict, or die on every precondition the verdict owes. */
+function calibrationInputsOf(id) {
   const { ok, register } = loadFindings(findingsPath(id));
   if (!ok || register === null) die(`no findings register for '${id}' — calibrate it first`);
   const known = knownDefectsOf(register);
   const { ok: calibrationOk, register: calibration, error } = loadFindings(calibrationPath(id));
   if (!calibrationOk) die(`the calibration register does not parse: ${error}`);
   if (calibration === null) die(`no calibration register for '${id}' — run calibrate, dispatch, and calibrate-record first`);
-  const bar = Number(args.bar) > 0 ? Number(args.bar) : barOf(known.length);
-  const verdict = calibrationVerdict(known, calibration.findings.map((f) => f.claim), bar);
+  if (calibration.sweptBase !== register.sweptBase || calibration.sweptHead !== register.sweptHead) {
+    die(`the calibration graded a different sweep than the register now records — the wave was re-prepared between record and verdict (the f12 finding)\n  rule: a verdict about a correspondence that no longer exists certifies nothing\n  fix: re-run calibrate ${id} against the current register and re-dispatch`);
+  }
+  return { register, known, calibration };
+}
+
+function cmdCalibrateVerdict(args) {
+  const id = args._[0];
+  if (!id) die("usage: calibrate-verdict <past-task-id>");
+  requireKebabId(id);
+  if (args.bar !== undefined) die(`--bar is refused: the bar is the law — two-thirds of the known defects, rounded up — and a knob that lowers it would make the grader's failure optional (the f1 finding, demonstrated live at --bar 1)\n  fix: calibrate against a wave whose lanes can genuinely clear barOf(known), or strengthen the checklist`);
+  const { known, calibration } = calibrationInputsOf(id);
+  const bar = barOf(known.length);
+  const verdict = calibrationVerdict(known, calibration.findings, bar);
+  // The verdict is DURABLE (the f1 finding: a pass with no trace is indistinguishable from a
+  // lawful one): the register records what was judged, at which bar, and when.
+  mutateJson(calibrationPath(id), (text) => {
+    const base = JSON.parse(text);
+    return { ...base, calibrationVerdict: { rediscovered: verdict.rediscovered, known: verdict.known, bar, passed: !verdict.refuse, at: new Date().toISOString() } };
+  });
   if (verdict.refuse) {
     die(`CALIBRATION FAILED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s), bar ${verdict.bar}\n  rule: the lanes are the grader, and a grader that cannot fail is not a grader — a wave dispatched by lanes that miss two-thirds of past escapes certifies nothing\n  fix: strengthen the checklist's escape classes (docs/ADVERSARIAL-CHECKLIST.md) or the bundle's audit law, then re-calibrate`);
   }
   console.log(`CALIBRATION PASSED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s) (bar ${verdict.bar}); the lanes can fail, so their verdicts certify`);
+  if (verdict.unmatched.length > 0) {
+    console.log(`  unmatched by the token heuristic (human-review these): ${verdict.unmatched.join(", ")}`);
+  }
 }
 
 /** The calibration case family: the matcher, the bar, and the verdict — pure, like the law. */
@@ -550,18 +650,36 @@ function selfTestCalibration(fail) {
   const walk = "the walkCorpus manifest-skip compares corpus-relative against cwd-relative manifest paths";
   const cases = [
     ["an identical claim rediscovers", rediscovers(walk, walk)],
-    ["a paraphrase rediscovers (shared distinctive vocabulary)", rediscovers(walk, "walkCorpus compares the manifest-skip against relative paths in the wrong coordinate system — the manifest path never matches")],
+    ["a paraphrase rediscovers (dense specific vocabulary)", rediscovers(walk, "walkCorpus compares the manifest-skip against relative paths in the wrong coordinate system — the manifest path never matches")],
     ["a different escape does not rediscover", !rediscovers(walk, "the staged gate forgets to refuse unscoped docs-only deletions in the reader census")],
-    ["claimTokens drops short and stopword tokens, keeps hyphens", (() => { const t = claimTokens("the vendor-drift self-test refuses because six tokens"); return t.has("vendor-drift") && t.has("self-test") && !t.has("the") && !t.has("six"); })()],
+    ["generic class-level prose does not rediscover a specific defect (the saturation finding)", !rediscovers("the battery crashes in every fresh clone because the static typescript import is member five and the workflow installs nothing", "the docs wiring claims the battery fails the build but no transport invokes the register anywhere")],
+    ["claimTokens drops short and stopword tokens, keeps hyphens", (() => {
+      const t = claimTokens("the vendor-drift self-test refuses because six tokens");
+      return t.has("vendor-drift") && t.has("self-test") && t.has("tokens") && !t.has("because");
+    })()],
     ["knownDefectsOf keeps only CRITICAL and HIGH", knownDefectsOf({ findings: [{ severity: "CRITICAL", claim: "x" }, { severity: "HIGH", claim: "y" }, { severity: "MEDIUM", claim: "z" }, { severity: "LOW", claim: "w" }] }).length === 2],
     ["barOf is two-thirds rounded up — 9 known demand 6, the original grill design", barOf(9) === 6 && barOf(3) === 2 && barOf(4) === 3],
-    ["the verdict passes at the bar and refuses one under it", (() => {
-      const a = "walker coordinates and manifests mismatch";
-      const b = "staged reader census forgets unscoped deletions";
-      const known = [...Array.from({ length: 5 }, () => ({ severity: "HIGH", claim: a })), ...Array.from({ length: 4 }, () => ({ severity: "HIGH", claim: b }))];
-      const pass = calibrationVerdict(known, [a, b], 6);
-      const under = calibrationVerdict(known, [a], 6);
+    ["the verdict passes at the bar and refuses one under it (mutual best-match)", (() => {
+      const letters = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"];
+      const known = letters.map((l) => ({ severity: "HIGH", claim: `the walker coordinates defect variant ${l} manifests in manifests` }));
+      const all = letters.map((l) => `walker coordinates variant ${l} restated inside manifests`);
+      const pass = calibrationVerdict(known, all, 6);
+      const under = calibrationVerdict(known, all.slice(0, 5), 6);
       return !pass.refuse && pass.rediscovered === 9 && under.refuse && under.rediscovered === 5;
+    })()],
+    ["one claim cannot blanket many knowns (the mutual-match law)", (() => {
+      const known = Array.from({ length: 5 }, () => ({ severity: "HIGH", claim: "walker coordinates and manifests mismatch" }));
+      return calibrationVerdict(known, ["walker coordinates and manifests mismatch"], 3).rediscovered === 1;
+    })()],
+    ["an explicit link counts only when the overlap shows substance", (() => {
+      const known = [
+        { id: "fA", severity: "HIGH", claim: "walker coordinates and manifests mismatch" },
+        { id: "fB", severity: "HIGH", claim: "the staged census forgets deletions entirely" },
+        { id: "fC", severity: "HIGH", claim: "an unrelated third defect about proxies" },
+      ];
+      const linked = calibrationVerdict(known, [{ claim: "walker coordinates variant restated inside manifests", rediscoverOf: "fA" }], 1);
+      const hollow = calibrationVerdict(known, [{ claim: "an entirely battery wiring prose with no shared vocabulary at all", rediscoverOf: "fA" }], 1);
+      return linked.rediscovered === 1 && !linked.refuse && hollow.rediscovered === 0 && hollow.refuse;
     })()],
     ["fewer than three known defects refuses — insufficient signal pins nothing", calibrationVerdict([{ severity: "HIGH", claim: "a" }], ["a"], 1).refuse],
     ["an empty claim never matches", !rediscovers(walk, "")],
