@@ -145,7 +145,9 @@ fence's own surface (`.githooks/**`, `.github/**`, `docs/gates/**`, `.stallion-b
 protected-tier blast radius: only a protected or migration task with a recorded approval may
 declare it — judged STRUCTURALLY (a pattern whose leading segments coincide with a surface root
 refuses whether or not the named file exists) and re-judged at BOTH transports, the commit-msg
-gate and the push fence, not only at declaration time. Tasks
+gate and the push fence, not only at declaration time. At the fence the re-judgment carries the
+same mid-history-law cutover as every law here: commits at-or-after 3bf3bac answer to it, and
+commits that settled before keep the first-segment law of their day. Tasks
 created before the scope-law cutover (2026-09-18T20:50:00.000Z in stallion's own history) are
 grandfathered for their settled commits — a FINISHED task never authorizes new code, whatever
 its age. The fence discriminates against the SETTLED ANCHOR — the remote tip this push is
