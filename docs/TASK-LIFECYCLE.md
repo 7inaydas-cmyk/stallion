@@ -14,6 +14,7 @@ remembered.
 | `verified` | RED-check evidence recorded, and the evidence files still exist on disk |
 | `adversarial` | a fresh-context pass over the diff, recorded in the findings register |
 | `done` | terminal; findings register aggregates clean. Reopen as a new task, never by rewinding |
+| `retired` | terminal by EVENT, not transition: a task that never executed, closed with a recorded reason |
 
 ## Risk classes
 
@@ -28,6 +29,12 @@ remembered.
 ## The law the machine enforces
 
 - Phases advance one at a time, in order. No skips, no backwards moves, nothing leaves `done`.
+- **A task that will never execute retires**: `retire <id> --because "<why — name the successor
+  or the fulfilled-by work>"` appends a terminal `retired` event. Lawful only from `intake` or
+  `planned` — a task that has begun landing code must finish its lifecycle honestly (its commits
+  cite it; retirement would orphan them). Once-only; the reason rides the register forever; a
+  retired record authorizes nothing at any gate, and the fence refuses events after a retirement
+  as hand-forged shapes.
 - `planning-only` and `experiment` tasks never reach `executing`.
 - `protected` and `migration` tasks carry an approval whose reference literally equals an entry
   heading in the decisions register. A substring is not a decision.
@@ -91,6 +98,8 @@ require somewhere.
 node tools/task-state.mjs new fix-the-thing --risk-class runtime-code
 node tools/task-state.mjs advance fix-the-thing planned
 node tools/task-state.mjs scope fix-the-thing --add "apps/api/**,packages/db/**"
+# a task that will never execute (superseded, or fulfilled by other work) closes honestly:
+node tools/task-state.mjs retire fix-the-thing --because "superseded by <other-id> — it landed this work"
 node tools/task-state.mjs approve fix-the-thing --decision "<full DECISIONS.md heading>"
 node tools/task-state.mjs advance fix-the-thing executing
 # ...work; watch the pin fail against the broken code first, then record it...

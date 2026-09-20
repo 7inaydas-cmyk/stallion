@@ -80,10 +80,16 @@ export const PHASES = ["intake", "planned", "executing", "verified", "adversaria
 export const IMPLEMENTATION_FORBIDDEN = new Set(["planning-only", "experiment"]);
 export const APPROVAL_REQUIRED = new Set(["protected", "migration"]);
 
-/** Phase is derived, never stored — and a forged/typo'd `to` is ignored rather than trusted. */
+/** Phase is derived, never stored — and a forged/typo'd `to` is ignored rather than trusted.
+ *  A `retired` event is TERMINAL (like done, but reached by event, not transition): a task that
+ *  never executed retires with a recorded reason instead of misleading every future status read.
+ *  Nothing after a retirement un-retires the record — the fence refuses that hand-forged shape. */
 export function derivePhase(events) {
   let phase = "intake";
-  for (const e of events) if (e.type === "transition" && PHASES.includes(e.to)) phase = e.to;
+  for (const e of events) {
+    if (e.type === "retired") return "retired";
+    if (e.type === "transition" && PHASES.includes(e.to)) phase = e.to;
+  }
   return phase;
 }
 
@@ -165,6 +171,24 @@ export function fenceSurfaceRefusal(record, patterns) {
 
 function hasApproval(record) {
   return record.events.some((e) => e.type === "approval");
+}
+
+/** Pure: the retirement law. A task that never executed (intake or planned) may retire with a
+ *  recorded reason — the honest alternative to a planned record that misleads every future
+ *  status read. A task that has begun landing code must finish its lifecycle honestly (its
+ *  commits cite it; retirement would orphan them), done is terminal, and retirement is
+ *  once-only. null = the retirement is lawful. */
+export function retirementRefusal(record, because) {
+  if (typeof because !== "string" || because.trim().length === 0) {
+    return "retire requires --because — retiring a task without a reason is deleting evidence";
+  }
+  const phase = derivePhase(record.events ?? []);
+  if (phase === "retired") return `task '${record.id}' is already retired — retirement is once-only`;
+  if (phase === "done") return "done is terminal — a finished task retires nothing; reopen the concern as a new task";
+  if (PHASES.indexOf(phase) > PHASES.indexOf("planned")) {
+    return `task '${record.id}' is '${phase}' — a task that has begun landing code must finish its lifecycle honestly; retirement is for tasks that never executed`;
+  }
+  return null;
 }
 
 function redCheckEvidence(record) {
@@ -296,6 +320,13 @@ const TRANSITION_GUARDS = {
   "adversarial->done": doneGuard,
 };
 
+/** The terminal phases' refusal, shared shape for done and retired (both never advance). */
+function terminalAdvanceRefusal(record, current) {
+  if (current === "done") return { reason: "done is terminal — a finished task is reopened as a NEW task, not by rewinding this one", remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}` };
+  if (current === "retired") return { reason: "retired is terminal — a retired task never advances; its successor carries the work", remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}   (the retirement's --because names the successor)` };
+  return null;
+}
+
 /**
  * Pure transition judge. `findings` is the loaded findings register (null = none recorded) and
  * `evidenceOnDisk` is whether every recorded RED-check evidence path still exists — the fs fact the
@@ -307,7 +338,8 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, fac
   if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record", remedy: "start a real one: node tools/task-state.mjs new <id> --risk-class <class>" };
   if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}`, remedy: `phases are exactly: ${PHASES.join(", ")}` };
   const current = derivePhase(record.events);
-  if (current === "done") return { ok: false, reason: "done is terminal — a finished task is reopened as a NEW task, not by rewinding this one", remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}` };
+  const terminal = terminalAdvanceRefusal(record, current);
+  if (terminal) return { ok: false, ...terminal };
   if (PHASES.indexOf(target) !== PHASES.indexOf(current) + 1) {
     const next = PHASES[PHASES.indexOf(current) + 1];
     return { ok: false, reason: `illegal jump ${current} -> ${target}: phases advance one at a time, in order`, remedy: `node tools/task-state.mjs advance ${record.id} ${next}` };
@@ -324,9 +356,17 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, fac
  *  exceptions are the runs advance performs and a status read must not: `advance done` re-runs
  *  command pins, `advance verified` runs the selftest battery — status reports that each WILL
  *  happen instead (a sweep caught the silent fail-open before the note existed). */
+/** The terminal phases' status line — both close the record to further obligations. */
+function terminalObligations(current) {
+  if (current === "done") return ["done — reopen as a new task if more work is needed"];
+  if (current === "retired") return ["retired — never executed, authorizes nothing; the reason rides the record forever"];
+  return null;
+}
+
 export function obligations(record, findings, evidenceOnDisk) {
   const current = derivePhase(record.events);
-  if (current === "done") return ["done — reopen as a new task if more work is needed"];
+  const terminal = terminalObligations(current);
+  if (terminal) return terminal;
   const target = PHASES[PHASES.indexOf(current) + 1];
   const verdict = evaluateTransition(record, findings, target, evidenceOnDisk);
   if (verdict.ok && target === "done") {
@@ -379,7 +419,7 @@ export function handoffReport(record, findings, evidenceOnDisk = true, resolveEv
     ...unresolved.map((f) => `- finding ${f.id} (${f.severity}): ${flat(f.claim)}`),
     ...[...missing].map((id) => `- finding ${id} RESOLVED but its evidence no longer exists — re-resolve with live paths`),
     ...obligationsLeft.map((o) => `- obligation: ${flat(o)}`),
-    ...(phase !== "done" ? ["- (the task is not done: the done gate re-runs every pin and re-verifies resolve evidence)"] : []),
+    ...(phase !== "done" && phase !== "retired" ? ["- (the task is not done: the done gate re-runs every pin and re-verifies resolve evidence)"] : []),
   ];
   return lines.join("\n");
 }
@@ -483,6 +523,7 @@ function cmdScope(args) {
   mutateTask(id, (record) => {
     const phase = derivePhase(record.events);
     if (phase === "done") die("done is terminal — a finished task's scope is closed; new blast radius opens a new task");
+    if (phase === "retired") die("retired is terminal — a retired task's scope is closed forever; it never executes, so it never widens");
     if (PHASES.indexOf(phase) < PHASES.indexOf("planned")) {
       die(`task is '${phase}' — scope is declared once there is a plan to name a blast radius\n  fix: node tools/task-state.mjs advance ${id} planned   then re-run the scope amendment`);
     }
@@ -510,6 +551,7 @@ export function adoptionRefusal(record) {
     return `record was created after the adoption window closed (${ADOPT_WINDOW_END}) — the chain law has shipped, so an unchained record born now is a hand-forgery, not a window artifact; adoption refuses`;
   }
   if (derivePhase(record.events) === "done") return "done is terminal — a finished record is not rewritten, even to be blessed";
+  if (derivePhase(record.events) === "retired") return "retired is terminal — a retired record is never rewritten, not even to be blessed";
   if (record.events.some((e) => typeof e.entry_hash === "string")) return "record already carries a chain — adoption is a once-only act";
   return null;
 }
@@ -687,6 +729,23 @@ function cmdPinExempt(args) {
   if (typeof justification !== "string" || justification.trim().length === 0) die("pin-exempt requires --justification — an exemption without a reason is not accountability");
   mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "pin-exemption", justification }] }));
   console.log(`task ${id}: pin exemption recorded (justification in the register, forever)`);
+}
+
+/**
+ * Retire a task that will never execute — the honest ledger alternative to a planned record
+ * that misleads every future status read into believing work is queued. Lawful only before
+ * executing (a task with landed commits must finish honestly), terminal, once-only, and the
+ * reason rides the register forever. The fence treats a retired record as authorizing nothing.
+ */
+function cmdRetire(args) {
+  const id = args._[0];
+  if (!id) die("usage: retire <id> --because \"<why this task never executes — name the successor or the fulfilled-by work>\"");
+  mutateTask(id, (record) => {
+    const refusal = retirementRefusal(record, args.because);
+    if (refusal) die(`REFUSED — ${refusal}`);
+    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "retired", because: String(args.because).trim() }] };
+  });
+  console.log(`task ${id}: retired (reason in the register, forever) — never executed, authorizes nothing`);
 }
 
 function cmdAdvance(args) {
@@ -978,8 +1037,39 @@ export function selfTest() {
 
   const greenPinCount = runGreenPinCases(fail);
 
-  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const retireCases = runRetireRefusalCases(fail, { base, at, executing, adversarial }) + runRetireTerminalCases(fail, { at, executing });
+
+  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin + ${retireCases} retire cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
+}
+
+/** The retire-law refusal family: the pure retirementRefusal's every side. */
+function runRetireRefusalCases(fail, { base, at, executing, adversarial }) {
+  const cases = [
+    ["an intake task retires lawfully", retirementRefusal(base, "superseded by y") === null],
+    ["a planned task retires lawfully", retirementRefusal(executing, "superseded by y") === null],
+    ["an executing task refuses retirement — its commits cite it", (retirementRefusal(at(executing, "executing"), "x") ?? "").includes("finish its lifecycle")],
+    ["done refuses retirement (terminal twice over)", (retirementRefusal(at(adversarial, "done"), "x") ?? "").includes("done is terminal")],
+    ["a retired task refuses re-retirement (once-only)", (retirementRefusal({ ...base, events: [...base.events, { type: "retired", because: "first" }] }, "again") ?? "").includes("already retired")],
+    ["retirement without --because refuses", (retirementRefusal(executing, "   ") ?? "").includes("--because")],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
+}
+
+/** The retire-law terminal family: derivation, advance, obligations, adoption. */
+function runRetireTerminalCases(fail, { at, executing }) {
+  const retiredOf = (record) => ({ ...record, events: [...record.events, { type: "retired", because: "superseded by y" }] });
+  const advance = evaluateTransition(retiredOf(executing), null, "executing", true);
+  const cases = [
+    ["a retired event makes derivePhase terminal (the retire law)", derivePhase([{ type: "transition", to: "planned" }, { type: "retired", because: "superseded" }]) === "retired"],
+    ["a transition after a retired event cannot un-retire the record", derivePhase([{ type: "transition", to: "planned" }, { type: "retired", because: "x" }, { type: "transition", to: "executing" }]) === "retired"],
+    ["advancing a retired task refuses with the successor remedy", !advance.ok && advance.reason.includes("retired is terminal") && (advance.remedy ?? "").includes("new <new-id>")],
+    ["obligations of a retired task name the terminal state", (obligations(retiredOf(executing), null, true)[0] ?? "").includes("retired")],
+    ["adoption refuses a retired record", (adoptionRefusal({ events: [{ type: "created", at: "2026-09-19T02:50:00.000Z" }, { type: "retired", because: "x" }] }) ?? "").includes("retired is terminal")],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
 }
 
 /** Runs the GREEN-half case family; returns its count for the banner. */
@@ -1017,8 +1107,8 @@ if (isEntry) {
   try {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
-    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus, handoff: cmdHandoff, metrics: cmdMetrics };
-    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check(--command, --expect, --evidence)|pin-exempt|pin-retire|advance|status|handoff|metrics> ... (--self-test to self-test)");
+    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, retire: cmdRetire, advance: cmdAdvance, status: cmdStatus, handoff: cmdHandoff, metrics: cmdMetrics };
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check(--command, --expect, --evidence)|pin-exempt|pin-retire|retire(--because)|advance|status|handoff|metrics> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {

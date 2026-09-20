@@ -367,6 +367,12 @@ export function scopeRefusal(record, codeFiles) {
  * (see isNewCitation / anchorRecordPhase).
  */
 export function citationRefusal(record, codeFiles, isNewCommit) {
+  if (derivePhase(record.events ?? []) === "retired") {
+    return {
+      reason: `task '${record.id}' is retired — a retired task authorizes nothing, not even re-judged history (it never executed, so no commit ever lawfully cited it)`,
+      remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}   (the retirement's --because names the successor)`,
+    };
+  }
   if (isNewCommit && derivePhase(record.events ?? []) === "done") {
     return {
       reason: `task '${record.id}' is done — a finished task does not authorize new code`,
@@ -396,6 +402,26 @@ function decisionHeadingExists(ref) {
   return readFileSync(path, "utf8").split("\n").some((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
 }
 
+/** Pure: was this record's done transition stamped before the pin law existed? The stamp is
+ *  client-authored plain JSON, so it is PARSED — malformed or missing is NOT grandfathered. */
+function doneBeforePinLaw(events) {
+  const doneAt = [...(events ?? [])].reverse().find((e) => e.type === "transition" && e.to === "done")?.at ?? "";
+  const doneMs = Date.parse(doneAt);
+  return Number.isFinite(doneMs) && STRICT_UTC_STAMP.test(doneAt) && doneMs < Date.parse(PIN_LAW_CUTOVER);
+}
+
+/** Pure: defense in depth — a DONE record that predates no pin law and carries no valid
+ *  pin/exemption is a hand-edit or a forgery, and refuses at the fence. In-flight records are
+ *  exempt: code commits land at executing, before the pin exists by design (verified is where
+ *  pins bind). Records done before PIN_LAW_CUTOVER are grandfathered path-only evidence. */
+function prePinLawDoneRefusal(record, phase) {
+  if (phase !== "done" || hasValidPin(record) || hasPinExemption(record)) return null;
+  if (!doneBeforePinLaw(record.events)) {
+    return "done record carries no valid command pin (and no recorded exemption) — hand-edited records refuse at the fence";
+  }
+  return null;
+}
+
 /**
  * Pure: does this record authorize implementation? Returns null when yes, the violated law when no.
  * Fail-closed: a malformed record refuses rather than passes.
@@ -406,28 +432,41 @@ export function recordRefusal(record) {
   const classLaw = classRefusal(record);
   if (classLaw) return classLaw;
   if (record.riskClass === "docs-only") return "risk class 'docs-only' writes docs, not code — a code change needs a runtime-code/protected/migration task";
-  // Defense in depth: a DONE record that predates no pin law and carries no valid pin/exemption
-  // is a hand-edit or a forgery — refuse it at the fence. In-flight records are exempt: code
-  // commits land at executing, before the pin exists by design (verified is where pins bind).
-  // Records done before PIN_LAW_CUTOVER are grandfathered path-only evidence. The doneAt stamp
-  // is client-authored plain JSON, so it is PARSED: a malformed or missing stamp is NOT
-  // grandfathered (fail closed — the forge case is the case that must not escape).
   const phase = derivePhase(record.events ?? []);
-  if (phase === "done" && !hasValidPin(record) && !hasPinExemption(record)) {
-    const doneAt = [...(record.events ?? [])].reverse().find((e) => e.type === "transition" && e.to === "done")?.at ?? "";
-    const doneMs = Date.parse(doneAt);
-    if (!(Number.isFinite(doneMs) && STRICT_UTC_STAMP.test(doneAt) && doneMs < Date.parse(PIN_LAW_CUTOVER))) {
-      return "done record carries no valid command pin (and no recorded exemption) — hand-edited records refuse at the fence";
-    }
-  }
+  const pinLaw = prePinLawDoneRefusal(record, phase);
+  if (pinLaw) return pinLaw;
   // The chain law, re-judged here because a hand-edited record must not sail through on the
   // append-time check alone (the same defense-in-depth as pin parity): a post-cutover record
   // with a broken or missing chain is tampering or a laundering attempt, and refuses.
   if (recordMustChain(record) && chainError(record.events ?? [])) {
     return `record chain broken or unadopted (chain law in force since ${CHAIN_CUTOVER}) — tamper-evident records refuse at the fence`;
   }
+  const retireShape = retirementShapeRefusal(record.events ?? []);
+  if (retireShape) return retireShape;
+  if (phase === "retired") {
+    return "task is 'retired' — a retired task authorizes nothing at the fence (the retirement's --because names the successor)";
+  }
   if (PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf("executing")) {
     return `task is '${phase}' — code landed before the machine authorized executing`;
+  }
+  return null;
+}
+
+/** Pure: the retirement's hand-forgery shapes. The command law refuses to append anything after
+ *  a retired event (terminal) and refuses retirement past planned (a task with landed commits
+ *  must finish honestly) — so a record carrying those shapes was written by hand, and the fence
+ *  refuses it (fail closed, like every other shape law re-judged here). */
+export function retirementShapeRefusal(events) {
+  const list = events ?? [];
+  const first = list.findIndex((e) => e?.type === "retired");
+  if (first === -1) return null;
+  if (list.length > first + 1) {
+    return `an event follows the retired event at position ${first} — retired is terminal; a hand-edited record refuses`;
+  }
+  let phase = "intake";
+  for (const e of list.slice(0, first)) if (e.type === "transition" && PHASE_ORDER.includes(e.to)) phase = e.to;
+  if (PHASE_ORDER.indexOf(phase) > PHASE_ORDER.indexOf("planned")) {
+    return `a retired event follows a '${phase}' transition — retirement is lawful only before executing; hand-edited records refuse`;
   }
   return null;
 }
@@ -1252,6 +1291,7 @@ export function selfTest() {
       return citationRefusal(donePost, ["tools/a.mjs"], true) !== null && citationRefusal(donePost, ["tools/a.mjs"], true).remedy?.includes("new <new-id>");
     })()],
     ["re-judged settled history citing a done task falls through to the scope law", citationRefusal(unscopedPre, ["tools/a.mjs"], false) === null],
+    ["a scoped retired task still authorizes nothing (the retire law)", citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "retired", because: "superseded by x" }] }, ["tools/a.mjs"], true) !== null],
     ["a new commit citing an in-flight scoped task passes the seam", citationRefusal(scopedPost, ["tools/a.mjs"], false) === null && citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "transition", to: "executing" }] }, ["tools/a.mjs"], true) === null],
     ["a malformed doneAt stamp does not grandfather the pin law", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "not-a-date" }] }) !== null],
   ];
@@ -1295,9 +1335,37 @@ export function selfTest() {
   ];
   for (const [name, passes] of scanCases) if (!passes) fail(`task-coverage: ${name}`);
 
-  const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${anchorCases.length} anchor + ${scanCases.length} scan cases — all counts derived`;
+  const retireSeamCount = runRetirementSeamCases(fail, record, scopedPost);
+  const retireShapeCount = runRetirementShapeCases(fail);
+
+  const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${retireSeamCount + retireShapeCount} retirement + ${anchorCases.length} anchor + ${scanCases.length} scan cases — all counts derived`;
   console.log(failures.length === 0 ? `task-coverage self-test: OK (${bannerCounts} — group counts derived where arrays are local)` : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
+}
+
+/** The retire law at the seams: citation, record naming, and the staged gate's master-key inverse. */
+function runRetirementSeamCases(fail, record, scopedPost) {
+  const retiredRecord = record("runtime-code", ["planned"], [{ type: "retired", because: "superseded by x" }]);
+  const cases = [
+    ["a retired task refuses re-judged history too — no commit ever lawfully cited it", citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "retired", because: "x" }] }, ["tools/a.mjs"], false) !== null],
+    ["recordRefusal names the retirement instead of the pre-executing line", (recordRefusal(retiredRecord) ?? "").includes("retired")],
+    ["a retired task does not keep the staged gate open (the master-key inverse)", stagedRefusal(["apps/a.ts"], [retiredRecord]) !== null],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
+}
+
+/** The retire law's hand-forgery shapes, re-judged at the fence like every other shape law. */
+function runRetirementShapeCases(fail) {
+  const cases = [
+    ["an event after retirement is a hand-forged shape", (recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "retired", because: "x" }, { type: "scope", patterns: ["tools/**"] }] }) ?? "").includes("follows the retired event")],
+    ["retirement past planned is a hand-forged shape", (retirementShapeRefusal([{ type: "created" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "retired", because: "x" }]) ?? "").includes("lawful only before executing")],
+    ["a double retirement is caught by the once-only shape law", (retirementShapeRefusal([{ type: "created" }, { type: "retired", because: "a" }, { type: "retired", because: "b" }]) ?? "").includes("follows the retired event")],
+    ["a lawful retirement record carries a clean shape", retirementShapeRefusal([{ type: "created" }, { type: "transition", to: "planned" }, { type: "retired", because: "x" }]) === null],
+    ["records without retirement events never trip the shape law", retirementShapeRefusal([{ type: "created" }, { type: "transition", to: "executing" }]) === null],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
 }
 
 const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
