@@ -13,6 +13,14 @@ law.
 git subtree add   # or plain copy: tools/*.mjs into <your-repo>/tools/
 ```
 
+Commit the lineage WITH the copy: `tools/harness/VENDOR.json` (schema
+`stallion/vendor-manifest@1`) records the upstream stallion commit, the sha256 of every vendored
+file as it stands in your tree (grafts included), and the host paths of the law docs the
+refusals cite. `vendor-drift` runs it both ways — an undeclared, patched, or deleted vendored
+file refuses with a re-vendor remedy, and remedies only name paths your tree actually carries.
+Vendored code is superseded by re-vendoring, never by patching; every re-vendor regenerates the
+manifest in the same commit.
+
 ## 2. Scripts (package.json)
 
 ```json
@@ -303,6 +311,12 @@ which is the vendor template — copy it and edit it to your repo. Each gate shi
 - `gate-registry` — every gate invocation declared once in `docs/gates/gate-registry.json` and
   drift-checked across the transports that carry it, both directions: missing from a declared
   transport, or shadowing in an undeclared one.
+- `vendor-drift` — the vendoring lineage gate (the 2026-09-20 Letta evaluation, gap 3): a
+  vendored tree's committed `VENDOR.json` manifest is law, and divergence in either direction
+  refuses with a re-vendor remedy — an undeclared file under the corpus, a patched or deleted
+  vendored file, a mapped law doc that does not exist. `--upstream` mode keeps stallion itself
+  from ever carrying a forged manifest. This is the tool behind §1's "superseded by
+  re-vendoring, not by patching" — that sentence was prose until this gate shipped.
 
 The doctor carries one derived family check: `docs/gates/` must be non-empty and every JSON in
 it must parse. Wiring these gates into pre-push/CI is a vendor choice; gate-registry declares

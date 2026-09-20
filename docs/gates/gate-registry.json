@@ -102,6 +102,14 @@
       "why": "a bare commit on a detached HEAD refuses loudly"
     },
     {
+      "id": "vendor-drift-live",
+      "invocation": "node tools/vendor-drift.mjs --upstream",
+      "transports": [
+        "battery"
+      ],
+      "why": "the vendoring lineage gate: in a vendored tree the committed VENDOR manifest is law — an undeclared, patched, or deleted vendored file and a missing mapped doc each refuse with a re-vendor remedy; upstream mode keeps stallion itself from ever carrying a forged manifest"
+    },
+    {
       "id": "guard-reach-live",
       "invocation": "node tools/guard-reach.mjs",
       "transports": [

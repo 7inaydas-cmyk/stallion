@@ -1,0 +1,63 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "vendor-lineage-gate",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T08:57:19.604Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "0d4dcf8ea87d43b131cea969cbd397feb2da2b6898b0352bc04006220e261398"
+    },
+    {
+      "at": "2026-09-20T08:57:19.637Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "0d4dcf8ea87d43b131cea969cbd397feb2da2b6898b0352bc04006220e261398",
+      "entry_hash": "2979f03002abf9a3656c97d4933d89d4af503a117fb7c7224025ee8af2303b39"
+    },
+    {
+      "at": "2026-09-20T08:57:19.667Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**",
+        "docs/**",
+        "package.json"
+      ],
+      "seq": 2,
+      "parent_hash": "2979f03002abf9a3656c97d4933d89d4af503a117fb7c7224025ee8af2303b39",
+      "entry_hash": "9d17a67d09a9f1601eb1ed2ccf64bffe0d0b48aee665e18289c274ff84afa116"
+    },
+    {
+      "at": "2026-09-20T08:57:19.698Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "9d17a67d09a9f1601eb1ed2ccf64bffe0d0b48aee665e18289c274ff84afa116",
+      "entry_hash": "93b366e83fae647fc10ea6f866e718fb9bc813292ea2946d4e846b1ef3b3d442"
+    },
+    {
+      "at": "2026-09-20T08:57:19.734Z",
+      "type": "red-check",
+      "expect": "Cannot find module",
+      "command": "node tools/vendor-drift.mjs --upstream",
+      "exitCode": 1,
+      "outputDigest": "bcee71265bf4",
+      "seq": 4,
+      "parent_hash": "93b366e83fae647fc10ea6f866e718fb9bc813292ea2946d4e846b1ef3b3d442",
+      "entry_hash": "c32f09441c32cd2b47dcc9e6d40557e298d793f358949bfc111d4779cc8732d6"
+    },
+    {
+      "at": "2026-09-20T09:12:27.119Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "c32f09441c32cd2b47dcc9e6d40557e298d793f358949bfc111d4779cc8732d6",
+      "entry_hash": "725151620c1a6602ddae11914883bc9e8e398d2ad13fc017f5c2ab1a7064e915"
+    }
+  ]
+}
