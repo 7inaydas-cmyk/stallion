@@ -2,8 +2,8 @@
 
 The tools are dependency-free Node scripts that resolve your repo root from their own location
 (`tools/` at the root) — the one deliberate exception is complexity-gate's optional TypeScript
-compiler, declared as an optional peer dependency (see §11); skipping that gate costs nothing
-else. Adoption means vendoring: copy `tools/` into your repo, add the scripts, copy `docs/gates/`
+compiler, declared as an optional peer dependency; skipping that gate costs nothing else.
+Adoption means vendoring: copy `tools/` into your repo, add the scripts, copy `docs/gates/`
 and edit it to your repo, wire the fences. Fork and adapt; the trees and defaults are knobs, not
 law.
 
