@@ -53,6 +53,13 @@ const CODE_TREES = ["apps/", "packages/", "tools/", "deploy/"];
  *  law), and the repo's answer to a law changing mid-history is the same cutover pattern the pin,
  *  scope, and chain laws use: grandfather what settled under the law of its day. */
 export const FENCE_SURFACE_CUTOVER_COMMIT = "484df9daebace7148e491b9ded1ae33697890f25";
+/** The commit where the fence-side TIER re-judgment took effect. The tier law itself
+ *  (fence-surface scope demands a protected task with approval) is older at the declaration
+ *  seam — but re-judging it at the push fence retroactively outlawed every settled commit whose
+ *  record had lawfully declared .githooks/**, docs/**, or docs/gates/** under the first-segment
+ *  law of its day (CI caught it live on the first push). Same cure as every mid-history law
+ *  here: commits BEFORE this sha are judged under the old law, at and after under the new. */
+export const FENCE_TIER_CUTOVER_COMMIT = "3bf3bac2b2b00fc1bd82c663faaf799a649a13b2";
 const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".sh", ".mts", ".cts", ".css"]);
 const CODE_NAMES = new Set(["Dockerfile", "Caddyfile"]); // no-extension executables under the four trees
 
@@ -333,16 +340,21 @@ export function isGrandfatheredScope(record) {
  * from the pushed tree); a post-hoc widening is visible as a recorded amendment event in the
  * record's git history — in timestamped histories it trails the commit it excuses.
  */
-export function scopeRefusal(record, codeFiles) {
+export function scopeRefusal(record, codeFiles, tierLawApplies = true) {
   if (!Array.isArray(codeFiles) || codeFiles.length === 0) return null;
   if (isGrandfatheredScope(record)) return null;
   const declared = scopeOf(record);
   // The tier law, RE-JUDGED at both transports (an adversarial pass proved declaration-time-only
   // enforcement was the escape: a scope that slipped past cmdScope — wrong cwd, rm'd file, future
   // filename, hand edit — sailed through the commit-msg gate and this fence, which judged only
-  // membership. One seam, both transports, same law as cmdScope.)
-  const tier = fenceSurfaceRefusal(record, declared);
-  if (tier) return tier;
+  // membership. One seam, both transports, same law as cmdScope.) `tierLawApplies` grandfathers
+  // commits that SETTLED before the fence-side cutover — the same mid-history-law cure every
+  // cutover constant here encodes; the commit-msg gate always passes true (a commit made now is
+  // post-cutover by definition).
+  if (tierLawApplies) {
+    const tier = fenceSurfaceRefusal(record, declared);
+    if (tier) return tier;
+  }
   const patterns = declared.filter((p) => globRefusal(p) === null);
   const dropped = declared.length - patterns.length;
   if (patterns.length === 0) {
@@ -372,7 +384,7 @@ export function scopeRefusal(record, codeFiles) {
  * push, so a wave's own tail commits, written while the task was in flight, stay authorized
  * (see isNewCitation / anchorRecordPhase).
  */
-export function citationRefusal(record, codeFiles, isNewCommit) {
+export function citationRefusal(record, codeFiles, isNewCommit, tierLawApplies = true) {
   if (derivePhase(record.events ?? []) === "retired") {
     return {
       reason: `task '${record.id}' is retired — a retired task authorizes nothing, not even re-judged history (it never executed, so no commit ever lawfully cited it)`,
@@ -385,7 +397,7 @@ export function citationRefusal(record, codeFiles, isNewCommit) {
       remedy: `node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}   (done is terminal by design)`,
     };
   }
-  return scopeRefusal(record, codeFiles);
+  return scopeRefusal(record, codeFiles, tierLawApplies);
 }
 
 function classRefusal(record) {
@@ -676,7 +688,7 @@ function checkRange(base, anchorRef = null) {
         continue;
       }
     }
-    const citation = citationRefusal(record, files.filter(isCodePath), isNew);
+    const citation = citationRefusal(record, files.filter(isCodePath), isNew, !commitPrecedes(sha, FENCE_TIER_CUTOVER_COMMIT));
     if (citation) { errors.push(`${short} (task ${footer}): ${citation.reason}\n      fix: ${citation.remedy}`); continue; }
   }
   if (anchorSkips > 0) console.log(`task-coverage: ~ done-citation law skipped for ${anchorSkips} citing commit(s) — no audit anchor resolvable (detached clone, no origin/<branch>); skip, never brick`);
@@ -1278,6 +1290,7 @@ export function selfTest() {
     ["the tier law is RE-JUDGED at the seam — a runtime-code record scoped over docs/gates refuses here too (the declaration-time-only escape)", scopeRefusal({ ...unscopedPost, events: [...unscopedPost.events, { type: "scope", patterns: ["docs/gates/*.json"] }] }, ["docs/gates/x.json"]) !== null],
     ["the seam's tier refusal demands the protected class with approval", scopeRefusal({ ...unscopedPost, events: [...unscopedPost.events, { type: "scope", patterns: ["docs/gates/*.json"] }] }, ["docs/gates/x.json"]).remedy?.includes("--risk-class protected")],
     ["a protected record WITH approval scopes the fence surface cleanly at the seam", scopeRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "protected", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: [".githooks/**"] }, { type: "approval", decision: "d" }] }, [".githooks/pre-push"]) === null],
+    ["a PRE-CUTOVER commit citing a fence-surface-scoped record is grandfathered at the seam — settled history keeps the law of its day", scopeRefusal({ ...unscopedPost, events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "scope", patterns: ["docs/gates/**"] }] }, ["docs/gates/x.json"], false) === null],
     ["a post-cutover task with no declared scope refuses", scopeRefusal(unscopedPost, ["tools/a.mjs"]) !== null],
     ["code outside the declared scope refuses", scopeRefusal(scopedPost, ["apps/x.ts"]) !== null],
     ["the outside-scope refusal names the offending files", scopeRefusal(scopedPost, ["apps/x.ts", "packages/y.js"]).reason.includes("apps/x.ts")],
