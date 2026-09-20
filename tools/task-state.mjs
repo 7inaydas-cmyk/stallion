@@ -275,7 +275,7 @@ function doneGuard(record, findings, _evidenceOnDisk, facts = {}) {
   if (resolveEvidenceMissing.length > 0) {
     return {
       reason: `RESOLVED finding(s) cite evidence that no longer exists: ${resolveEvidenceMissing.join(", ")}`,
-      remedy: `re-resolve with evidence that exists: node tools/adversarial-runner.mjs resolve ${record.id} <finding-id> --evidence <paths-that-exist>`,
+      remedy: `re-resolve with evidence that exists: node tools/adversarial-runner.mjs resolve ${record.id} <finding-id> --evidence <file-paths-that-exist>`,
     };
   }
   // The GREEN half of the arc: every command pin must PASS by done. The caller re-runs them and

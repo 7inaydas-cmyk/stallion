@@ -11,10 +11,17 @@
       "status": "RESOLVED",
       "recordedAt": "2026-09-19T20:43:54.263Z",
       "evidence": [
-        "adversarial/ci-stepname-drift-repair"
+        "adversarial/ci-stepname-drift-repair/lane-01-input-forgeability-trust-boundaries-that-believe-the-client.md",
+        "adversarial/ci-stepname-drift-repair/lane-02-authorization-and-tenancy-who-else-can-reach-this.md",
+        "adversarial/ci-stepname-drift-repair/lane-03-dead-wiring-computed-but-consumed-by-nothing.md",
+        "adversarial/ci-stepname-drift-repair/lane-04-mock-vs-live-seams-where-a-double-stands-in-for-the-machine.md",
+        "adversarial/ci-stepname-drift-repair/lane-05-law-and-enforcement-drift-docs-and-controls-diverge-silently.md",
+        "adversarial/ci-stepname-drift-repair/lane-06-silent-correctness-liveness-and-reachability.md",
+        "adversarial/ci-stepname-drift-repair/lane-07-the-repair-itself.md",
+        "adversarial/ci-stepname-drift-repair/lane-08-the-self-replacing-artifact.md"
       ],
       "dedupKey": "adversarial/ci-stepname-drift-repair",
-      "resolvedAt": "2026-09-19T20:43:54.295Z"
+      "resolvedAt": "2026-09-20T05:50:04.994Z"
     }
   ],
   "sweptBase": "4f3a360f2acac1db0ec3b57583eeccd1f7c38ac0",

@@ -135,12 +135,39 @@ export function appendFinding(register, { id, lane, severity, claim, proof, evid
   return error ? error : candidate;
 }
 
-/** Pure status change with the same fail-closed rules (WONT-FIX needs a why; RESOLVED needs evidence). */
-export function setFindingStatus(register, id, patch) {
+/**
+ * Pure: the append-only law's one exception, decided in isolation. A RESOLVED finding may be
+ * re-resolved under exactly one condition, and only when the caller supplies the fs fact as an
+ * injected predicate (the SAME evidence law verdict judges with — the function stays pure): the
+ * recorded evidence no longer exists while the patch carries fresh evidence that does. That is
+ * not re-litigation — the resolution STANDS, its status never moves, and only dead evidence
+ * pointers are repaired to live ones. It is the exact repair the verdict's own refusal line
+ * promises ("re-resolve with evidence that exists"), and before it existed that promise was
+ * un-executable: verdict refused the dead evidence, resolve refused the closed finding, and the
+ * only way out was hand-editing the register — the act the law exists to prevent. Evidence that
+ * still exists refuses the swap: the exception repairs rot, it does not reopen judgment.
+ * Returns null when the re-resolve is lawful; otherwise the append-only refusal.
+ */
+export function closedFindingRefusal(target, patch, recordedEvidenceExists) {
+  const repairable = target.status === "RESOLVED" && patch?.status === "RESOLVED"
+    && typeof recordedEvidenceExists === "function"
+    && (target.evidence ?? []).some((p) => !recordedEvidenceExists(p));
+  return repairable ? null : `finding ${target.id} is already ${target.status} — resolutions are append-only; no re-litigating a closed finding`;
+}
+
+/** Pure status change with the same fail-closed rules (WONT-FIX needs a why; RESOLVED needs
+ *  evidence). On a closed finding the decision belongs to closedFindingRefusal — the one lawful
+ *  exception is the evidence repair; reopening and wont-fixing a closed finding always refuse. */
+export function setFindingStatus(register, id, patch, recordedEvidenceExists) {
   if (!register || typeof register !== "object") return "register is not an object";
   const target = register.findings.find((f) => f.id === id);
   if (!target) return `no such finding: ${id}`;
-  if (target.status !== "UNRESOLVED") return `finding ${id} is already ${target.status} — resolutions are append-only; no re-litigating a closed finding`;
+  if (target.status !== "UNRESOLVED") {
+    const refusal = closedFindingRefusal(target, patch, recordedEvidenceExists);
+    if (refusal) return refusal;
+    // The evidence repair falls through: status stays RESOLVED, the patch's evidence replaces the
+    // dead pointers, resolvedAt re-stamps to the repair moment. dedupKey and recordedAt survive.
+  }
   const next = {
     ...register,
     findings: register.findings.map((f) => (f.id === id ? { ...f, ...patch, resolvedAt: new Date().toISOString() } : f)),
@@ -218,8 +245,33 @@ function selfTestStatusGuards(fail) {
   return cases.length;
 }
 
+/** The evidence-repair exception, driven alone: every branch of closedFindingRefusal plus the
+ *  seam that re-stamps the finding without re-litigating it. Case 1 is the discriminator — if the
+ *  fixture ever fails to resolve, the refusal cases below would pass vacuously against a string,
+ *  so it fails the group loudly instead. */
+function selfTestStatusRepair(fail) {
+  const appended = appendFinding(emptyFindings("self-test"), { id: "f1", lane: 3, severity: "HIGH", claim: "the repair law's fixture", proof: "fixture: pinned so the group is not vacuous post-cutover" });
+  const resolved = typeof appended === "string" ? appended : setFindingStatus(appended, "f1", { status: "RESOLVED", evidence: ["test/x.test.ts"] });
+  // Recorded evidence gone (predicate says false), fresh evidence in the patch — the repair case.
+  const repaired = typeof resolved === "string" ? resolved : setFindingStatus(resolved, "f1", { status: "RESOLVED", evidence: ["test/y.test.ts"] }, () => false);
+  const f = typeof repaired === "string" ? null : repaired.findings[0];
+  const before = typeof resolved === "string" ? { dedupKey: "unreachable-when-the-fixture-fails" } : resolved.findings[0];
+  const cases = [
+    ["the repair fixture resolves", typeof resolved !== "string"],
+    ["an evidence-repair re-resolve is accepted when the recorded evidence no longer exists", f?.status === "RESOLVED"],
+    ["the repair swaps the evidence pointers, not the resolution", f?.evidence?.[0] === "test/y.test.ts"],
+    ["the repair keeps the finding's dedup key (dedup survives resolution)", f?.dedupKey === before.dedupKey],
+    ["a re-resolve on evidence that still exists is refused (the exception repairs rot, not judgment)", typeof setFindingStatus(resolved, "f1", { status: "RESOLVED", evidence: ["test/y.test.ts"] }, () => true) === "string"],
+    ["a re-resolve without the fs predicate is refused (old callers keep the old law)", typeof setFindingStatus(resolved, "f1", { status: "RESOLVED", evidence: ["test/y.test.ts"] }) === "string"],
+    ["a closed finding cannot be REOPENED under the repair predicate", typeof setFindingStatus(resolved, "f1", { status: "UNRESOLVED" }, () => false) === "string"],
+    ["a closed finding cannot be WONT-FIXED under the repair predicate", typeof setFindingStatus(resolved, "f1", { status: "WONT-FIX", justification: "x" }, () => false) === "string"],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
+}
+
 export function selfTestFindings(fail) {
-  return (selfTestValidate(fail) ?? 0) + (selfTestAppendResolve(fail) ?? 0) + (selfTestStatusGuards(fail) ?? 0) + (selfTestResolveEvidence(fail) ?? 0) + (selfTestChain(fail) ?? 0) + (selfTestProofLaw(fail) ?? 0) + (selfTestDedup(fail) ?? 0);
+  return selfTestValidate(fail) + selfTestAppendResolve(fail) + selfTestStatusGuards(fail) + selfTestStatusRepair(fail) + selfTestResolveEvidence(fail) + selfTestChain(fail) + selfTestProofLaw(fail) + selfTestDedup(fail);
 }
 
 function selfTestDedup(fail) {

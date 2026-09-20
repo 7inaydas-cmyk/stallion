@@ -1,0 +1,61 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "resolve-evidence-repair",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T05:48:25.972Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "b7fcae8de6ae5c077e317c59d9c6843cf68b22d75e47604bfefdd0ed921da86c"
+    },
+    {
+      "at": "2026-09-20T05:48:26.005Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "b7fcae8de6ae5c077e317c59d9c6843cf68b22d75e47604bfefdd0ed921da86c",
+      "entry_hash": "34b5b28011b23a52d545bb79db667e9d3bbdb5c03fa10e8f5c4dac1b8c23cf77"
+    },
+    {
+      "at": "2026-09-20T05:48:26.034Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "34b5b28011b23a52d545bb79db667e9d3bbdb5c03fa10e8f5c4dac1b8c23cf77",
+      "entry_hash": "f5522f36c772cfacaaf3ad85468ce92421c59112057ee0e8d6b355f55286b663"
+    },
+    {
+      "at": "2026-09-20T05:48:31.805Z",
+      "type": "red-check",
+      "expect": "resolve evidence no longer exists",
+      "command": "node tools/adversarial-runner.mjs verdict ci-stepname-drift-repair",
+      "exitCode": 1,
+      "outputDigest": "e18ac206faab",
+      "seq": 3,
+      "parent_hash": "f5522f36c772cfacaaf3ad85468ce92421c59112057ee0e8d6b355f55286b663",
+      "entry_hash": "26fab4a9b37572f0613826e6d4f66db2f00f3b80c0bac75f93895178294e8e9d"
+    },
+    {
+      "at": "2026-09-20T05:48:36.924Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "26fab4a9b37572f0613826e6d4f66db2f00f3b80c0bac75f93895178294e8e9d",
+      "entry_hash": "fbd8e881bb6a47c18fafde1b00fbecb42b80e86c3003e72a94f82f408c518a29"
+    },
+    {
+      "at": "2026-09-20T05:53:21.484Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "fbd8e881bb6a47c18fafde1b00fbecb42b80e86c3003e72a94f82f408c518a29",
+      "entry_hash": "b0cd98d5892e4b9d3cf942debb5d55495028ad7e43bc634cb715b55a920a7815"
+    }
+  ]
+}

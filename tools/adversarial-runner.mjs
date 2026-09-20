@@ -260,10 +260,14 @@ function cmdRecord(args) {
   else console.log(`finding ${next.findings[next.findings.length - 1].id} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
 }
 
-/** Parse + existence-check the --evidence list (comma-split, repo-relative or cwd-relative). */
+/** Parse + existence-check the --evidence list (comma-split, repo-relative or cwd-relative).
+ *  The SAME file-only law verdict judges with (evidencePathIsFile): resolve used to accept any
+ *  path that merely exists — a directory recorded here failed there, and the verdict's promised
+ *  re-resolve was refused by the append-only law, deadlocking the register (the harness defect
+ *  the resolve-evidence-repair task closed). One law at both ends of a resolution. */
 function evidencePaths(args) {
   const evidence = typeof args.evidence === "string" ? args.evidence.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  for (const p of evidence) if (!existsSync(p) && !existsSync(`${ROOT}${p.replace(/^\//, "")}`)) die(`evidence path does not exist: ${p}\n  fix: pass repo-relative or cwd-relative paths that exist, comma-separated`);
+  for (const p of evidence) if (!evidencePathIsFile(p)) die(`evidence path is not a readable file: ${p}\n  fix: pass FILE paths that exist, repo-relative or cwd-relative, comma-separated — the same law the verdict judges with`);
   return evidence;
 }
 
@@ -278,7 +282,10 @@ function cmdResolve(args) {
     if (!register.findings.some((f) => f.id === findingId)) {
       die(`no such finding: ${findingId}\n  evidence: register ${id} holds ${register.findings.map((f) => f.id).join(", ") || "no findings yet"}\n  fix: node tools/adversarial-runner.mjs resolve ${id} <one-of-those> --evidence <paths>`);
     }
-    const next = setFindingStatus(register, findingId, { status: "RESOLVED", evidence });
+    // The repair seam: the predicate injects the verdict's own evidence law, so a RESOLVED finding
+    // whose recorded evidence no longer exists can be re-resolved here — exactly what the verdict's
+    // fix line promises — while a closed finding with live evidence still refuses.
+    const next = setFindingStatus(register, findingId, { status: "RESOLVED", evidence }, evidencePathIsFile);
     if (typeof next === "string") die(next);
     return next;
   });
@@ -317,7 +324,7 @@ function cmdVerdict(args) {
   if (missing.length > 0) {
     console.error("adversarial-runner: verdict FAIL — resolve evidence no longer exists:");
     for (const m of missing) console.error(`  ✖ ${m}`);
-    die(`  rule: a resolution is proven by its evidence at verdict time, not remembered from resolve time\n  fix: node tools/adversarial-runner.mjs resolve ${id} <finding-id> --evidence <paths-that-exist>`);
+    die(`  rule: a resolution is proven by its evidence at verdict time, not remembered from resolve time\n  fix: node tools/adversarial-runner.mjs resolve ${id} <finding-id> --evidence <file-paths-that-exist>   (a RESOLVED finding whose recorded evidence no longer exists may be re-resolved — the append-only law's one repair)`);
   }
   const agg = aggregateFindings(register);
   console.log(`task ${id}: ${agg.total} finding(s) — ${agg.unresolved} UNRESOLVED, ${agg.resolved} RESOLVED, ${agg.wontFix} WONT-FIX`);
