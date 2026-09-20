@@ -1,0 +1,48 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "wildcard-root-escape",
+  "passStartedAt": "2026-09-20T17:29:41.267Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "A stacked double-star tail (.s*/**/**) reopened the fourth-surface escape the commit message claimed closed: the coverage dialect's ** swallows zero segments recursively, so name with any count of trailing double-star segments covers a root-level file while surfaceFileReached admitted only the single tail (the re-audit's 79,376-pattern battery found the stacked eight; the first pass's brute force found the single-tail shape).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T17:42:58.269Z",
+      "proof": "Live at 8227ec0: globRefusal admits .s*/**/**, pathInScope('.stallion-base', ['.s*/**/**']) is true, fenceSurfaceRefusal passes it, and citationRefusal/scopeRefusal both return null end-to-end for a runtime-code record scoped .s*/**/** judging .stallion-base — the fence's own sweep-base anchor editable under a self-serve runtime-code task.",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs,tools/task-coverage.mjs",
+      "resolvedAt": "2026-09-20T17:42:58.379Z"
+    },
+    {
+      "id": "f2",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The fourth-surface case pinned only the single-tail spellings — a true sub-statement of its own claim; the stacked-tail shape passed the whole battery (lane 7f1).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T17:42:58.310Z",
+      "dedupKey": "the fourth-surface case pinned only the single-tail spellings — a true sub-statement of its own claim; the stacked-tail shape passed the whole battery (lane 7f1).",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "resolvedAt": "2026-09-20T17:42:58.415Z"
+    },
+    {
+      "id": "f3",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The tier law's matcher dialect (pathspec's ** crosses segments) drifts from the enforcement dialect (segment-locked **), over-arming contrived slash-crossing spellings like do** — fail-closed direction only (lane 5f1).",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-20T17:42:58.345Z",
+      "dedupKey": "the tier law's matcher dialect (pathspec's ** crosses segments) drifts from the enforcement dialect (segment-locked **), over-arming contrived slash-crossing spellings like do** — fail-closed direction only (lane 5f1).",
+      "justification": "Fail-closed over-arm on contrived slash-crossing spellings (do**): the tier law uses the one shared glob dialect for whole-pattern matching while coverage locks ** inside segments. Collapsing the two dialects is the deferred glob-consolidation task's own subject (no collectable red exists while the dialects are behaviorally identical on admission-legal scope patterns); the drift direction refuses rather than authorizes, and the over-armed shapes are pathological spellings no lawful scope needs.",
+      "resolvedAt": "2026-09-20T17:42:58.451Z"
+    }
+  ],
+  "sweptBase": "3ffa12e19d213e29037136d4745be052f38d1709",
+  "sweptHead": "8227ec09d59581c779a933b2097d0149a722cdc7",
+  "sweptDiffDigest": "0bebdd01f20f"
+}
