@@ -18,8 +18,11 @@ Commit the lineage WITH the copy: `tools/harness/VENDOR.json` (schema
 file as it stands in your tree (grafts included), and the host paths of the law docs the
 refusals cite. `vendor-drift` runs it both ways — an undeclared, patched, or deleted vendored
 file refuses with a re-vendor remedy, and remedies only name paths your tree actually carries.
-Vendored code is superseded by re-vendoring, never by patching; every re-vendor regenerates the
-manifest in the same commit.
+The corpus is anchored: the gate must live inside the tree it polices, so a manifest nominating
+some other directory refuses as born-scoped. The upstream sha is recorded provenance — a host
+without stallion's git history cannot machine-check it offline, so every refusal prints it for
+the human to verify at re-vendor time. Vendored code is superseded by re-vendoring, never by
+patching; every re-vendor regenerates the manifest in the same commit.
 
 ## 2. Scripts (package.json)
 
@@ -280,10 +283,13 @@ too: fresh clones must re-run `git config core.hooksPath .githooks`, and the doc
 
 ## 11. The gates (the 2026-09-20 merge wave)
 
-Ten gates joined the lifecycle core, ported from the Antitube harness (a sibling lineage that
-grew them in production) and made config-driven: their repo data lives under `docs/gates/`,
-which is the vendor template — copy it and edit it to your repo. Each gate ships a `--self-test`
-(the battery runs them all) and fails closed when its config is missing or malformed.
+These gates joined the lifecycle core — most ported from the Antitube harness (a sibling
+lineage that grew them in production), all made config-driven: their repo data lives under
+`docs/gates/`, which is the vendor template — copy it and edit it to your repo. Each gate ships
+a `--self-test` (the battery runs them all) and fails closed when its config is missing or
+malformed. The bullets below are the human-readable enumeration; `docs/gates/gate-registry.json`
+is the machine-checked one, and the registry is where drift between the two surfaces gets
+caught — which is why this paragraph carries no count to go stale.
 
 - `pathspec` — the ONE path-matching dialect every guard shares (`matches`/`explain`/`firstMatch`;
   `**` spans zero segments). A guard needing a new matching capability adds it here, once.
