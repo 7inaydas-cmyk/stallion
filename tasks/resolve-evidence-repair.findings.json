@@ -1,0 +1,30 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "resolve-evidence-repair",
+  "passStartedAt": "2026-09-20T05:53:46.953Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "zero-finding pass marker: eight lanes audited against the resolve-evidence-repair commit (input forgeability: the operator-supplied evidence paths are pinned by the file law and the plain-JSON trust boundary is unchanged and documented; authorization: no new caller or path, the push fence still re-judges; dead wiring: closedFindingRefusal is consumed by setFindingStatus and battery reader-existence is green; mock-vs-live: the fixture predicates are doubled by the live re-resolve and refusals run in this session plus the command pin re-run at done; law drift: TASK-LIFECYCLE resolve-evidence prose re-checked, no doc states the old fix-line, gate-registry invocation texts unchanged; silent correctness: every refusal dies loudly, empty-evidence fails closed to refusal; the repair itself: the pin was machine-run RED pre-fix with --expect, and the new self-test group was verified red against the actual pre-fix source; self-replacement: the exception is dead-evidence-only, same status, predicate-injected, and live evidence still refuses) — each lane returning no findings (a manufactured finding would be the failure mode)",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T05:55:30.226Z",
+      "dedupKey": "zero-finding pass marker: eight lanes audited against the resolve-evidence-repair commit (input forgeability: the operator-supplied evidence paths are pinned by the file law and the plain-json trust boundary is unchanged and documented; authorization: no new caller or path, the push fence still re-judges; dead wiring: closedfindingrefusal is consumed by setfindingstatus and battery reader-existence is green; mock-vs-live: the fixture predicates are doubled by the live re-resolve and refusals run in this session plus the command pin re-run at done; law drift: task-lifecycle resolve-evidence prose re-checked, no doc states the old fix-line, gate-registry invocation texts unchanged; silent correctness: every refusal dies loudly, empty-evidence fails closed to refusal; the repair itself: the pin was machine-run red pre-fix with --expect, and the new self-test group was verified red against the actual pre-fix source; self-replacement: the exception is dead-evidence-only, same status, predicate-injected, and live evidence still refuses) — each lane returning no findings (a manufactured finding would be the failure mode)",
+      "evidence": [
+        "adversarial/resolve-evidence-repair/lane-01-input-forgeability-trust-boundaries-that-believe-the-client.md",
+        "adversarial/resolve-evidence-repair/lane-02-authorization-and-tenancy-who-else-can-reach-this.md",
+        "adversarial/resolve-evidence-repair/lane-03-dead-wiring-computed-but-consumed-by-nothing.md",
+        "adversarial/resolve-evidence-repair/lane-04-mock-vs-live-seams-where-a-double-stands-in-for-the-machine.md",
+        "adversarial/resolve-evidence-repair/lane-05-law-and-enforcement-drift-docs-and-controls-diverge-silently.md",
+        "adversarial/resolve-evidence-repair/lane-06-silent-correctness-liveness-and-reachability.md",
+        "adversarial/resolve-evidence-repair/lane-07-the-repair-itself.md",
+        "adversarial/resolve-evidence-repair/lane-08-the-self-replacing-artifact.md"
+      ],
+      "resolvedAt": "2026-09-20T05:55:38.138Z"
+    }
+  ],
+  "sweptBase": "da9f609138a1993ca65ce3b18d6a744de9d367b1",
+  "sweptHead": "9c6339382c1d36107da2d1f2627fd63605a66220",
+  "sweptDiffDigest": "f8e124840199"
+}

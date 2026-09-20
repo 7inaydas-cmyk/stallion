@@ -80,6 +80,14 @@
       "seq": 8,
       "parent_hash": "32a99764e710ff7f87b59f488d68bcef4c63c065559a1e88ef6363379ab2f6d2",
       "entry_hash": "0d2e7ad44bf49d7e8480aa0bffb4a5261b2e1f083b15f18f56bfcb5207369179"
+    },
+    {
+      "at": "2026-09-20T05:56:01.141Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "0d2e7ad44bf49d7e8480aa0bffb4a5261b2e1f083b15f18f56bfcb5207369179",
+      "entry_hash": "d2b873fb543ab3d7b651a42cd4a7d9c159ef364124d58600f03bd70ae30f33d3"
     }
   ]
 }
