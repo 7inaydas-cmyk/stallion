@@ -110,6 +110,14 @@
       "why": "the vendoring lineage gate: in a vendored tree the committed VENDOR manifest is law — an undeclared, patched, or deleted vendored file and a missing mapped doc each refuse with a re-vendor remedy; upstream mode keeps stallion itself from ever carrying a forged manifest"
     },
     {
+      "id": "retrospective-live",
+      "invocation": "node tools/retrospective.mjs --top 4",
+      "transports": [
+        "battery"
+      ],
+      "why": "the cross-task lessons index, derived from every committed register — the live run proves the registers still parse and the derivation still terminates over the real corpus; malformed registers refuse visibly, never silently"
+    },
+    {
       "id": "guard-reach-live",
       "invocation": "node tools/guard-reach.mjs",
       "transports": [

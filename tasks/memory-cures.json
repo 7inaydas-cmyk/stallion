@@ -1,0 +1,63 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "memory-cures",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T09:40:36.865Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "22d7d1284b3efd8dd470732de0ed6080ecddb27e0b4d1c1c262d4d03de6bbb94"
+    },
+    {
+      "at": "2026-09-20T09:40:36.900Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "22d7d1284b3efd8dd470732de0ed6080ecddb27e0b4d1c1c262d4d03de6bbb94",
+      "entry_hash": "4f952dd3935792261cb41be8d1c7380938effc06b82fad7d2193ac509dc4df89"
+    },
+    {
+      "at": "2026-09-20T09:40:36.939Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**",
+        "docs/**",
+        "package.json"
+      ],
+      "seq": 2,
+      "parent_hash": "4f952dd3935792261cb41be8d1c7380938effc06b82fad7d2193ac509dc4df89",
+      "entry_hash": "c508ebabafdce1e3c6d4bec0e4191dcf1e5acca9b39a6825ee3f460e69ff6970"
+    },
+    {
+      "at": "2026-09-20T09:40:36.971Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "c508ebabafdce1e3c6d4bec0e4191dcf1e5acca9b39a6825ee3f460e69ff6970",
+      "entry_hash": "b63e2312e7dd27bac54dfd204d217e14a062fbf28aa04f9b8d553fd6f9990877"
+    },
+    {
+      "at": "2026-09-20T09:40:37.002Z",
+      "type": "red-check",
+      "expect": "Cannot find module",
+      "command": "node tools/retrospective.mjs",
+      "exitCode": 1,
+      "outputDigest": "f49a275e052f",
+      "seq": 4,
+      "parent_hash": "b63e2312e7dd27bac54dfd204d217e14a062fbf28aa04f9b8d553fd6f9990877",
+      "entry_hash": "b23e9c84dee8532ba1e60500682a1604494067fdda2e846ef0087deb1bcaaf70"
+    },
+    {
+      "at": "2026-09-20T10:08:45.659Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "b23e9c84dee8532ba1e60500682a1604494067fdda2e846ef0087deb1bcaaf70",
+      "entry_hash": "2a28d2eff39de7c904c9fbf1a1ff294b22f386317ea7395bb5bb1c869b1ef12f"
+    }
+  ]
+}

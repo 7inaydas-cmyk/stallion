@@ -6,7 +6,7 @@
  * brick a session (the authoring gate is the law; this is the voice).
  */
 import { findHarnessRoot, loadLaw } from "../lib/law-source.mjs";
-import { bannerContext, readRecords } from "../lib/gate-law.mjs";
+import { bannerContext, readRecords, sitrepFacts } from "../lib/gate-law.mjs";
 import { readStdin } from "../lib/io.mjs";
 
 async function main() {
@@ -23,7 +23,8 @@ async function main() {
     if (!layout) return; // not a harness repo: stay silent
     const law = await loadLaw(layout);
     if (!law.ok) return;
-    const text = bannerContext(law, readRecords(law.stateDir));
+    const records = readRecords(law.stateDir);
+    const text = bannerContext(law, records, sitrepFacts(law, records));
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } }));
   } catch {
     // fail open: no output, exit 0

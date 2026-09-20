@@ -198,7 +198,9 @@ One transport earlier than all of the above: `tools/zcode-plugin/` is a ZCode pl
 PreToolUse authoring gate DENIES a code edit unless an in-flight, scoped task covers the file,
 judged by THIS repo's own vendored harness functions (both the stallion and the
 `tools/harness/` layouts are auto-detected), plus a turn banner that re-injects the task state
-every prompt. Install and verification steps live in `tools/zcode-plugin/README.md`; the
+every prompt — now with a derived SITREP line (done count, last done task with its title and
+date, how far the tip sits ahead of the remote), each fact independently fail-open so advisory
+context never bricks a session. Install and verification steps live in `tools/zcode-plugin/README.md`; the
 doctor checks its hook manifest is present and wired (a matcher covering no edit tool, a
 missing banner event, a gate nothing dispatches, or a registered hook script missing from disk
 all refuse), and the battery runs its law checks (`gate-law`, `agreement-check`) alongside
@@ -323,6 +325,12 @@ caught — which is why this paragraph carries no count to go stale.
   vendored file, a mapped law doc that does not exist. `--upstream` mode keeps stallion itself
   from ever carrying a forged manifest. This is the tool behind §1's "superseded by
   re-vendoring, not by patching" — that sentence was prose until this gate shipped.
+- `retrospective` — the cross-task lessons index (the same evaluation, gap 1): DERIVED from
+  every committed findings register, never stored — every live WONT-FIX boundary with its
+  justification, the recurring vocabulary of past findings, findings per escape class.
+  `adversarial prepare` injects the compact block into every lane bundle so each sweep starts
+  standing on what past sweeps learned, and `task-state status` prints the one-line summary.
+  Write-only findings were the disease; this is the recall surface.
 
 The doctor carries one derived family check: `docs/gates/` must be non-empty and every JSON in
 it must parse. Wiring these gates into pre-push/CI is a vendor choice; gate-registry declares

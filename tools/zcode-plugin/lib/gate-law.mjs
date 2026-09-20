@@ -13,8 +13,9 @@
  * rule, the evidence, and an exact fix command. Refusal is the feature; allow is the exception
  * the lifecycle grants.
  */
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 /**
@@ -109,35 +110,127 @@ export function authoringDecision({ filePath, cwd }, law, records) {
   };
 }
 
+/** The next command the banner prescribes for a task, by phase. Pure. */
+function nextCommand(phase, stateTool, id) {
+  if (phase === "executing") return `pin the RED check, fix, then: node ${stateTool} advance ${id} verified`;
+  if (phase === "verified") return `sweep the change, then: node ${stateTool} advance ${id} adversarial`;
+  return `verdict clean, then: node ${stateTool} advance ${id} done`;
+}
+
 /**
  * The banner text: one glance of the live governed state, re-injected every turn so the
  * lifecycle survives context pressure. Pure over the law module and records.
+ *
+ * `facts` (optional) carries the SITREP derivation (see sitrepFacts) — the gap-2 cure: recall
+ * surfaces were in-flight-only, so a cold session hand-read a megabyte of control docs to learn
+ * what three derived numbers now say. Absent facts leave the banner exactly as it was.
  */
-export function bannerContext(law, records) {
+export function bannerContext(law, records, facts = null) {
   const { derivePhase, scopeOf, PHASES } = law.state;
   const active = records.filter((record) => authorizingPhases(PHASES).has(derivePhase(record.events ?? [])));
   const stateTool = relative(law.root, join(law.root, law.shape === "vendored" ? "tools/harness/task-state.mjs" : "tools/task-state.mjs"));
   const lines = ["[stallion] this repo writes code under the task lifecycle — refusals print the rule, the evidence, and the fix; run the fix, never work around it."];
   if (active.length === 0) {
     lines.push(`[stallion] no task in flight — code edits will refuse until one is: node ${stateTool} new <id> --risk-class runtime-code`);
-    return lines.join("\n");
+  } else {
+    for (const record of active) {
+      const phase = derivePhase(record.events ?? []);
+      const scope = scopeOf(record).join(", ") || "(none declared)";
+      lines.push(`[stallion] task '${record.id}' — ${phase} (scope: ${scope}) — next: ${nextCommand(phase, stateTool, record.id)}`);
+    }
   }
-  for (const record of active) {
-    const phase = derivePhase(record.events ?? []);
-    const scope = scopeOf(record).join(", ") || "(none declared)";
-    const next = phase === "executing"
-      ? `pin the RED check, fix, then: node ${stateTool} advance ${record.id} verified`
-      : phase === "verified"
-        ? `sweep the change, then: node ${stateTool} advance ${record.id} adversarial`
-        : `verdict clean, then: node ${stateTool} advance ${record.id} done`;
-    lines.push(`[stallion] task '${record.id}' — ${phase} (scope: ${scope}) — next: ${next}`);
-  }
+  const sitrep = sitrepLine(facts);
+  if (sitrep !== "") lines.push(sitrep);
   return lines.join("\n");
+}
+
+/** The timestamp of a record's done transition, or null — the newest `to: "done"` event's `at`. */
+export function doneAtOf(record) {
+  let at = null;
+  for (const event of record.events ?? []) {
+    if (event?.to === "done" && typeof event.at === "string") at = event.at;
+  }
+  return at;
+}
+
+/** The newer of (current last-done, this record's done transition) — nulls never win. Pure. */
+function newerLastDone(current, record, at) {
+  if (at === null) return current;
+  if (current === null || at > current.at) {
+    return { id: record.id, title: typeof record.title === "string" && record.title.length > 0 ? record.title : record.id, at };
+  }
+  return current;
+}
+
+/** Done-count and last-done facts, derived from records. Pure over the law module. */
+export function doneFactsOf(law, records) {
+  const facts = { doneCount: 0, lastDone: null };
+  for (const record of records) {
+    if (law.state.derivePhase(record.events ?? []) !== "done") continue;
+    facts.doneCount += 1;
+    facts.lastDone = newerLastDone(facts.lastDone, record, doneAtOf(record));
+  }
+  return facts;
+}
+
+/**
+ * The sitrep facts: how many tasks are done, the most recent one (id, title, date), and how far
+ * the tip sits ahead of the remote. Every fact is independently guarded — the banner is advisory
+ * and must fail open, and one missing fact must never cost the rest.
+ */
+export function sitrepFacts(law, records, aheadOf = defaultAheadOf) {
+  const facts = { ...doneFactsOf(law, records), ahead: null };
+  try {
+    facts.ahead = aheadOf(law.root);
+  } catch {
+    // ahead is optional
+  }
+  return facts;
+}
+
+/** The remote-ahead count, or null where git cannot answer. Pure injectable for the tests. */
+function defaultAheadOf(root) {
+  const count = (range) => {
+    const run = spawnSync("git", ["-C", root, "rev-list", "--count", range], { encoding: "utf8" });
+    return run.status === 0 ? Number(run.stdout.trim()) : null;
+  };
+  const ahead = count("@{upstream}..HEAD");
+  return ahead !== null ? ahead : count("origin/main..HEAD");
+}
+
+/** Pure rendering: absent facts drop their clause; every fact absent drops the line entirely. */
+export function sitrepLine(facts) {
+  if (facts === null || typeof facts !== "object") return "";
+  const parts = [];
+  if (facts.doneCount > 0) {
+    parts.push(`${facts.doneCount} done`);
+    if (facts.lastDone !== null) {
+      parts.push(`last: ${facts.lastDone.id} — ${facts.lastDone.title} (${facts.lastDone.at.slice(0, 10)})`);
+    }
+  }
+  if (typeof facts.ahead === "number" && facts.ahead > 0) parts.push(`tip ${facts.ahead} commit(s) ahead of the remote`);
+  return parts.length === 0 ? "" : `[stallion] sitrep: ${parts.join("; ")}`;
 }
 
 /** Self-test: the refusals ARE the feature — every law both directions, over a FAKE law module
  *  that implements the same export contract the real harnesses do (the live probes exercise
  *  the real ones). */
+/** The sitrep case family, split from selfTest so the ratchet keeps its word on both. */
+function sitrepCases(fakeLaw) {
+  return [
+    ["the sitrep line renders done count, last done, and ahead", sitrepLine({ doneCount: 7, lastDone: { id: "t-x", title: "The frozen contract", at: "2026-09-20T01:02:03Z" }, ahead: 3 }).includes("7 done") && sitrepLine({ doneCount: 7, lastDone: { id: "t-x", title: "T", at: "2026-09-20T01:02:03Z" }, ahead: 3 }).includes("tip 3 commit(s) ahead")],
+    ["the sitrep line drops absent clauses and vanishes when every fact is absent", sitrepLine({ doneCount: 0, lastDone: null, ahead: 0 }) === "" && sitrepLine(null) === ""],
+    ["the banner with facts gains the sitrep line; without facts it is unchanged", bannerContext(fakeLaw, [], { doneCount: 2, lastDone: { id: "t-d", title: "T", at: "2026-09-20T00:00:00Z" }, ahead: 1 }).includes("[stallion] sitrep:") && !bannerContext(fakeLaw, []).includes("sitrep")],
+    ["doneAtOf takes the newest done transition", doneAtOf({ events: [{ to: "planned", at: "2026-09-01T00:00:00Z" }, { to: "done", at: "2026-09-02T00:00:00Z" }, { to: "done", at: "2026-09-03T00:00:00Z" }] }) === "2026-09-03T00:00:00Z" && doneAtOf({ events: [] }) === null],
+    ["sitrepFacts derives done facts from records and ahead from the injected reader", (() => {
+      const done = { id: "t-d1", title: "T", events: [{ to: "done", at: "2026-09-19T00:00:00Z" }] };
+      const facts = sitrepFacts(fakeLaw, [done, { id: "t-e", events: [{ to: "executing" }] }], () => 4);
+      return facts.doneCount === 1 && facts.lastDone.id === "t-d1" && facts.ahead === 4;
+    })()],
+    ["sitrepFacts fails open on a throwing ahead reader", sitrepFacts(fakeLaw, [], () => { throw new Error("no git"); }).doneCount === 0],
+  ];
+}
+
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
@@ -168,6 +261,13 @@ export function selfTest() {
     ["an edit outside the harness repo is denied, not guessed about", authoringDecision({ filePath: "/elsewhere/x.mjs", cwd: "/repo" }, fakeLaw, [task("executing", ["tools/**"])]).decision === "deny"],
     ["a relative file_path resolves against the payload cwd", authoringDecision({ filePath: "tools/x.mjs", cwd: "/repo" }, fakeLaw, [task("executing", ["tools/**"])]).decision === "allow"],
     ["a payload without a file path refuses (fail closed, not guess)", parseEditPayload({ tool_name: "Edit", tool_input: {} }).ok === false],
+    ["the frozen law pins still resolve — a harness rename must fail the battery, not a live session", (() => {
+      const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+      const cov = pathToFileURL(join(root, "tools/task-coverage.mjs")).href;
+      const st = pathToFileURL(join(root, "tools/task-state.mjs")).href;
+      const code = `const c = await import(${JSON.stringify(cov)}); const s = await import(${JSON.stringify(st)}); for (const n of ["isCodePath", "recordRefusal", "scopeRefusal", "citationRefusal"]) { if (typeof c[n] !== "function" && typeof s[n] !== "function") { console.error("missing law export: " + n); process.exit(1); } }`;
+      return spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).status === 0;
+    })()],
     ["file_path, filePath, and path spellings are all read", parseEditPayload({ tool_input: { file_path: "a" } }).ok && parseEditPayload({ tool_input: { filePath: "a" } }).ok && parseEditPayload({ tool_input: { path: "a" } }).ok],
     ["a non-object payload refuses", parseEditPayload(null).ok === false],
     ["the banner names the in-flight task, its phase, and the next command", (() => { const b = bannerContext(fakeLaw, [task("executing", ["tools/**"])]); return b.includes("t-executing") && b.includes("advance") && b.includes("tools/**"); })()],
@@ -183,8 +283,9 @@ export function selfTest() {
       return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, fakeLaw, [rec]).decision === "deny";
     })()],
   ];
-  for (const [name, passes] of cases) if (!passes) fail(`zcode-plugin gate-law: ${name}`);
-  console.log(failures.length === 0 ? `zcode-plugin gate-law self-test: OK (${cases.length} cases — count derived)` : `zcode-plugin gate-law self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const allCases = [...cases, ...sitrepCases(fakeLaw)];
+  for (const [name, passes] of allCases) if (!passes) fail(`zcode-plugin gate-law: ${name}`);
+  console.log(failures.length === 0 ? `zcode-plugin gate-law self-test: OK (${allCases.length} cases — count derived)` : `zcode-plugin gate-law self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

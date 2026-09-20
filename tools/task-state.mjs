@@ -35,6 +35,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
+import { lessonsIndex, loadRegisters, summaryLine } from "./retrospective.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STATE_DIR = `${ROOT}tasks`;
@@ -554,6 +555,45 @@ export function runPinCommand(command) {
   }
 }
 
+/** Guarded regex test: a malformed recorded pattern never decides a GREEN (it refused the RED side already). */
+function patternMatches(pattern, output) {
+  try {
+    return new RegExp(pattern).test(output);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pure: the GREEN half of a pin's arc at done (the 2026-09-20 evaluation, gap 6). Exit code alone
+ * used to clear the gate, so an intermittently-green or vacuously-green check passed. Now the
+ * re-run must pass TWICE, and when the pin carries a recorded --expect signature, a passing run
+ * that STILL shows it is a vacuous green — the failure signature the RED half matched cannot
+ * still be on screen while the check claims success.
+ */
+export function greenVerdictOf(pin, runs) {
+  const steady = steadyRunFailure(pin.command, runs[0], runs[1]);
+  if (steady !== null) return steady;
+  return vacuousGreenOf(pin, runs[0]);
+}
+
+/** Exit-code law: the re-run must pass TWICE — the second run surfaces intermittent greens. */
+function steadyRunFailure(command, first, second) {
+  if (first === undefined || first.exitCode !== 0) return `"${command}" exit ${first?.exitCode ?? "no verdict"}`;
+  if (second === undefined || second.exitCode !== 0) {
+    return `"${command}" passed once then exit ${second?.exitCode ?? "no verdict"} — an intermittent green is not a GREEN`;
+  }
+  return null;
+}
+
+/** Signature law: a passing run that still shows the pin's recorded RED signature is vacuous. */
+function vacuousGreenOf(pin, run) {
+  if (typeof pin.expect === "string" && pin.expect.length > 0 && patternMatches(pin.expect, run.output ?? "")) {
+    return `"${pin.command}" exits 0 but still shows its recorded RED signature (${pin.expect}) — a vacuous green is not a GREEN`;
+  }
+  return null;
+}
+
 function outputDigest(output) {
   return createHash("sha256").update(output).digest("hex").slice(0, 12);
 }
@@ -670,8 +710,9 @@ function cmdAdvance(args) {
   if (target === "done" && derivePhase(loadTask(id).events) === "adversarial") {
     const pins = commandPins(loadTask(id));
     for (const pin of pins) {
-      const run = runPinCommand(pin.command);
-      if (run.exitCode !== 0) greenFailures.push(`"${pin.command}" exit ${run.exitCode ?? "no verdict"}`);
+      // Twice, deliberately: the second run surfaces intermittent greens the single exit code hid.
+      const failure = greenVerdictOf(pin, [runPinCommand(pin.command), runPinCommand(pin.command)]);
+      if (failure !== null) greenFailures.push(failure);
     }
   }
   mutateTask(id, (record) => {
@@ -690,6 +731,46 @@ function cmdAdvance(args) {
 function statusObligations(record) {
   const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
   return obligations(record, ok ? register : null, redCheckEvidence(record).every(evidencePathIsFile));
+}
+
+/** One metrics row, derived from one record (and its findings register, when present). */
+function metricRow(record) {
+  const first = record.events?.[0]?.at;
+  const doneAts = (record.events ?? []).filter((e) => e?.to === "done").map((e) => e.at);
+  const doneAt = doneAts.length > 0 ? doneAts[doneAts.length - 1] : undefined;
+  const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
+  const findings = ok && register ? register.findings : [];
+  return {
+    id: record.id,
+    phase: derivePhase(record.events),
+    days: first !== undefined && doneAt !== undefined ? ((Date.parse(doneAt) - Date.parse(first)) / 86_400_000).toFixed(1) : null,
+    findings: findings.length,
+    highs: findings.filter((x) => x.severity === "CRITICAL" || x.severity === "HIGH").length,
+  };
+}
+
+/**
+ * The read-side metrics derivation (the 2026-09-20 evaluation, gap 7): per-task wall-clock span
+ * (first event → done) and findings density, DERIVED from the committed records and registers,
+ * never stored. Wave ranking finally has a measured basis.
+ */
+function cmdMetrics() {
+  const rows = [];
+  for (const f of readdirSync(STATE_DIR).filter((x) => x.endsWith(".json") && !x.includes(".findings."))) {
+    let record;
+    try {
+      record = JSON.parse(readFileSync(`${STATE_DIR}/${f}`, "utf8"));
+    } catch {
+      continue;
+    }
+    if (record.schema !== TASK_SCHEMA) continue;
+    rows.push(metricRow(record));
+  }
+  rows.sort((a, b) => b.findings - a.findings || b.highs - a.highs);
+  console.log("task                    phase       days  findings  crit+high");
+  for (const r of rows) {
+    console.log(`${r.id.padEnd(23)} ${r.phase.padEnd(11)} ${String(r.days ?? "-").padEnd(5)} ${String(r.findings).padEnd(9)} ${r.highs}`);
+  }
 }
 
 function cmdHandoff(args) {
@@ -730,6 +811,7 @@ function cmdStatus(args) {
     if (record.schema !== TASK_SCHEMA) { console.error(`task-state: skipping non-task file ${f}`); continue; }
     console.log(`${derivePhase(record.events).padEnd(12)} ${record.id} (${record.riskClass})`);
   }
+  console.log(summaryLine(lessonsIndex(loadRegisters(STATE_DIR).registers)));
 }
 
 /**
@@ -874,8 +956,29 @@ export function selfTest() {
   ];
   for (const [n, passes] of scopeCases) if (!passes) fail(`task-state: ${n}`);
 
-  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const greenPinCount = runGreenPinCases(fail);
+
+  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
+}
+
+/** Runs the GREEN-half case family; returns its count for the banner. */
+function runGreenPinCases(fail) {
+  const cases = greenPinCaseFamily();
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
+}
+
+/** The GREEN-half case family, split from selfTest so the ratchet keeps its word on both. */
+function greenPinCaseFamily() {
+  return [
+    ["a red first run is a plain failure", greenVerdictOf({ command: "npm test", expect: "SELF-TEST FAIL" }, [{ exitCode: 1, output: "" }, { exitCode: 0, output: "" }]) !== null],
+    ["an intermittent green (pass then fail) refuses", greenVerdictOf({ command: "npm test" }, [{ exitCode: 0, output: "" }, { exitCode: 1, output: "" }])?.includes("intermittent green")],
+    ["a vacuous green (exit 0 still showing the RED signature) refuses", greenVerdictOf({ command: "npm test", expect: "SELF-TEST FAIL" }, [{ exitCode: 0, output: "SELF-TEST FAIL: x" }, { exitCode: 0, output: "" }])?.includes("vacuous green")],
+    ["a clean double pass with the signature gone clears", greenVerdictOf({ command: "npm test", expect: "SELF-TEST FAIL" }, [{ exitCode: 0, output: "all good" }, { exitCode: 0, output: "all good" }]) === null],
+    ["a pin without a recorded expect clears on a double pass", greenVerdictOf({ command: "npm test" }, [{ exitCode: 0, output: "anything" }, { exitCode: 0, output: "" }]) === null],
+    ["a single run alone is not a verdict (the caller must run twice)", greenVerdictOf({ command: "npm test" }, [{ exitCode: 0, output: "" }])?.includes("intermittent green")],
+  ];
 }
 
 const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
@@ -885,8 +988,8 @@ if (isEntry) {
   try {
     const [cmd, ...rest] = argv;
     const args = parseArgs(rest);
-    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus, handoff: cmdHandoff };
-    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check(--command, --expect, --evidence)|pin-exempt|pin-retire|advance|status|handoff> ... (--self-test to self-test)");
+    const commands = { new: cmdNew, approve: cmdApprove, scope: cmdScope, "adopt-chain": cmdAdoptChain, "red-check": cmdRedCheck, "pin-exempt": cmdPinExempt, "pin-retire": cmdPinRetire, advance: cmdAdvance, status: cmdStatus, handoff: cmdHandoff, metrics: cmdMetrics };
+    if (!commands[cmd]) die("usage: task-state.mjs <new|approve|scope|adopt-chain|red-check(--command, --expect, --evidence)|pin-exempt|pin-retire|advance|status|handoff|metrics> ... (--self-test to self-test)");
     commands[cmd](args);
   } catch (e) {
     if (e instanceof Refused) {

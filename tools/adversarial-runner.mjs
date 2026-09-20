@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, raiseSeverity, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { bundleBlock, lessonsIndex, loadRegisters } from "./retrospective.mjs";
 import { evidencePathIsFile } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -49,8 +50,12 @@ export function lanesFromChecklist(text) {
   return lanes.map((l) => ({ ...l, slug: l.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), body: l.body.join("\n").trim() }));
 }
 
-/** The fresh-context refute prompt for one lane. Pure; the self-test pins the contract clauses. */
-export function renderBundle(lane, taskId, diffStat, fileList) {
+/**
+ * The fresh-context refute prompt for one lane. Pure; the self-test pins the contract clauses.
+ * `lessons` (optional) carries the retrospective block — what past lanes learned — so every
+ * sweep starts standing on the registers instead of re-paying for the same escapes.
+ */
+export function renderBundle(lane, taskId, diffStat, fileList, lessons = "") {
   return `# Adversarial pass — task ${taskId} — lane ${lane.n}: ${lane.title}
 
 You are an adversarial auditor with NO context about this change and NO stake in it being correct.
@@ -70,7 +75,7 @@ ${diffStat}
 
 Files touched:
 ${fileList}
-
+${lessons.length > 0 ? `\n${lessons}\n` : ""}
 ## The refutation contract
 
 Refute a finding ONLY by affirmatively demonstrating from the change that it is a false positive.
@@ -208,7 +213,8 @@ function cmdPrepare(args) {
   if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
   const dir = `${BUNDLE_DIR}/${id}`;
   mkdirSync(dir, { recursive: true });
-  for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList));
+  const lessons = bundleBlock(lessonsIndex(loadRegisters(STATE_DIR).registers));
+  for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList, lessons));
   mintPassMarker(id, base, head, content);
   console.log(`${lanes.length} refute bundles written to adversarial/${id}/`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, then record findings here, then 'verdict ${id}'`);
