@@ -749,9 +749,14 @@ export function metricDerivation(record, findings) {
   };
 }
 
-/** One metrics row, derived from one record (and its findings register, when present). */
+/** One metrics row, derived from one record (and its findings register, when present).
+ * A register that does not parse is VISIBLE, never silently zeroed (the f12 finding: a corrupt
+ * register must not render its task the cleanest wave in the ranking). */
 function metricRow(record) {
-  const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
+  const { ok, register, error } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
+  if (!ok) {
+    console.error(`task-state metrics: the findings register for '${record.id}' does not parse (${error}) — its row is INCOMPLETE until it does`);
+  }
   const findings = ok && register ? register.findings : [];
   return { id: record.id, phase: derivePhase(record.events), ...metricDerivation(record, findings) };
 }
@@ -768,6 +773,7 @@ function cmdMetrics() {
     try {
       record = JSON.parse(readFileSync(`${STATE_DIR}/${f}`, "utf8"));
     } catch {
+      console.error(`task-state metrics: skipping unparsable ${f}`);
       continue;
     }
     if (record.schema !== TASK_SCHEMA) continue;

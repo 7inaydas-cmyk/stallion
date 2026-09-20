@@ -276,12 +276,11 @@ const bases = [${bases.join(", ")}];
 let checked = 0;
 for (const base of bases) for (const shape of ["tools", "tools/harness"]) {
   const cov = base + "/" + shape + "/task-coverage.mjs";
-  const st = base + "/" + shape + "/task-state.mjs";
-  if (!existsSync(cov) || !existsSync(st)) continue;
+  if (!existsSync(cov)) continue;
   checked++;
-  const c = await import(p(cov).href); const s = await import(p(st).href);
+  const c = await import(p(cov).href);
   for (const n of ["isCodePath", "recordRefusal", "scopeRefusal", "citationRefusal"]) {
-    if (typeof c[n] !== "function" && typeof s[n] !== "function") { console.error("missing law export: " + n); process.exit(1); }
+    if (typeof c[n] !== "function") { console.error("missing law export: " + n); process.exit(1); }
   }
 }
 if (checked === 0) console.error("(no harness tree found from the plugin location or cwd — pins unchecked here)");`;
