@@ -1,0 +1,132 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "upstream-back-wave2",
+  "passStartedAt": "2026-09-20T15:24:03.440Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "CRITICAL",
+      "claim": "The ported fence-surface tier law failed open through four doors: the corpus walker resolved roots relative to process.cwd, believed the working tree (rm the target file, or name a future file, and the scope was accepted), its catch-branch disarmed it for unreadable directories behind a false justification comment, and no transport re-judged the tier law — the commit-msg gate and push fence judged only scope membership, so a runtime-code task could rewrite gate configs with every gate green (lanes 1f1, 2f1, 4f1, 5f1, 6f4-f6, 7f1, 8f1).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:39.896Z",
+      "proof": "Live end-to-end on the committed tree: from /tmp or tools/, scope --add docs/gates/*.json on a runtime-code task was ACCEPTED; after rm docs/gates/guard-reach.json the exact-path scope was ACCEPTED; the defanging commit then passed the commit-msg gate and the push fence, both of which re-judge containment only.",
+      "dedupKey": "the ported fence-surface tier law failed open through four doors: the corpus walker resolved roots relative to process.cwd, believed the working tree (rm the target file, or name a future file, and the scope was accepted), its catch-branch disarmed it for unreadable directories behind a false justification comment, and no transport re-judged the tier law — the commit-msg gate and push fence judged only scope membership, so a runtime-code task could rewrite gate configs with every gate green (lanes 1f1, 2f1, 4f1, 5f1, 6f4-f6, 7f1, 8f1).",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:07.962Z"
+    },
+    {
+      "id": "f2",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "The guard-reach busy-tree fix was machine-pinned only by a token grep: reverting the baselineEnv call while keeping the unused emptyIndexEnv symbol kept the pin, the self-test, and the whole battery green; and emptyIndexEnv ran outside the try whose job is classifying guard-reach's own failures, dying with a raw stack outside a git repo (lane 7f2).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:39.932Z",
+      "proof": "Demonstrated on a copy of the committed tree: revert line 371 to process.env, keep the symbol — grep pin green, self-test green (fixtures are disk walkers), battery green. Outside a git repo the self-test crashed at the raw execSync throw instead of the classified verdict.",
+      "dedupKey": "the guard-reach busy-tree fix was machine-pinned only by a token grep: reverting the baselineenv call while keeping the unused emptyindexenv symbol kept the pin, the self-test, and the whole battery green; and emptyindexenv ran outside the try whose job is classifying guard-reach's own failures, dying with a raw stack outside a git repo (lane 7f2).",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.001Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "HIGH",
+      "claim": "path-obligations' header claimed its obligations are printed at commit time while no commit-time transport invokes it anywhere, and vendor-drift's --freshness — billed as the wave-intake law — was carried by no transport and no documentation (lanes 3f1, 5f3, 5f4, 8f3).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:39.965Z",
+      "proof": "grep over .githooks/, .github/workflows/, package.json, docs/: path-obligations appears only in the battery's --self-test dispatch; the only statement of the freshness duty was a string inside the unwired tool itself.",
+      "dedupKey": "path-obligations' header claimed its obligations are printed at commit time while no commit-time transport invokes it anywhere, and vendor-drift's --freshness — billed as the wave-intake law — was carried by no transport and no documentation (lanes 3f1, 5f3, 5f4, 8f3).",
+      "evidence": [
+        "docs/WIRING.md",
+        "tools/path-obligations.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.042Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "The freshness mode trusted the client's clone state three ways: git rename detection hid renamed vendored sources (FRESH-FOR-WAVE through a rename, live-proven), a stale clone certified FRESH with no caveat, and a missing --freshness value fell through to host mode's green verdict (lanes 4f2, 4f3, 1f2, 7f4, 7f6).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:40.002Z",
+      "dedupKey": "the freshness mode trusted the client's clone state three ways: git rename detection hid renamed vendored sources (fresh-for-wave through a rename, live-proven), a stale clone certified fresh with no caveat, and a missing --freshness value fell through to host mode's green verdict (lanes 4f2, 4f3, 1f2, 7f4, 7f6).",
+      "evidence": [
+        "tools/vendor-drift.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.081Z"
+    },
+    {
+      "id": "f5",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "path-obligations' default mode was structurally blind to untracked files — git diff --name-only HEAD never lists them — so a brand-new fence-surface file printed 'no changed paths ... nothing armed', the exact false silence the tool's header forbids; and the nothing-staged fallthrough mislabeled plain git as jj (lanes 6f1, 5f6, 7f5).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:40.052Z",
+      "dedupKey": "path-obligations' default mode was structurally blind to untracked files — git diff --name-only head never lists them — so a brand-new fence-surface file printed 'no changed paths ... nothing armed', the exact false silence the tool's header forbids; and the nothing-staged fallthrough mislabeled plain git as jj (lanes 6f1, 5f6, 7f5).",
+      "evidence": [
+        "tools/path-obligations.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.123Z"
+    },
+    {
+      "id": "f6",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "path-obligations ran its CLI tail at module scope without an entry guard — importing the shared engine printed obligations at the importer and process.exit'd it (live-proven: an importer's own output never printed), re-shipping the exact anti-pattern pathspec.mjs documents as this repo's paid-for lesson (lanes 8f2, 6f5).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:40.089Z",
+      "dedupKey": "path-obligations ran its cli tail at module scope without an entry guard — importing the shared engine printed obligations at the importer and process.exit'd it (live-proven: an importer's own output never printed), re-shipping the exact anti-pattern pathspec.mjs documents as this repo's paid-for lesson (lanes 8f2, 6f5).",
+      "evidence": [
+        "tools/path-obligations.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.162Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The shared engine's self-test hard-coded host-corpus names: the docs/gates/gate-* case reddens the vendored engine's battery in any adopting tree without stallion's gate naming, with no lawful remediation under WIRING §1's re-vendor-not-patch law (lane 5f5); and WIRING.md's own tier enumeration still named only .githooks/.github/.stallion-base after docs/gates joined the roots (lane 5f2).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:40.131Z",
+      "dedupKey": "the shared engine's self-test hard-coded host-corpus names: the docs/gates/gate-* case reddens the vendored engine's battery in any adopting tree without stallion's gate naming, with no lawful remediation under wiring §1's re-vendor-not-patch law (lane 5f5); and wiring.md's own tier enumeration still named only .githooks/.github/.stallion-base after docs/gates joined the roots (lane 5f2).",
+      "evidence": [
+        "tools/task-state.mjs",
+        "docs/WIRING.md"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.203Z"
+    },
+    {
+      "id": "f8",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "Janitorial and coverage residue of the tranche: guard-reach leaked one HEAD-index temp file per guard per run on the normal path (signal-handler-only cleanup), path-obligations' fence rule armed only .github/workflows/ while the law covers all of .github, and its Vendor-lineage class cited tools/harness/** which this repo does not have (lanes 6f3, 8f4, 3f3).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-20T15:52:40.166Z",
+      "dedupKey": "janitorial and coverage residue of the tranche: guard-reach leaked one head-index temp file per guard per run on the normal path (signal-handler-only cleanup), path-obligations' fence rule armed only .github/workflows/ while the law covers all of .github, and its vendor-lineage class cited tools/harness/** which this repo does not have (lanes 6f3, 8f4, 3f3).",
+      "evidence": [
+        "tools/guard-reach.mjs",
+        "tools/path-obligations.mjs"
+      ],
+      "resolvedAt": "2026-09-20T15:53:08.246Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The freshness command pin does not discriminate at the COMMIT level: the recorded RED existed only against a mid-development tree carrying failing seed cases, and a wholesale revert of the freshness half lands on a parent whose own suite is green with every pin green — nothing pins the feature against removal (lane 7f3).",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-20T15:52:48.388Z",
+      "dedupKey": "the freshness command pin does not discriminate at the commit level: the recorded red existed only against a mid-development tree carrying failing seed cases, and a wholesale revert of the freshness half lands on a parent whose own suite is green with every pin green — nothing pins the feature against removal (lane 7f3).",
+      "justification": "A command pin's RED is recorded against pre-fix source by law — it discriminates the FIX, not the feature's lifetime. Wholesale-revert detection is git history's job: the revert commit itself needs a task footer under the fence's citation law, and a reverted feature's future re-request re-pins. Demanding commit-level discrimination from the pin law would require either an always-failing sentinel (vacuous) or a grep of every tool name in every battery (unbounded); the recorded RED-at-fix-time is the strongest collectable form the expect law allows.",
+      "resolvedAt": "2026-09-20T15:53:08.283Z"
+    }
+  ],
+  "sweptBase": "62fe1322eea02154b0e4c76efd669ed10fef8a46",
+  "sweptHead": "018023ecba80a59f0c2ff99836958dab9efac7e0",
+  "sweptDiffDigest": "fa845ec93e83"
+}

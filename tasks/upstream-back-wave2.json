@@ -1,0 +1,114 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "upstream-back-wave2",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-20T15:03:40.099Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "2a40d9cd0af1b9d3c210966a9f446d61975f2a0517890b720acc7723d156717b"
+    },
+    {
+      "at": "2026-09-20T15:03:40.134Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "2a40d9cd0af1b9d3c210966a9f446d61975f2a0517890b720acc7723d156717b",
+      "entry_hash": "9590ba581dfb5c2e768f9e8cc3485f321921cd89db3a03a26ab39245d520ac16"
+    },
+    {
+      "at": "2026-09-20T15:03:40.167Z",
+      "type": "scope",
+      "patterns": [
+        "tools/guard-reach.mjs",
+        "tools/vendor-drift.mjs",
+        "tools/path-obligations.mjs",
+        "tools/task-state.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "9590ba581dfb5c2e768f9e8cc3485f321921cd89db3a03a26ab39245d520ac16",
+      "entry_hash": "6989b1eead82e53c04d4459b90c902bd47c942e3cf846b3aacce5151342d83e7"
+    },
+    {
+      "at": "2026-09-20T15:03:40.211Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "6989b1eead82e53c04d4459b90c902bd47c942e3cf846b3aacce5151342d83e7",
+      "entry_hash": "56cfb2a5a9caba9c2c0271642064616a70cb60d2ce31406c75336e1bae272744"
+    },
+    {
+      "at": "2026-09-20T15:07:30.091Z",
+      "type": "red-check",
+      "expect": "BUSY-TREE-BASELINE-ABSENT",
+      "command": "sh -c 'grep -q emptyIndexEnv tools/guard-reach.mjs && echo BUSY-TREE-BASELINE-WIRED || { echo BUSY-TREE-BASELINE-ABSENT; exit 1; }'",
+      "exitCode": 1,
+      "outputDigest": "bce1762af073",
+      "seq": 4,
+      "parent_hash": "56cfb2a5a9caba9c2c0271642064616a70cb60d2ce31406c75336e1bae272744",
+      "entry_hash": "6e5297328710faaa3047004f3ae7c982b2d326636115b2a412c62ff3a71459ec"
+    },
+    {
+      "at": "2026-09-20T15:07:45.349Z",
+      "type": "red-check",
+      "expect": "No such file",
+      "command": "ls tools/path-obligations.mjs",
+      "exitCode": 2,
+      "outputDigest": "488f6fa4b15b",
+      "seq": 5,
+      "parent_hash": "6e5297328710faaa3047004f3ae7c982b2d326636115b2a412c62ff3a71459ec",
+      "entry_hash": "fff97d0e07d694b385c16b0a84d6c69587ca85382fcc9cbec38eb09401bc8e3d"
+    },
+    {
+      "at": "2026-09-20T15:07:45.386Z",
+      "type": "red-check",
+      "expect": "FENCE-ROOT-BLIND",
+      "command": "sh -c 'grep -q docs/gates tools/task-state.mjs && echo FENCE-ROOT-KNOWN || { echo FENCE-ROOT-BLIND; exit 1; }'",
+      "exitCode": 1,
+      "outputDigest": "14e2dec2fdb9",
+      "seq": 6,
+      "parent_hash": "fff97d0e07d694b385c16b0a84d6c69587ca85382fcc9cbec38eb09401bc8e3d",
+      "entry_hash": "0da1e20fa09a17907c5ccf6ac1204a985764772903759ae5cc7b11492c65b788"
+    },
+    {
+      "at": "2026-09-20T15:09:11.252Z",
+      "type": "red-check",
+      "expect": "pinned to the upstream HEAD is fresh",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ae720e2d258d",
+      "seq": 7,
+      "parent_hash": "0da1e20fa09a17907c5ccf6ac1204a985764772903759ae5cc7b11492c65b788",
+      "entry_hash": "9556c0798320e600c1a5b6fd8c3291ceee71c1b9129455e4a83e7a0b03fd066e"
+    },
+    {
+      "at": "2026-09-20T15:23:55.227Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 8,
+      "parent_hash": "9556c0798320e600c1a5b6fd8c3291ceee71c1b9129455e4a83e7a0b03fd066e",
+      "entry_hash": "61afc62062a551c4cc89d5deb2f10e579b04532b986d5e1bc2aba7f0dfb32025"
+    },
+    {
+      "at": "2026-09-20T15:53:15.120Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 9,
+      "parent_hash": "61afc62062a551c4cc89d5deb2f10e579b04532b986d5e1bc2aba7f0dfb32025",
+      "entry_hash": "ea6a0572311a19d3128f2a0983292586db416592c85b8a6543be30c49ee50846"
+    },
+    {
+      "at": "2026-09-20T15:53:15.239Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 10,
+      "parent_hash": "ea6a0572311a19d3128f2a0983292586db416592c85b8a6543be30c49ee50846",
+      "entry_hash": "4e6f5e29b0c5cbcad16bd432ca4bbf46a8456df23b1048147de51a3ff87317b7"
+    }
+  ]
+}
