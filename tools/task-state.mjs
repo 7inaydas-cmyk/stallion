@@ -695,7 +695,7 @@ export function runPinCommand(command) {
   if (!Number.isInteger(run.status)) {
     die(`pin command delivered no verdict: ${command} (${run.error?.code ?? run.signal ?? "no status"})\n  rule: a pin that did not run to completion is not evidence of anything\n  fix: make the command complete (it hangs, explodes past ${PIN_MAX_BUFFER / 1024 / 1024}MB of output, or cannot start)`);
   }
-  return { exitCode: run.status, output: `${run.stdout ?? ""}${run.stderr ?? ""}` };
+  return { exitCode: run.status, output: `${run.stdout ?? ""}\n${run.stderr ?? ""}` };
 }
 
 /** Guarded regex test: a malformed recorded pattern never decides a GREEN (it refused the RED side already). */
@@ -1072,6 +1072,13 @@ export function selfTest() {
     ["forged transition event to an unknown phase is ignored by derivePhase", derivePhase([{ type: "transition", to: "shipped" }]) === "intake"],
     ["done is terminal", !evaluateTransition(at(adversarial, "done"), cleanFindings, "verified", true).ok],
     ["unknown phase refused", !evaluateTransition(base, null, "shipped", true).ok],
+    // The pin runner is the done gate's own capture seam; its streams join with a newline, never a
+    // splice — a glued line can carry a recorded RED signature off line-start and defeat the
+    // line-anchored --expect match (the same glue class runGuard's separator law closes).
+    ["runPinCommand joins the capture streams with a newline (the glue law, sibling seam)", (() => {
+      const run = runPinCommand("printf 'partial line'; echo signature >&2");
+      return run.exitCode === 0 && run.output === "partial line\nsignature\n";
+    })()],
   ];
   for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
 
