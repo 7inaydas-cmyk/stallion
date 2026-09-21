@@ -298,7 +298,10 @@ function runGuard(script, env, args = []) {
     const stdout = execFileSync("node", [script, ...args], { cwd: ROOT, env, encoding: "utf8", stdio: "pipe" });
     return { code: 0, output: stdout };
   } catch (error) {
-    return { code: typeof error.status === "number" ? error.status : 1, output: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+    // The streams are joined with a newline, never spliced: a partial stdout line glued onto
+    // stderr's first line can carry a banner off line-start, and every crash clause reads line
+    // starts (the glue law, call-site pinned in the self-test).
+    return { code: typeof error.status === "number" ? error.status : 1, output: `${error.stdout ?? ""}\n${error.stderr ?? ""}` };
   }
 }
 
@@ -313,7 +316,10 @@ function runGuard(script, env, args = []) {
  * misclassified a guard's honest REFUSAL whose prose quoted the code while describing a pinned red —
  * the retrospective's rendered findings carried exactly that mention, turning its normal
  * exit-1-with-a-count into a false GATE_DEFECT on every probe run (found live at the vendor repo,
- * 2026-09-21). A report that names a code is a report; only a banner is a crash.
+ * 2026-09-21). The boundary that remains: prose that QUOTES a whole banner across an embedded
+ * newline renders banner-at-line-start and stays indistinguishable from a crash by shape alone —
+ * that misreads fail CLOSED (a blocked gate, never a false pass), the same plain-text trust class
+ * as the records themselves.
  */
 function looksLikeCrash(output) {
   if (/^Error \[ERR_MODULE_NOT_FOUND\]:/m.test(output) || /^Error: Cannot find module /m.test(output)) return true;
@@ -555,6 +561,20 @@ function selfTest() {
   );
   const alwaysCrashes = fixture("always-crashes.mjs", 'throw new Error("boom");\n');
   const alwaysFails = fixture("always-fails.mjs", "process.exit(1);\n");
+  // REAL module-resolution crash after an UNTERMINATED stdout line — the glued-streams shape the
+  // capture seam produces. Retention: a real Node banner carries its own location header lines, so
+  // the banner stays line-anchored even when the streams are joined.
+  const gluedCrash = fixture(
+    "glued-crash.mjs",
+    [
+      'import { readdirSync } from "node:fs";',
+      'const hit = readdirSync("tools").find((f) => f.startsWith("zz-guard-reach-selftest"));',
+      "if (hit === undefined) process.exit(0);",
+      'process.stdout.write(`violation at tools/${hit}`);',
+      'await import(`./definitely-missing-${hit}.mjs`);',
+      "",
+    ].join("\n"),
+  );
   // Healthy at baseline; refuses WITH the probe named, and the refusal PROSE quotes an error code —
   // the shape the retrospective's rendered findings produce (a claim text may legitimately mention
   // ERR_MODULE_NOT_FOUND when describing the pinned red it documents). A report is not a crash.
@@ -590,6 +610,14 @@ function selfTest() {
     ["an ESM module-resolution banner is still a crash", looksLikeCrash("node:internal/modules/esm/resolve:263\n      throw new ERR_MODULE_NOT_FOUND(...);\n      ^\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find module 'x' imported from 'y'\n    at async onImport\n"), true],
     ["a CJS require banner is still a crash", looksLikeCrash("node:internal/modules/cjs/loader:1147\n  throw err;\n  ^\n\nError: Cannot find module '/x.js'\n    at Module._resolveFilename\n  code: 'MODULE_NOT_FOUND',\n"), true],
     ["a bare error-code mention in prose is not a crash", looksLikeCrash("refused: reproduces the exact ERR_MODULE_NOT_FOUND of the pinned red (probe: tools/zz)\nretrospective: skipped 1 malformed register(s)"), false],
+    // The capture seam joins two streams; the join must be a newline, not a splice: a partial stdout
+    // line glued onto stderr's first line can carry a banner (or an Error header) off line-start,
+    // and both the banner clauses and the frames pair read line starts.
+    ["runGuard separates stdout from stderr (the glue law, call-site pinned)", (() => {
+      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      return /\$\{error\.stdout \?\? ""\}\\n\$\{error\.stderr \?\? ""\}/.test(src);
+    })(), true],
+    ["a REAL module-resolution crash after an unterminated stdout line is still a GATE_DEFECT", checkReach(entry(gluedCrash)).outcome, OUTCOME.GATE_DEFECT],
     [
       "a registered script that does not exist is a GATE_DEFECT",
       checkReach(entry(join(dir, "no-such-guard.mjs"))).outcome,
