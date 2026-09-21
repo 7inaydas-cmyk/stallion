@@ -307,9 +307,16 @@ function runGuard(script, env, args = []) {
  *
  * A crash also exits non-zero, and reading exit codes alone is what let a guard whose script had been
  * RENAMED still be certified as reachable.
+ *
+ * The module-resolution clause is SHAPE, not substring: Node prints banner headers ("Error
+ * [ERR_MODULE_NOT_FOUND]:", "Error: Cannot find module"), and a bare substring test once
+ * misclassified a guard's honest REFUSAL whose prose quoted the code while describing a pinned red —
+ * the retrospective's rendered findings carried exactly that mention, turning its normal
+ * exit-1-with-a-count into a false GATE_DEFECT on every probe run (found live at the vendor repo,
+ * 2026-09-21). A report that names a code is a report; only a banner is a crash.
  */
 function looksLikeCrash(output) {
-  if (/MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND/.test(output)) return true;
+  if (/^Error \[ERR_MODULE_NOT_FOUND\]:/m.test(output) || /^Error: Cannot find module /m.test(output)) return true;
   // An uncaught throw prints "SomeError: msg" followed by "    at ..." stack frames. (Also catches
   // the missing-export SyntaxError a mid-refactor tree throws — port note: proven live, 2026-09-20.)
   return /^\s{2,}at .+:\d+:\d+\)?$/m.test(output) && /^\w*Error(:| \[)/m.test(output);
@@ -548,6 +555,21 @@ function selfTest() {
   );
   const alwaysCrashes = fixture("always-crashes.mjs", 'throw new Error("boom");\n');
   const alwaysFails = fixture("always-fails.mjs", "process.exit(1);\n");
+  // Healthy at baseline; refuses WITH the probe named, and the refusal PROSE quotes an error code —
+  // the shape the retrospective's rendered findings produce (a claim text may legitimately mention
+  // ERR_MODULE_NOT_FOUND when describing the pinned red it documents). A report is not a crash.
+  const proseCode = fixture(
+    "prose-code.mjs",
+    [
+      'import { readdirSync, readFileSync } from "node:fs";',
+      'const hit = readdirSync("tools").find((f) => f.startsWith("zz-guard-reach-selftest"));',
+      "if (hit === undefined) process.exit(0);",
+      'if (!readFileSync(`tools/${hit}`, "utf8").includes(' + JSON.stringify(MARKER) + ")) process.exit(0);",
+      'console.error(`refused: reproduces the exact ERR_MODULE_NOT_FOUND of the pinned red (probe: tools/${hit})`);',
+      "process.exit(1);",
+      "",
+    ].join("\n"),
+  );
 
   const entry = (script) => ({ name: "fixture", script, probe, content: `# ${MARKER}\n`, why: "the fixture case" });
   const cases = [
@@ -561,6 +583,13 @@ function selfTest() {
     ],
     ["a guard that crashes even at baseline is INCONCLUSIVE", checkReach(entry(alwaysCrashes)).outcome, OUTCOME.INCONCLUSIVE],
     ["a guard already red before the probe is INCONCLUSIVE", checkReach(entry(alwaysFails)).outcome, OUTCOME.INCONCLUSIVE],
+    // The crash law is SHAPE, not substring: honest refusal prose may quote an error code it is
+    // describing, and quoting one must not reclassify a clean report as a crash (found live at the
+    // vendor repo — a register's f1 claim mentioning ERR_MODULE_NOT_FOUND poisoned every probe run).
+    ["a refusal whose prose quotes an error code is a report, not a crash", checkReach(entry(proseCode)).outcome, OUTCOME.REACHABLE],
+    ["an ESM module-resolution banner is still a crash", looksLikeCrash("node:internal/modules/esm/resolve:263\n      throw new ERR_MODULE_NOT_FOUND(...);\n      ^\n\nError [ERR_MODULE_NOT_FOUND]: Cannot find module 'x' imported from 'y'\n    at async onImport\n"), true],
+    ["a CJS require banner is still a crash", looksLikeCrash("node:internal/modules/cjs/loader:1147\n  throw err;\n  ^\n\nError: Cannot find module '/x.js'\n    at Module._resolveFilename\n  code: 'MODULE_NOT_FOUND',\n"), true],
+    ["a bare error-code mention in prose is not a crash", looksLikeCrash("refused: reproduces the exact ERR_MODULE_NOT_FOUND of the pinned red (probe: tools/zz)\nretrospective: skipped 1 malformed register(s)"), false],
     [
       "a registered script that does not exist is a GATE_DEFECT",
       checkReach(entry(join(dir, "no-such-guard.mjs"))).outcome,
