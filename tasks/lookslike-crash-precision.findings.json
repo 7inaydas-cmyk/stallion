@@ -1,0 +1,74 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "lookslike-crash-precision",
+  "passStartedAt": "2026-09-21T13:34:07.053Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "runGuard splices stdout and stderr with no separator: a partial stdout line glued onto stderr's first line can carry a crash banner (or its Error header) off line-start, so classify falls through looksLikeCrash to the attribution check and can certify a crashing guard REACHABLE — the F1 false pass, reopened for module-not-found shapes",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-21T13:50:21.562Z",
+      "proof": "stdout 'violation at tools/<probe>' with no trailing newline + stderr whose first line is 'Error: Cannot find module ...' glues to '...mjsError: Cannot find module' — no clause matches line-anchored; empirical: old law true, new law false. Real Node uncaught crashes carry a location header as stderr's first line, so the live window is the caught-and-reprinted shape — the bearer-citation power",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:301",
+      "resolvedAt": "2026-09-21T13:50:44.563Z"
+    },
+    {
+      "id": "f2",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "the two banner regression cases pin hand-crafted string constants; no end-to-end case drives a REAL Node module-not-found banner through looksLikeCrash, so a future banner-format drift keeps the constants green while real crashes degrade from GATE_DEFECT to UNREACHABLE — misdiagnosis, not a false pass",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-21T13:50:21.628Z",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:590-591",
+      "resolvedAt": "2026-09-21T13:50:44.595Z"
+    },
+    {
+      "id": "f3",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "residual of the cured class: a findings-register claim that QUOTES a whole crash banner across an embedded newline renders banner-at-column-0 through any guard that emits register text, and the line-anchored law still classifies the honest refusal GATE_DEFECT — fails closed, but the incident shape survives one newline away from the fixed one",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-21T13:50:21.662Z",
+      "evidence": "tools/guard-reach.mjs:318-323",
+      "dedupKey": "tools/guard-reach.mjs:318-323",
+      "justification": "shape-only residual: prose that quotes a whole crash banner across an embedded newline renders banner-at-line-start and is indistinguishable from a real banner by shape alone; the misread fails CLOSED (a blocked gate, never a false pass), which is the same plain-text trust class the records themselves live in; the tool header now states this boundary instead of claiming closure",
+      "resolvedAt": "2026-09-21T13:50:44.658Z"
+    },
+    {
+      "id": "f4",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "the repair's own law comment overstates closure: 'only a banner is a crash' is falsified by schema-legal multiline claims quoting a captured banner (validateFindings permits newlines; retrospective renders verbatim), re-arming the exact vendor blockage this wave cures",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-21T13:50:21.696Z",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:311-316",
+      "resolvedAt": "2026-09-21T13:50:44.626Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "pre-existing, not introduced by this diff: six self-testing tools in the battery (vendor-drift, retrospective, path-obligations, bench/grade, zcode-plugin gate-law, agreement-check) appear in neither guards[] nor notRegistered[] of docs/gates/guard-reach.json, so the 'stated, never faked' entry-bar law is prose without a machine check",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-21T13:50:21.728Z",
+      "evidence": "docs/gates/guard-reach.json",
+      "dedupKey": "docs/gates/guard-reach.json",
+      "justification": "pre-existing divergence (all six tools predate this wave's base): registry completeness for unprobed-but-self-testing tools is real future work needing its own design (a census control that cannot be satisfied by prose rows); recorded here so the gap is binding-visible, not silently green",
+      "resolvedAt": "2026-09-21T13:50:44.692Z"
+    }
+  ],
+  "sweptBase": "24c660f7c46f535348e7d93f552dba3689782b18",
+  "sweptHead": "4dd1a0af381e590fa0a9b014a9a7f4ffc6981c74",
+  "sweptDiffDigest": "7e10336eaadb"
+}

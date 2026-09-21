@@ -1,0 +1,108 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "lookslike-crash-precision",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-21T13:28:44.943Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "57eea80151738f1717f8a5893f43f1ee37cce796bf17ecd8ee48885c979e06e8"
+    },
+    {
+      "at": "2026-09-21T13:28:57.509Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "57eea80151738f1717f8a5893f43f1ee37cce796bf17ecd8ee48885c979e06e8",
+      "entry_hash": "d9cce022ffbba627b41a292ba2931ff2f841c015e67285151f51b144b531a210"
+    },
+    {
+      "at": "2026-09-21T13:28:57.554Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "d9cce022ffbba627b41a292ba2931ff2f841c015e67285151f51b144b531a210",
+      "entry_hash": "fd12ee37dabb0066b5311b6ceb3cbb7a3aa2279d7ae1a58f79960fd93fd35556"
+    },
+    {
+      "at": "2026-09-21T13:30:49.559Z",
+      "type": "red-check",
+      "expect": "a refusal whose prose quotes an error code is a report, not a crash",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "997126d263ea",
+      "seq": 3,
+      "parent_hash": "fd12ee37dabb0066b5311b6ceb3cbb7a3aa2279d7ae1a58f79960fd93fd35556",
+      "entry_hash": "b92f422ba595f9f72d3be4a33a63a67bfe63f325d6909334a591d2adfa118e49"
+    },
+    {
+      "at": "2026-09-21T13:31:57.264Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "b92f422ba595f9f72d3be4a33a63a67bfe63f325d6909334a591d2adfa118e49",
+      "entry_hash": "f12e3b6e753aeb167eaa81ef75fc0d119d86086646ad8149fa3ec5b33154f8a9"
+    },
+    {
+      "at": "2026-09-21T13:32:01.752Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "f12e3b6e753aeb167eaa81ef75fc0d119d86086646ad8149fa3ec5b33154f8a9",
+      "entry_hash": "feb5c5da8290589eca5f2d88003f209bb27afdd491862077986b5ba8577f4ff5"
+    },
+    {
+      "at": "2026-09-21T13:48:24.756Z",
+      "type": "red-check",
+      "expect": "runGuard separates stdout from stderr",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d44b62a09bb4",
+      "seq": 6,
+      "parent_hash": "feb5c5da8290589eca5f2d88003f209bb27afdd491862077986b5ba8577f4ff5",
+      "entry_hash": "bdf6d87666dcf8f2d32d2dc5f5398a88dcb3517998207ea1d9a49fa5cd58e5db"
+    },
+    {
+      "at": "2026-09-21T13:48:32.798Z",
+      "type": "scope",
+      "patterns": [
+        "tasks/**"
+      ],
+      "seq": 7,
+      "parent_hash": "bdf6d87666dcf8f2d32d2dc5f5398a88dcb3517998207ea1d9a49fa5cd58e5db",
+      "entry_hash": "9e5c26788fb47f399f008ea39b23a1e845d40b9257ad8e0a5568596d7c3a2752"
+    },
+    {
+      "at": "2026-09-21T13:48:32.832Z",
+      "type": "scope",
+      "patterns": [
+        "adversarial/**"
+      ],
+      "seq": 8,
+      "parent_hash": "9e5c26788fb47f399f008ea39b23a1e845d40b9257ad8e0a5568596d7c3a2752",
+      "entry_hash": "0cc71e52b0230309d72d5f29c71ddca40d29a746e003b67839f796d490b17122"
+    },
+    {
+      "at": "2026-09-21T13:51:27.736Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 9,
+      "parent_hash": "0cc71e52b0230309d72d5f29c71ddca40d29a746e003b67839f796d490b17122",
+      "entry_hash": "9cfffc5a373a08c91d53309ee6116e807aa3c7c9aa2a82e1238cc2a8f3b74e35"
+    },
+    {
+      "at": "2026-09-21T13:51:29.233Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 10,
+      "parent_hash": "9cfffc5a373a08c91d53309ee6116e807aa3c7c9aa2a82e1238cc2a8f3b74e35",
+      "entry_hash": "54d306ae4a54855a02feb19498a5a5049c104b8bbe6fb80c8bc857744e861466"
+    }
+  ]
+}
