@@ -1,0 +1,95 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "register-head-glue-probe",
+  "title": null,
+  "riskClass": "protected",
+  "events": [
+    {
+      "at": "2026-09-21T14:36:17.316Z",
+      "type": "created",
+      "riskClass": "protected",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "68a8f13136172a73b9066cc00720105d0f3871ee193f0272e351fdaed50b3221"
+    },
+    {
+      "at": "2026-09-21T14:36:17.349Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "68a8f13136172a73b9066cc00720105d0f3871ee193f0272e351fdaed50b3221",
+      "entry_hash": "bc36512f53388afd1b2e6fd30a13817767c3a32e277336e728987bd70a36d2c0"
+    },
+    {
+      "at": "2026-09-21T14:36:17.381Z",
+      "type": "scope",
+      "patterns": [
+        "package.json"
+      ],
+      "seq": 2,
+      "parent_hash": "bc36512f53388afd1b2e6fd30a13817767c3a32e277336e728987bd70a36d2c0",
+      "entry_hash": "f6bbc6d423bc6c1f586ed956a8bb72f0870e3e0c43f65039d3d6fb1d548f54df"
+    },
+    {
+      "at": "2026-09-21T14:37:29.679Z",
+      "type": "approval",
+      "decision": "2026-09-19 — THE BATTERY LAW: membership is derived, omissions refuse",
+      "seq": 3,
+      "parent_hash": "f6bbc6d423bc6c1f586ed956a8bb72f0870e3e0c43f65039d3d6fb1d548f54df",
+      "entry_hash": "0a152d0e83a391fa2db5198ca894da8f7f4db21407e3cb368a2fd31cf01e1f1c"
+    },
+    {
+      "at": "2026-09-21T14:37:29.709Z",
+      "type": "scope",
+      "patterns": [
+        "docs/gates/**"
+      ],
+      "seq": 4,
+      "parent_hash": "0a152d0e83a391fa2db5198ca894da8f7f4db21407e3cb368a2fd31cf01e1f1c",
+      "entry_hash": "40ffe7f77c8145ac8b3948836ab82e9adfed84ee2a722c3e614741df95e029e6"
+    },
+    {
+      "at": "2026-09-21T14:37:29.870Z",
+      "type": "red-check",
+      "expect": "shadow gate",
+      "command": "npm run selftest",
+      "exitCode": 1,
+      "outputDigest": "f57e5d9c29c8",
+      "seq": 5,
+      "parent_hash": "40ffe7f77c8145ac8b3948836ab82e9adfed84ee2a722c3e614741df95e029e6",
+      "entry_hash": "da0eec4dfd095d5ae0a003a2dc057f4e53e844be41badf9056b95b75607db19c"
+    },
+    {
+      "at": "2026-09-21T14:37:41.903Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 6,
+      "parent_hash": "da0eec4dfd095d5ae0a003a2dc057f4e53e844be41badf9056b95b75607db19c",
+      "entry_hash": "b3b3948a790543c10bee71262ccd82a5ee98e2c8f5243379c9fa33786782bd98"
+    },
+    {
+      "at": "2026-09-21T14:37:58.045Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 7,
+      "parent_hash": "b3b3948a790543c10bee71262ccd82a5ee98e2c8f5243379c9fa33786782bd98",
+      "entry_hash": "8ad83538f12dbe5bb63c054dd8974a2a99a75ff8f57693d5d4f982b4665a2407"
+    },
+    {
+      "at": "2026-09-21T14:47:17.931Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "8ad83538f12dbe5bb63c054dd8974a2a99a75ff8f57693d5d4f982b4665a2407",
+      "entry_hash": "29e13b9fc99f56bad461c348dd472dec0e5acf1f0086650f807a72d0c967ad1e"
+    },
+    {
+      "at": "2026-09-21T14:47:43.993Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "29e13b9fc99f56bad461c348dd472dec0e5acf1f0086650f807a72d0c967ad1e",
+      "entry_hash": "8e4c0d33ce7fddf56e0f28c50fbc4c44ffdebc52b41cbe7ab774a9434503ae1a"
+    }
+  ]
+}

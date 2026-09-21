@@ -1,0 +1,98 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "separator-landing",
+  "title": null,
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-21T14:17:23.822Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "b77c523336d5b4d84db560bf06dd9cab9e14132818cae47255c804a42f4fcc29"
+    },
+    {
+      "at": "2026-09-21T14:17:23.854Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "b77c523336d5b4d84db560bf06dd9cab9e14132818cae47255c804a42f4fcc29",
+      "entry_hash": "0e67a464bc8b8bb953b25575840b47ae551bfc751d34c9d94306497c14b802fc"
+    },
+    {
+      "at": "2026-09-21T14:17:23.887Z",
+      "type": "scope",
+      "patterns": [
+        "tools/**"
+      ],
+      "seq": 2,
+      "parent_hash": "0e67a464bc8b8bb953b25575840b47ae551bfc751d34c9d94306497c14b802fc",
+      "entry_hash": "7502e76b0564366d9e35b7c8e415b27b6ecf7e8a91f57e9c379d37aa8a2e837f"
+    },
+    {
+      "at": "2026-09-21T14:17:42.858Z",
+      "type": "red-check",
+      "expect": "HEAD lacks the glue law",
+      "command": "node tools/zz-head-glue-probe.mjs",
+      "exitCode": 1,
+      "outputDigest": "e4c28370a314",
+      "seq": 3,
+      "parent_hash": "7502e76b0564366d9e35b7c8e415b27b6ecf7e8a91f57e9c379d37aa8a2e837f",
+      "entry_hash": "0897c092386a6f76799b0d169ba7356dc815617d636937072c2c0b788e7f571c"
+    },
+    {
+      "at": "2026-09-21T14:18:13.892Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "0897c092386a6f76799b0d169ba7356dc815617d636937072c2c0b788e7f571c",
+      "entry_hash": "06112a1e292b45e5229fece54fe2934aff76ca0531267e9bedf7fd78ce190056"
+    },
+    {
+      "at": "2026-09-21T14:18:27.032Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "06112a1e292b45e5229fece54fe2934aff76ca0531267e9bedf7fd78ce190056",
+      "entry_hash": "5bcf54480690e647f27612ad062ecf380e537f134b59a17f244f695115b0b986"
+    },
+    {
+      "at": "2026-09-21T14:33:01.861Z",
+      "type": "red-check",
+      "expect": "runPinCommand joins the capture streams with a newline",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8d3d9a7693e1",
+      "seq": 6,
+      "parent_hash": "5bcf54480690e647f27612ad062ecf380e537f134b59a17f244f695115b0b986",
+      "entry_hash": "043e6d16a360f2e3da9c2e112e3958bb98a32b6b5cf6e497212c0c87bc7575d4"
+    },
+    {
+      "at": "2026-09-21T14:33:20.630Z",
+      "type": "scope",
+      "patterns": [
+        "package.json"
+      ],
+      "seq": 7,
+      "parent_hash": "043e6d16a360f2e3da9c2e112e3958bb98a32b6b5cf6e497212c0c87bc7575d4",
+      "entry_hash": "2bcce455a935ccc146289c9e34c23d1e9d4f6cb1dec70eb8e8385dd7394dc902"
+    },
+    {
+      "at": "2026-09-21T14:48:00.186Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 8,
+      "parent_hash": "2bcce455a935ccc146289c9e34c23d1e9d4f6cb1dec70eb8e8385dd7394dc902",
+      "entry_hash": "6c78d0caaee2934acf317f3c2b121c027c93ccb6d08286884e8e0f90e520459d"
+    },
+    {
+      "at": "2026-09-21T14:48:00.363Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 9,
+      "parent_hash": "6c78d0caaee2934acf317f3c2b121c027c93ccb6d08286884e8e0f90e520459d",
+      "entry_hash": "531fa2ff3fb9687ebff51b10cb897b4fbe46fecb433ffda840e0a6f77cb3ec34"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "register-head-glue-probe",
+  "passStartedAt": "2026-09-21T14:37:58.101Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "the registry append was landed as a wholesale json.dump reformat (2-space to 1-space), inflating a 9-line governance-artifact change to 330 diff lines and obscuring review; content semantically identical, no law escapes",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-21T14:47:27.501Z",
+      "evidence": [
+        "docs/gates/gate-registry.json"
+      ],
+      "dedupKey": "docs/gates/gate-registry.json",
+      "resolvedAt": "2026-09-21T14:47:27.532Z"
+    }
+  ],
+  "sweptBase": "c9550721e1a576b1375f0b3503511e4bcc961ea0",
+  "sweptHead": "ced544b9d5148fb4851619427ddc3a405c66bf8b",
+  "sweptDiffDigest": "7d6fb259b174"
+}

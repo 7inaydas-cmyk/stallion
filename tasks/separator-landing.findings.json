@@ -1,0 +1,37 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "separator-landing",
+  "passStartedAt": "2026-09-21T14:18:27.092Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "the committed-bytes probe (tools/zz-head-glue-probe.mjs) is dead wiring after done: referenced by no battery, gate, or transport — its only consumer was this task's pin, which retires; the commit message's 'gap class stays closed' over-promised",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-21T14:47:44.026Z",
+      "evidence": [
+        "package.json",
+        "docs/gates/gate-registry.json"
+      ],
+      "dedupKey": "tools/zz-head-glue-probe.mjs",
+      "resolvedAt": "2026-09-21T14:47:52.017Z"
+    },
+    {
+      "id": "f2",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "the separator law landed in only one of two identical capture seams: runPinCommand (tools/task-state.mjs, the done gate's own pin runner) still spliced stdout and stderr, arming the same glue false-pass on line-anchored --expect patterns in the seam that verifies every task",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-21T14:47:44.060Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs",
+      "resolvedAt": "2026-09-21T14:47:52.061Z"
+    }
+  ],
+  "sweptBase": "0d1a9e3b54887acbe2edf37f542374664c26b64d",
+  "sweptHead": "6a93974af23be37df3f8e4a74046d8ec6b1db627",
+  "sweptDiffDigest": "6e9727d3e215"
+}
