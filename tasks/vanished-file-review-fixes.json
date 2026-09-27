@@ -253,6 +253,38 @@
       "seq": 23,
       "parent_hash": "b18cf9baa6757947e7503eb59f9c5011e1a319f0a290f27fbe5be212d6d24697",
       "entry_hash": "6b5d825e35275b2acf6c691e060b724bd88694bd468e52d5dc06fd6b413c7561"
+    },
+    {
+      "at": "2026-09-27T21:10:15.299Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: literal-name-kept",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "05b9fc12f99e",
+      "seq": 24,
+      "parent_hash": "6b5d825e35275b2acf6c691e060b724bd88694bd468e52d5dc06fd6b413c7561",
+      "entry_hash": "8f303019276368a1ac58356b35b915bd402e2a483f1fafd7cc1a5f05c795f76a"
+    },
+    {
+      "at": "2026-09-27T21:11:10.552Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: literal-name-kept: .*\\(gate 1, delete null",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "22b12d240461",
+      "seq": 25,
+      "parent_hash": "8f303019276368a1ac58356b35b915bd402e2a483f1fafd7cc1a5f05c795f76a",
+      "entry_hash": "c547def8eb1d1b104236a2f212ce8d15c47b73e702e20268d8c225b66c12d692"
+    },
+    {
+      "at": "2026-09-27T21:11:37.987Z",
+      "type": "pin-retire",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "expect": "complexity-gate SELF-TEST FAIL: unstaged-deletion-guessed: .*unrefused: tools/run\\.mjs",
+      "justification": "Its code is gone: it pinned headBlobs' mode filter (/^(100644|100755|120000) blob /) for an executable source, and 1c12223 replaced that HEAD query with an index query that reads no mode, so the 100755 fixture guarded nothing (the fifth pass's lane-3 finding). The fixture is removed with it; the index query is pinned by intent-to-add-dropped, literal-name-dropped and literal-name-kept.",
+      "seq": 26,
+      "parent_hash": "c547def8eb1d1b104236a2f212ce8d15c47b73e702e20268d8c225b66c12d692",
+      "entry_hash": "4e103e9706d014d31e40e930b1b0bd2aec78455d3cb2c3a06036c8bcb9398f5a"
     }
   ]
 }

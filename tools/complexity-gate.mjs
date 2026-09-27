@@ -54,7 +54,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -218,13 +218,15 @@ function refuseMissingSources(skipped) {
 }
 
 const missingSourceRefusal = (p) =>
-  `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy, and so does a sparse checkout that leaves it out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (git --literal-pathspecs checkout HEAD -- ${shq(p)}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline)`;
+  `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy and \`jj commit\` a file it added, even where a sparse checkout leaves them out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (a file HEAD holds: git --literal-pathspecs checkout HEAD -- ${shq(p)}; a link: restore its target; a file HEAD never held, an intent-to-add entry: re-create it; left out by a sparse checkout, git's or jj's: widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline — it writes fence surface: land it under a protected task)`;
 
-/** Which of `paths` the index lists. `--literal-pathspecs` in the query and in every printed exit:
- *  a name starting with `:` is a path, not pathspec magic (`:!x.mjs` would name every OTHER file). */
+/** Which of `paths` the index lists. Every path is literal, here and in each printed exit: a name
+ *  starting with `:` is a path, not pathspec magic (`:!x.mjs` would name every OTHER file). The
+ *  query spells it per path, `:(literal)`, because git refuses the global --literal-pathspecs
+ *  beside a GIT_ICASE/GLOB/NOGLOB_PATHSPECS a developer may export. */
 function indexListed(paths) {
   if (paths.length === 0) return [];
-  const listed = execFileSync("git", ["--literal-pathspecs", "ls-files", "-z", "--cached", "--", ...paths], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0");
+  const listed = execFileSync("git", ["ls-files", "-z", "--cached", "--", ...paths.map((p) => `:(literal)${p}`)], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0");
   return paths.filter((p) => listed.includes(p));
 }
 
@@ -664,7 +666,7 @@ function selfTestStagedMissing(fail, dir, env, git) {
   const probe = `(await import(${JSON.stringify(import.meta.url)})).trackedFiles(["tools/**/*.mjs"], [], ${JSON.stringify(dir)});`;
   const run = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { encoding: "utf8", env });
   const refusal = "complexity-gate: tools/new.mjs is staged but missing from disk";
-  const fix = "fix: restore it (git --literal-pathspecs checkout -- tools/new.mjs) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- tools/new.mjs)";
+  const fix = "fix: restore it (git --literal-pathspecs checkout -- tools/new.mjs, and a link's target) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- tools/new.mjs)";
   if (run.status !== 1 || !run.stderr.includes(refusal) || !run.stderr.includes(fix)) fail(`staged-missing-unjudged: staged content missing from disk must refuse with its remedy (exit ${run.status}: ${run.stderr.trim()})`);
 }
 
@@ -753,6 +755,7 @@ function baselinedHost(dir, files, sources = files, includes = ["tools/**/*.mjs"
     gitRun: (...args) => spawnSync("git", argv(args), { cwd: dir, env, encoding: "utf8" }),
     baselinePath,
     run: (...args) => spawnSync(process.execPath, [gate, ...args], { cwd: dir, env, encoding: "utf8" }),
+    runWith: (extra, ...args) => spawnSync(process.execPath, [gate, ...args], { cwd: dir, env: { ...env, ...extra }, encoding: "utf8" }),
     sh: (command) => spawnSync("sh", ["-c", command], { cwd: dir, env, encoding: "utf8" }),
     baseline: () => readFileSync(baselinePath, "utf8"),
   };
@@ -782,7 +785,6 @@ function selfTestUnstagedDeletion(fail) {
   inScratch("complexity-gate-unstaged-", (dir) => {
     const host = baselinedHost(dir, BASELINED);
     writeFileSync(join(dir, "tools", "small.mjs"), "export const small = 1;\n");
-    chmodSync(join(dir, "tools", "run.mjs"), 0o755);
     host.git("add", ...BASELINED, "tools/small.mjs", CONFIG_PATH, BASELINE_PATH);
     host.git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "tools", "small.mjs"));
@@ -795,12 +797,12 @@ function selfTestUnstagedDeletion(fail) {
   });
 }
 
-/** A baselined source in each mode HEAD stores a regular file in: 100644 and 100755 (run.mjs). */
-const BASELINED = ["tools/big.mjs", "tools/run.mjs"];
+/** The baselined sources the unstaged-deletion host commits and removes: the refusal names each. */
+const BASELINED = ["tools/big.mjs", "tools/second.mjs"];
 
 /** The exits a missing baselined source's refusal names — put it back, or delete it for good. */
 const missingSourceFix = (p) =>
-  `fix: put it back on disk (git --literal-pathspecs checkout HEAD -- ${p}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${p} && node vendor/complexity-gate.mjs --update-baseline)`;
+  `fix: put it back on disk (a file HEAD holds: git --literal-pathspecs checkout HEAD -- ${p}; a link: restore its target; a file HEAD never held, an intent-to-add entry: re-create it; left out by a sparse checkout, git's or jj's: widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${p} && node vendor/complexity-gate.mjs --update-baseline — it writes fence surface: land it under a protected task)`;
 
 /** The gate and the re-record both refuse each source with the exits that settle it; the baseline is untouched. */
 function unstagedDeletionRefused(fail, host) {
@@ -865,7 +867,7 @@ function selfTestLinkedSource(fail) {
     host.git("add", "lib/real.mjs", "tools/alias.mjs");
     host.git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "lib", "real.mjs"));
-    const fix = "stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- tools/alias.mjs && node vendor/complexity-gate.mjs --update-baseline)";
+    const fix = "stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- tools/alias.mjs && node vendor/complexity-gate.mjs --update-baseline";
     for (const [what, run] of [["gate", host.run()], ["--update-baseline", host.run("--update-baseline")]]) {
       if (run.status !== 1 || !run.stderr.includes(fix)) fail(`linked-source-dropped: the ${what} on a committed link whose target was removed from disk only must refuse (exit ${run.status}: ${run.stderr.trim()})`);
     }
@@ -900,8 +902,8 @@ function selfTestSparseEntry(fail) {
 /**
  * A skipped path the index does not list — an untracked dangling link — carries no source into
  * any commit, so its rows are STALE: reported by the gate, dropped by the re-record. Carrying them
- * kept a dead ceiling that every clean clone then refused. Run on an unborn HEAD and after a seed
- * commit, so neither shape of the repo decides it.
+ * kept a dead ceiling that every clean clone then refused. Run on an unborn HEAD as well as after a
+ * seed commit: an earlier HEAD-based query needed its own unborn guard, and nothing may again.
  */
 function selfTestNoHeadFile(fail) {
   for (const seeded of [false, true]) inScratch("complexity-gate-nohead-", (dir) => noHeadFileStale(fail, dir, seeded));
@@ -940,21 +942,33 @@ function selfTestIntentToAdd(fail) {
 /**
  * A root-level source named with a leading `:` is pathspec magic to git unless the pathspec is
  * literal: `:!x.mjs` names every OTHER file. The index query must not miss it (the refusal would
- * read its rows as stale), and the printed restore — run here verbatim, through a shell — must
- * restore that one file, quoted, and clear the refusal.
+ * read its rows as stale), even under an exported GIT_ICASE_PATHSPECS (git refuses the global
+ * literal flag beside it), and both printed exits — run here verbatim, through a shell — must act
+ * on that one file, quoted: the restore clears the refusal, the delete exit drops its row.
  */
 function selfTestLiteralName(fail) {
   inScratch("complexity-gate-literal-", (dir) => {
-    const name = ":big one.mjs";
-    const host = baselinedHost(dir, [name], [name], [":*.mjs"]);
-    host.git("add", "--", `${dir}/${name}`);
+    const host = baselinedHost(dir, [LITERAL_NAME], [LITERAL_NAME], [":*.mjs"]);
+    host.git("add", "--", `${dir}/${LITERAL_NAME}`);
     host.git("commit", "-q", "-m", "seed");
-    rmSync(join(dir, name));
+    rmSync(join(dir, LITERAL_NAME));
     const judged = host.run();
     const restore = /git --literal-pathspecs checkout HEAD -- '[^']*'/.exec(judged.stderr)?.[0];
     const restored = restore ? host.sh(restore).status : null;
-    if (judged.status !== 1 || !restore || restored !== 0 || host.run().status !== 0) fail(`literal-name-dropped: a source named '${name}' must be refused with a quoted literal-pathspec restore that clears it (gate ${judged.status}, restore ${restored}: ${judged.stderr.trim()})`);
+    if (judged.status !== 1 || !restore || restored !== 0 || host.run().status !== 0) fail(`literal-name-dropped: a source named '${LITERAL_NAME}' must be refused with a quoted literal-pathspec restore that clears it (gate ${judged.status}, restore ${restored}: ${judged.stderr.trim()})`);
+    literalDeleteExit(fail, host, dir);
   });
+}
+
+const LITERAL_NAME = ":big one.mjs";
+
+/** The same source removed again: refused under GIT_ICASE_PATHSPECS too, and its delete exit, run verbatim, drops the row. */
+function literalDeleteExit(fail, host, dir) {
+  rmSync(join(dir, LITERAL_NAME));
+  const judged = host.runWith({ GIT_ICASE_PATHSPECS: "1" });
+  const remove = /git --literal-pathspecs rm --ignore-unmatch -- '[^']*' && node vendor\/complexity-gate\.mjs --update-baseline/.exec(judged.stderr)?.[0];
+  const removed = remove ? host.sh(remove).status : null;
+  if (judged.status !== 1 || !remove || removed !== 0 || host.run().status !== 0 || host.baseline().includes(LITERAL_NAME)) fail(`literal-name-kept: under GIT_ICASE_PATHSPECS the source must still be refused, and its delete exit run verbatim must drop its row (gate ${judged.status}, delete ${removed}: ${judged.stderr.trim()})`);
 }
 
 /**

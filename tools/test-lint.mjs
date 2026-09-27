@@ -102,7 +102,7 @@ export function listedOnDisk(cwd, env, files) {
 export const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
 
 export const stagedMissingRefusal = (p) =>
-  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git --literal-pathspecs checkout -- ${shq(p)}) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- ${shq(p)})`;
+  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git --literal-pathspecs checkout -- ${shq(p)}, and a link's target) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- ${shq(p)})`;
 
 /** The skip note: what listedOnDisk checked, and no more. */
 export const skippedNote = (skipped) => `skipped ${skipped.length} listed path(s) with no regular file on disk and no staged change: ${skipped.map(shq).join(" ")}`;
@@ -392,7 +392,7 @@ function stagedMissingCases(t, dir, env, git) {
   const staged = lintIn(dir, env);
   t(
     "staged-missing-test-unjudged: a staged test file missing from disk refuses with its remedy",
-    staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git --literal-pathspecs checkout -- new.test.mjs) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- new.test.mjs)"),
+    staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git --literal-pathspecs checkout -- new.test.mjs, and a link's target) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- new.test.mjs)"),
   );
   t("refusal-ends-green: a refused run does not end on the clean verdict", !staged.stdout.includes("no bug-pinned tests") && staged.out.includes("test-lint: FAILED"));
   const deep = lintIn(join(dir, "sub"), env);

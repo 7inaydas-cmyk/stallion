@@ -446,10 +446,11 @@ intent-to-add entry), while `git commit -a` and `jj commit` record a plain rm as
 every guess shipped a red tip: dropping the rows stripped a source HEAD still tracks; carrying them
 kept a deleted file's ceilings behind a false green; carrying only git's skip-worktree entries was
 blind to jj (which ignores the bit, and whose own sparse patterns never set it) and to
-guard-reach's HEAD-index copy (which carries no bits). The fix names the exits that settle it: put
-the source back on disk (restore it from HEAD, or widen a sparse checkout — git's or jj's — to
-include it), or, for a file deleted for good in a full checkout, stage its deletion with `git rm`
-and re-record (under jj's sparse patterns a `git rm` deletes nothing `jj commit` records, so
+guard-reach's HEAD-index copy (which carries no bits). The fix names the exit for each shape — put
+the source back on disk (restore a file HEAD holds from HEAD, a link's target, re-create a file
+HEAD never held, or widen a sparse checkout — git's or jj's — to include it), or, for a file
+deleted for good in a full checkout, stage its deletion with `git rm` and re-record, which writes
+fence surface (under jj's sparse patterns a `git rm` deletes nothing `jj commit` records, so
 re-recording there would drop ceilings jj keeps) — so a sparse checkout must hold every baselined
 source, since the ratchet judges only what it can read. A committed link that dangles in HEAD
 itself is refused like any other; it clears once its target is on disk (or committed), or by `git
