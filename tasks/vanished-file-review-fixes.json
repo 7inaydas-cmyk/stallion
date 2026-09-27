@@ -134,6 +134,70 @@
       "seq": 12,
       "parent_hash": "2f949f39189ae05e7155beabbf4d52380cd26c74c0314714e46a09c4300e14fa",
       "entry_hash": "decaf2d7bb50287fefed80fc7b7679b00d2613631a421572b169bd570bc42ef0"
+    },
+    {
+      "at": "2026-09-27T20:16:43.339Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: sparse-entry-carried",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6654e620ec2",
+      "seq": 13,
+      "parent_hash": "decaf2d7bb50287fefed80fc7b7679b00d2613631a421572b169bd570bc42ef0",
+      "entry_hash": "d4680ee2d4dd8b89a5753fedc29d4db1312359d3cf7123ca541b53ceaed240bc"
+    },
+    {
+      "at": "2026-09-27T20:16:50.260Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: unstaged-deletion-looped",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b75fd3eb8c1c",
+      "seq": 14,
+      "parent_hash": "d4680ee2d4dd8b89a5753fedc29d4db1312359d3cf7123ca541b53ceaed240bc",
+      "entry_hash": "973544a6ad314705272f6453305f9ccc65faf8f1e6893531fb8fd21bd933f357"
+    },
+    {
+      "at": "2026-09-27T20:16:57.084Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: no-head-file-carried: under a seeded HEAD",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9e0c4a1354ad",
+      "seq": 15,
+      "parent_hash": "973544a6ad314705272f6453305f9ccc65faf8f1e6893531fb8fd21bd933f357",
+      "entry_hash": "38ae36867576c35baa06a1d60ad33264d588477fec507c7288277f2fa9c5fe80"
+    },
+    {
+      "at": "2026-09-27T20:17:04.378Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: unstaged-deletion-guessed: .*unrefused: tools/run\\.mjs",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5da79e802d52",
+      "seq": 16,
+      "parent_hash": "38ae36867576c35baa06a1d60ad33264d588477fec507c7288277f2fa9c5fe80",
+      "entry_hash": "3ba9dff852c37e24d3925076f55e0aba85ad3c575042925bfbca39fe0f8f8bec"
+    },
+    {
+      "at": "2026-09-27T20:17:23.917Z",
+      "type": "pin-retire",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "expect": "complexity-gate SELF-TEST FAIL: sparse-entry-refused",
+      "justification": "Withdrawn with the carry it pinned. The second review pass showed a skip-worktree carry is a guess too: jj ignores git's skip-worktree bit and commits the deletion (a false green), guard-reach's read-tree HEAD index copy carries no bits (a red battery the direct gate called green), and jj's own sparse patterns never set the bit. A skip-worktree baselined source is now refused with a widen exit, pinned by sparse-entry-carried.",
+      "seq": 17,
+      "parent_hash": "3ba9dff852c37e24d3925076f55e0aba85ad3c575042925bfbca39fe0f8f8bec",
+      "entry_hash": "06201ba6a74b0d2595ddc880dee984cf112a03d1cb6701e7f22123cdb6b41d02"
+    },
+    {
+      "at": "2026-09-27T20:17:23.949Z",
+      "type": "pin-retire",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "expect": "complexity-gate SELF-TEST FAIL: sparse-row-under-threshold",
+      "justification": "Withdrawn with the sparse carry: no skipped path's rows are carried any more, so there is no carried row for a threshold filter to judge. The threshold defect it pinned (f6) cannot recur without a carry, and any future carry must re-earn a pin of its own.",
+      "seq": 18,
+      "parent_hash": "06201ba6a74b0d2595ddc880dee984cf112a03d1cb6701e7f22123cdb6b41d02",
+      "entry_hash": "abdf5537fe41940487fdd33c4843073b79302707e7a4d4017922522128ae5817"
     }
   ]
 }

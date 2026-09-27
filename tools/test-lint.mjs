@@ -75,11 +75,12 @@ function discoverTestFiles(cwd = process.cwd(), env = process.env) {
  * Listed paths, split by what the disk holds: `present` is a regular file and is read.
  * `stagedMissing` has no regular file while `git diff --cached` names it — the next commit carries
  * index content this tool cannot read — refused. `skipped` is everything else with no regular file:
- * no staged change, so the commit either keeps it as HEAD holds it or deletes it (an unstaged rm:
- * `git commit` keeps it, `git commit -a` and a colocated-jj commit delete it), or carries nothing (an
- * intent-to-add entry; an untracked dangling link). Its content is NOT re-judged here — the same
- * boundary as a committed file edited on disk; complexity-gate judges the skips its baseline holds
- * rows for (skippedRows). Under guard-reach's HEAD-index copy `diff --cached` is empty, so a
+ * no staged change, so the next commit keeps it as HEAD holds it or deletes it, depending on how
+ * it is made (an unstaged rm or a sparse checkout: `git commit` keeps it, `git commit -a` and a
+ * colocated-jj commit take the working tree), or carries nothing (an intent-to-add entry; an
+ * untracked dangling link). Its content is NOT re-judged here — the same boundary as a committed
+ * file edited on disk; complexity-gate refuses the skips its baseline holds rows for
+ * (refuseMissingSources). Under guard-reach's HEAD-index copy `diff --cached` is empty, so a
  * correct `git rm`/`git mv` is skipped rather than refused here. `--relative` keeps diff's
  * names in ls-files' cwd-relative form. complexity-gate imports this: one law, one copy.
  */

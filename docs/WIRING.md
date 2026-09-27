@@ -363,10 +363,11 @@ caught — which is why this paragraph carries no count to go stale.
   lists a path the disk lacks — the state of every uncommitted `git rm` or `git mv`. A guard that
   lists the index and reads the disk crashes there, and guard-reach reports it INCONCLUSIVE:
   test-lint and complexity-gate skip such a path (test-lint's `listedOnDisk`, which
-  complexity-gate imports) — except that complexity-gate refuses one whose baseline rows are not
-  yet re-recorded (see "What is deliberately NOT enforced"), so a `git rm` of a baselined source
-  reads INCONCLUSIVE until `--update-baseline` runs, as the direct gate reads it stale. doc-reconcile's `readCorpus` refuses a vanished tracked file on
-  purpose, but only when some registered claim carries `repo-count` evidence — stallion's
+  complexity-gate imports) — except that complexity-gate refuses one its baseline still holds
+  ceilings for (see "What is deliberately NOT enforced"), so a `git rm` of a baselined source
+  reads INCONCLUSIVE until `--update-baseline` runs, as the direct gate reads it stale.
+  doc-reconcile's `readCorpus` refuses a vanished tracked file on purpose, but only when some
+  registered claim carries `repo-count` evidence — stallion's
   `docs/gates/doc-claims.json` carries none today, so here it cannot fire. Were doc-reconcile ever
   registered alongside such a claim, every uncommitted `git rm` would read INCONCLUSIVE (a false
   red, not an escape). That caveat lives only in this paragraph: its `notRegistered` reason in
@@ -436,19 +437,24 @@ such path (an unstaged rm, an intent-to-add entry, an untracked dangling link) h
 change, so it is skipped and named on stderr with the exit code unchanged — with one exception.
 complexity-gate REFUSES (the gate, `--report` and `--update-baseline` alike) when HEAD holds a
 skipped path as a file or a link (a committed link resolves on a clean checkout, so its source is
-scanned under the link's name) and the baseline holds ceilings for it: `git commit` would keep it
-while `git commit -a` and a colocated-jj commit (jj keeps git's index at `@-`) would delete it,
-and both guesses shipped a red tip — dropping the rows stripped a source HEAD still tracks,
-carrying them kept a deleted file's ceilings behind a false green. The fix names the two exits
-that settle it: restore it from HEAD, or `git rm` it and re-record. Two skipped shapes are not
-guesses: a skip-worktree entry (a sparse checkout) is kept by every git commit, so its rows are
-carried (those still over the threshold); a path HEAD holds nothing at (an intent-to-add entry, an
-untracked link) has no source any commit keeps, so its rows go stale. A committed link that
-dangles in HEAD itself is refused like any other, and clears only by `git rm`. Neither tool re-reads what a commit carries but the disk does not show — HEAD's content for
-a skipped path, a committed file edited on disk without staging, staged content under a file since
-edited (staged, then edited); only a clean-clone run (CI on the pushed tip) judges it. test-lint's
-explicit paths (this repo's battery runs `test-lint tools`) walk the disk and never consult the
-index. Deleting or moving a file that has complexity-baseline rows needs a baseline refresh in the
-same task: stage the deletion with `git rm` (under jj too — `jj commit` then records it), then
-`--update-baseline`; that refresh is fence surface, so the task is protected. These are
-boundaries, not gaps, and they are stated so nobody has to discover them.
+scanned under the link's name) and the baseline holds ceilings for it. Whether the next commit
+keeps that source is not visible to a working-tree gate — `git commit` keeps HEAD's copy, and so
+does a sparse checkout that leaves it out, while `git commit -a` and a colocated-jj commit (jj
+keeps git's index at `@-`) record a plain rm as its deletion — and every guess shipped a red tip:
+dropping the rows stripped a source HEAD still tracks; carrying them kept a deleted file's ceilings
+behind a false green; carrying only git's skip-worktree entries was blind to jj (which ignores the
+bit, and whose own sparse patterns never set it) and to guard-reach's HEAD-index copy (which
+carries no bits). The fix names the exits that settle it: put the source back on disk (restore it
+from HEAD, or widen a sparse checkout to include it), or stage its deletion with `git rm` and
+re-record — so a sparse checkout must hold every baselined source, since the ratchet judges only
+what it can read. A committed link that dangles in HEAD itself is refused like any other and clears
+only by `git rm`. A path HEAD holds nothing at (an intent-to-add entry, an untracked link) has no
+source any commit keeps, so its rows go stale. Neither tool re-reads what a commit carries but the
+disk does not show — HEAD's content for a skipped path, a committed file edited on disk without
+staging, staged content under a file since edited (staged, then edited); only a clean-clone run (CI
+on the pushed tip) judges it. test-lint's explicit paths (this repo's battery runs `test-lint
+tools`) walk the disk and never consult the index. Deleting or moving a file that has
+complexity-baseline rows needs a baseline refresh in the same task: stage the deletion with `git
+rm` (under jj too — `jj commit` then records it), then `--update-baseline`; that refresh is fence
+surface, so the task is protected. These are boundaries, not gaps, and they are stated so nobody
+has to discover them.
