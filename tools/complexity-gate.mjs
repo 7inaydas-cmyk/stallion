@@ -79,7 +79,7 @@ try {
   process.exit(1);
 }
 import { matches } from "./pathspec.mjs";
-import { listedOnDisk, skippedNote, stagedMissingRefusal } from "./test-lint.mjs";
+import { listedOnDisk, shq, skippedNote, stagedMissingRefusal } from "./test-lint.mjs";
 
 /**
  * The missing-compiler fix names EVERY gate file that registers this tool — a partial list left
@@ -170,7 +170,7 @@ function die(message) {
  * (scan and testMentions), splitting the list with test-lint's listedOnDisk — one law. A listed
  * path with no regular file on disk and no staged change (an unstaged rm, or any `git rm`/`git mv`
  * under guard-reach's HEAD-index baseline) is skipped, NAMED via `note`, and pushed onto `skipped`
- * so scan can carry its baseline rows (carriedRows). One with a staged change (staged, then
+ * so scan can judge its baseline rows (refuseUnstagedDeletions). One with a staged change (staged, then
  * deleted) refuses: the next commit carries it and nothing here can read it. Exported for the
  * self-test's child probe, since the refusal exits.
  * ponytail: working tree only — reading the index blob (`git show :path`) was rejected: under the
@@ -192,18 +192,38 @@ export function trackedFiles(globs, excludes, cwd = ROOT, env = process.env, not
 }
 
 /**
- * A skipped path carries no staged change, so the next commit leaves it exactly as HEAD holds it:
- * its baseline rows stand in for the scan the disk cannot give, unchanged — never reported stale,
- * never dropped by --update-baseline. (That once printed --update-baseline as the fix for an
- * accidental rm, and following it dropped the ceilings of a file HEAD still tracks.) The baseline
- * is read only when something was skipped. An unreadable one refuses with the restore alone:
- * RESTORE_BASELINE's re-record route would die here again, since it cannot carry what it cannot read.
+ * A skipped path HEAD holds as a regular file, with rows in the baseline, is a deletion only some
+ * commits carry: `git commit` takes the index (the rm stays out; HEAD's file and its ceilings
+ * stand) while `git commit -a` and every colocated-jj commit (jj keeps git's index at @-) take the
+ * working tree (the rm IS the deletion; the rows go stale). Nothing here can see which, and both
+ * guesses shipped a red tip: dropping the rows let --update-baseline strip a file HEAD still
+ * tracks; carrying them kept a deleted file's ceilings through a false green. So scan REFUSES —
+ * gate, --report and --update-baseline alike — until the state says which. Any other skipped path
+ * (an intent-to-add entry, an untracked or committed link) has no source a commit can keep, so its
+ * rows are left to go stale. An unreadable baseline refuses with the restore alone:
+ * RESTORE_BASELINE's re-record route would die here again, since it cannot judge what it cannot read.
  */
-function carriedRows(skipped) {
-  if (skipped.length === 0) return [];
+function refuseUnstagedDeletions(skipped) {
+  if (skipped.length === 0) return;
   const loaded = loadBaseline();
-  if (!loaded.ok) die(`${loaded.reason.split("\n")[0]} — and it holds the ceilings of ${skipped.length} skipped path(s)\n  fix: git checkout -- ${BASELINE_PATH} (or resolve its merge conflict)`);
-  return loaded.baseline.functions.filter((row) => skipped.includes(row.file)).map((row) => ({ ...row, line: "(not on disk)" }));
+  if (!loaded.ok) die(`${loaded.reason.split("\n")[0]} — and it may hold the ceilings of ${skipped.length} path(s) missing from disk\n  fix: git checkout -- ${BASELINE_PATH} (or resolve its merge conflict)`);
+  const ceilinged = skipped.filter((p) => loaded.baseline.functions.some((row) => row.file === p));
+  const held = headRegularFiles(ceilinged);
+  for (const p of held) console.error(`complexity-gate: ${unstagedDeletionRefusal(p)}`);
+  if (held.length > 0) process.exit(1);
+}
+
+const unstagedDeletionRefusal = (p) =>
+  `${p} is missing from disk with its deletion unstaged, and ${BASELINE_PATH} holds its ceilings — \`git commit\` keeps HEAD's file, \`git commit -a\` and \`jj commit\` delete it, so neither keeping nor dropping them is safe\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion and re-record (git rm -- ${shq(p)} && node ${SELF_REL} --update-baseline)`;
+
+/** Which of `paths` HEAD holds as regular files (mode 100644/100755). An unborn HEAD holds none. */
+function headRegularFiles(paths) {
+  if (paths.length === 0 || spawnSync("git", ["rev-parse", "-q", "--verify", "HEAD"], { cwd: ROOT }).status !== 0) return [];
+  const held = execFileSync("git", ["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", ...paths], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+    .split("\0")
+    .filter((entry) => /^100(644|755) blob /.test(entry))
+    .map((entry) => entry.slice(entry.indexOf("\t") + 1));
+  return paths.filter((p) => held.includes(p));
 }
 
 const FUNCTION_KINDS = new Set([
@@ -302,7 +322,7 @@ export function analyse(file, text) {
   return found;
 }
 
-/** Every function in the tracked corpus at or over the threshold, plus the carried rows of skipped paths. */
+/** Every function in the tracked corpus over the threshold — refused while a baselined source's deletion is unstaged. */
 export function scan(config = orDie(loadConfig(), "config")) {
   const over = [];
   const skipped = [];
@@ -311,7 +331,7 @@ export function scan(config = orDie(loadConfig(), "config")) {
       if (fn.complexity > config.threshold) over.push(fn);
     }
   }
-  over.push(...carriedRows(skipped));
+  refuseUnstagedDeletions(skipped);
   return over.sort((a, b) => b.complexity - a.complexity || a.file.localeCompare(b.file) || a.name.localeCompare(b.name));
 }
 
@@ -705,38 +725,107 @@ function hostCopy(dir) {
   return copy;
 }
 
+/** One function at complexity 9: over threshold 8. */
+const BIG_SOURCE = `export function big(a) {\n${Array.from({ length: 8 }, (_, n) => `  if (a === ${n}) return ${n};\n`).join("")}  return -1;\n}\n`;
+
 /**
- * A skipped path (no regular file on disk, no staged change) is committed exactly as HEAD holds
- * it, so its baseline rows must STAND. An unstaged rm of a baselined source read as stale rows
- * whose printed fix, --update-baseline, then dropped the ceilings of a file HEAD still tracks: a
- * baseline commit that goes red on the next clean checkout. Driven for real in a scratch host: a
- * baselined source committed, removed from disk only, then the gate and the re-record run on it.
+ * A scratch host (hostCopy) in `dir` under a fresh git repo: threshold 8 over tools/**, and a
+ * baseline holding a `big` (9) row for each of `files`. `run` drives the copied gate with the
+ * inherited GIT_* env removed (inside a hook it names the HOST repo); `baseline` reads the file back.
  */
-function selfTestCarriedRows(fail) {
-  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-carry-"));
+function baselinedHost(dir, files) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+  const gate = hostCopy(dir);
+  mkdirSync(join(dir, "tools"));
+  writeFileSync(join(dir, CONFIG_PATH), JSON.stringify({ threshold: 8, includes: ["tools/**/*.mjs"], excludes: ["**/node_modules/**"], testGlobs: [] }));
+  writeFileSync(join(dir, BASELINE_PATH), JSON.stringify({ threshold: 8, functions: files.map((file) => ({ file, name: "big", complexity: 9 })) }));
   const git = (...args) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, env, stdio: "ignore" });
+  git("init", "-q");
+  const baselinePath = join(dir, BASELINE_PATH);
+  return {
+    git,
+    baselinePath,
+    run: (...args) => spawnSync(process.execPath, [gate, ...args], { cwd: dir, env, encoding: "utf8" }),
+    baseline: () => readFileSync(baselinePath, "utf8"),
+  };
+}
+
+/**
+ * AN UNSTAGED DELETION OF A BASELINED SOURCE IS REFUSED, NEVER GUESSED. The gate cannot see the
+ * next commit: `git commit` takes the index (the rm stays out, HEAD's file and its ceilings
+ * stand) while `git commit -a` and every colocated-jj commit (jj keeps git's index at @-) take the
+ * working tree (the rm IS the deletion, its rows go stale). Dropping the rows broke the first — a
+ * re-record that stripped a file HEAD still tracks; carrying them broke the second — a false
+ * green, a re-record that kept a deleted file's ceilings, a commit -a whose printed fix looped.
+ * Driven for real in a scratch host: a baselined source committed, then removed from disk only.
+ */
+function selfTestUnstagedDeletion(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-unstaged-"));
   try {
-    const gate = hostCopy(dir);
-    mkdirSync(join(dir, "tools"));
-    writeFileSync(join(dir, CONFIG_PATH), JSON.stringify({ threshold: 8, includes: ["tools/**/*.mjs"], excludes: ["**/node_modules/**"], testGlobs: [] }));
-    writeFileSync(join(dir, BASELINE_PATH), JSON.stringify({ threshold: 8, functions: [{ file: "tools/big.mjs", name: "big", complexity: 9 }] }));
-    writeFileSync(join(dir, "tools", "big.mjs"), `export function big(a) {\n${Array.from({ length: 8 }, (_, n) => `  if (a === ${n}) return ${n};\n`).join("")}  return -1;\n}\n`);
-    git("init", "-q");
-    git("add", "tools/big.mjs");
-    git("commit", "-q", "-m", "seed");
+    const host = baselinedHost(dir, ["tools/big.mjs"]);
+    writeFileSync(join(dir, "tools", "big.mjs"), BIG_SOURCE);
+    host.git("add", "tools/big.mjs");
+    host.git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "tools", "big.mjs"));
-    const run = (...args) => spawnSync(process.execPath, [gate, ...args], { cwd: dir, env, encoding: "utf8" });
-    const judged = run();
-    if (judged.status !== 0) fail(`carried-rows-dropped: an unstaged rm of a baselined source reads as stale rows (exit ${judged.status}: ${judged.stderr.trim()})`);
-    // The re-record must RUN: a crashed one leaves the old file standing and would read as carried.
-    const updated = run("--update-baseline");
-    const rows = JSON.parse(readFileSync(join(dir, BASELINE_PATH), "utf8")).functions;
-    if (updated.status !== 0 || !rows.some((row) => row.file === "tools/big.mjs" && row.complexity === 9)) fail(`carried-rows-dropped: --update-baseline dropped the ceiling of a source HEAD still tracks (exit ${updated.status}, rows: ${JSON.stringify(rows)})`);
-    // A conflicted baseline holds those ceilings too: the refusal must not send the re-record back into itself.
-    writeFileSync(join(dir, BASELINE_PATH), "<<<<<<< HEAD\n{");
-    const conflicted = run("--update-baseline");
-    if (conflicted.status !== 1 || conflicted.stderr.includes("--update-baseline") || !conflicted.stderr.includes(`git checkout -- ${BASELINE_PATH}`)) fail(`carried-rows-circular-fix: an unreadable baseline under a skipped path must refuse with the restore alone (exit ${conflicted.status}: ${conflicted.stderr.trim()})`);
+    unstagedDeletionRefused(fail, host);
+    conflictedUnderSkip(fail, host);
+    namedExitConverges(fail, host);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The gate and the re-record both refuse with the two exits that settle it; the baseline is untouched. */
+function unstagedDeletionRefused(fail, host) {
+  const recorded = host.baseline();
+  const fix = "fix: restore it (git checkout -- tools/big.mjs) or stage the deletion and re-record (git rm -- tools/big.mjs && node vendor/complexity-gate.mjs --update-baseline)";
+  for (const [what, run] of [["gate", host.run()], ["--update-baseline", host.run("--update-baseline")]]) {
+    if (run.status !== 1 || !run.stderr.includes(fix)) fail(`unstaged-deletion-guessed: the ${what} on an unstaged rm of a baselined source must refuse with the two exits that settle it (exit ${run.status}: ${run.stderr.trim()})`);
+  }
+  if (host.baseline() !== recorded) fail(`unstaged-deletion-rerecorded: --update-baseline rewrote the baseline under an unstaged deletion: ${host.baseline()}`);
+}
+
+/** A conflicted baseline may hold those ceilings too: the refusal must not send the re-record back into itself. */
+function conflictedUnderSkip(fail, host) {
+  const recorded = host.baseline();
+  writeFileSync(host.baselinePath, "<<<<<<< HEAD\n{");
+  const conflicted = host.run("--update-baseline");
+  writeFileSync(host.baselinePath, recorded);
+  if (conflicted.status !== 1 || conflicted.stderr.includes("--update-baseline") || !conflicted.stderr.includes(`git checkout -- ${BASELINE_PATH}`)) fail(`skipped-baseline-circular-fix: an unreadable baseline under a skipped path must refuse with the restore alone (exit ${conflicted.status}: ${conflicted.stderr.trim()})`);
+}
+
+/** The exit the refusal names converges where carrying looped: git rm, re-record, then `git commit -a`. */
+function namedExitConverges(fail, host) {
+  host.git("rm", "-q", "--", "tools/big.mjs");
+  const rerecorded = host.run("--update-baseline");
+  host.git("commit", "-q", "-a", "-m", "delete");
+  const after = host.run();
+  if (rerecorded.status !== 0 || after.status !== 0 || host.baseline().includes("tools/big.mjs")) fail(`unstaged-deletion-no-exit: git rm, re-record, commit -a must leave a green gate and no row for the deleted source (re-record exit ${rerecorded.status}, gate exit ${after.status}: ${after.stderr.trim()})`);
+}
+
+/**
+ * A skipped path HEAD holds no regular file at has no source any commit keeps — a committed
+ * dangling link, a removed intent-to-add entry, an untracked dangling link — so its rows are
+ * STALE: reported by the gate, dropped by the re-record. Carrying them kept a dead ceiling on
+ * every clean clone; refusing them would print exits that cannot run (git rm of an untracked link).
+ */
+function selfTestNoHeadFile(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-nohead-"));
+  const paths = ["tools/link.mjs", "tools/ita.mjs", "tools/loose.mjs"];
+  try {
+    const host = baselinedHost(dir, paths);
+    symlinkSync("nowhere.mjs", join(dir, "tools", "link.mjs"));
+    host.git("add", "tools/link.mjs");
+    host.git("commit", "-q", "-m", "seed");
+    writeFileSync(join(dir, "tools", "ita.mjs"), BIG_SOURCE);
+    host.git("add", "-N", "tools/ita.mjs");
+    rmSync(join(dir, "tools", "ita.mjs"));
+    symlinkSync("nowhere.mjs", join(dir, "tools", "loose.mjs"));
+    const judged = host.run();
+    const stale = paths.filter((p) => judged.stderr.includes(`still exempts ${p} big (9)`));
+    if (judged.status !== 1 || stale.length !== paths.length || judged.stderr.includes("stage the deletion")) fail(`no-head-file-carried: rows for paths HEAD holds no regular file at must read as stale, never carried or refused (exit ${judged.status}: ${judged.stderr.trim()})`);
+    const updated = host.run("--update-baseline");
+    if (updated.status !== 0 || JSON.parse(host.baseline()).functions.length !== 0) fail(`no-head-file-kept: --update-baseline kept ceilings no commit can hold (exit ${updated.status}: ${host.baseline()})`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -783,7 +872,8 @@ export function selfTest() {
   selfTestRemedies(fail);
   selfTestOptOut(fail);
   selfTestTrackedNames(fail);
-  selfTestCarriedRows(fail);
+  selfTestUnstagedDeletion(fail);
+  selfTestNoHeadFile(fail);
   selfTestSelfAlarm(fail);
   selfTestVendoredSelf(fail);
 

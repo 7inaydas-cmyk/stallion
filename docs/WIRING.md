@@ -431,13 +431,19 @@ guard-reach and a vendor's pre-commit run it) and complexity-gate list the index
 WORKING TREE. A listed path with no regular file on disk refuses when `git diff --cached` names it
 (staged, then deleted), since the next commit would carry content neither tool can read; any other
 such path (an unstaged rm, an intent-to-add entry, an untracked dangling link) has no staged
-change, so it is skipped and named on stderr with the exit code unchanged, and complexity-gate
-carries its baseline rows as they stand, so neither the gate nor `--update-baseline` treats an
-accidental rm as a deletion. Neither tool re-reads what a commit carries but the disk does not
-show — HEAD's content for a skipped path, a committed file edited on disk without staging, staged
-content under a file since edited (staged, then edited); only a clean-clone run (CI on the pushed
-tip) judges it. test-lint's explicit paths (this repo's battery runs `test-lint tools`) walk the
-disk and never consult the index. Deleting or moving a file that has complexity-baseline rows
-still needs a baseline refresh in the same task (its rows go stale once `git rm` stages the
-deletion); that refresh is fence surface, so the task is protected. These are boundaries, not
-gaps, and they are stated so nobody has to discover them.
+change, so it is skipped and named on stderr with the exit code unchanged — with one exception.
+complexity-gate REFUSES (the gate, `--report` and `--update-baseline` alike) when a skipped path is
+a regular file in HEAD that the baseline holds ceilings for: `git commit` would keep that file while
+`git commit -a` and a colocated-jj commit (jj keeps git's index at `@-`) would delete it, and both
+guesses shipped a red tip — dropping the rows stripped a file HEAD still tracks, carrying them kept
+a deleted file's ceilings behind a false green. The fix names the two exits that settle it: restore
+the file, or `git rm` it and re-record. A skipped path HEAD holds no regular file at (an
+intent-to-add entry, an untracked or committed link) has no source any commit keeps, so its rows go
+stale. Neither tool re-reads what a commit carries but the disk does not show — HEAD's content for
+a skipped path, a committed file edited on disk without staging, staged content under a file since
+edited (staged, then edited); only a clean-clone run (CI on the pushed tip) judges it. test-lint's
+explicit paths (this repo's battery runs `test-lint tools`) walk the disk and never consult the
+index. Deleting or moving a file that has complexity-baseline rows needs a baseline refresh in the
+same task: stage the deletion with `git rm` (under jj too — `jj commit` then records it), then
+`--update-baseline`; that refresh is fence surface, so the task is protected. These are
+boundaries, not gaps, and they are stated so nobody has to discover them.

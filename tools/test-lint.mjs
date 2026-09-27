@@ -75,9 +75,11 @@ function discoverTestFiles(cwd = process.cwd(), env = process.env) {
  * Listed paths, split by what the disk holds: `present` is a regular file and is read.
  * `stagedMissing` has no regular file while `git diff --cached` names it — the next commit carries
  * index content this tool cannot read — refused. `skipped` is everything else with no regular file:
- * no staged change, so the commit leaves it as HEAD holds it (an unstaged rm), or carries nothing (an
+ * no staged change, so the commit either keeps it as HEAD holds it or deletes it (an unstaged rm:
+ * `git commit` keeps it, `git commit -a` and a colocated-jj commit delete it), or carries nothing (an
  * intent-to-add entry; an untracked dangling link). Its content is NOT re-judged here — the same
- * boundary as a committed file edited on disk. Under guard-reach's HEAD-index copy `diff --cached`
+ * boundary as a committed file edited on disk; complexity-gate refuses the one skip that moves its
+ * baseline (refuseUnstagedDeletions). Under guard-reach's HEAD-index copy `diff --cached`
  * is empty, so a correct `git rm`/`git mv` is skipped rather than refused. `--relative` keeps diff's
  * names in ls-files' cwd-relative form. complexity-gate imports this: one law, one copy.
  */
@@ -95,7 +97,7 @@ export function listedOnDisk(cwd, env, files) {
   return split;
 }
 
-const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
+export const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
 
 export const stagedMissingRefusal = (p) =>
   `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion (git rm -- ${shq(p)})`;

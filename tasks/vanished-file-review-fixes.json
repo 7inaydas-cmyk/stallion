@@ -1,0 +1,95 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "vanished-file-review-fixes",
+  "title": "the vanished-file fix round's review findings: an unstaged deletion of a baselined source is refused, never carried or dropped by guess",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T19:35:24.912Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "9e4f505ea5e0b610a963b9175bdcbfaf1fd10c57d89efbbbda9f6b5f57c19b37"
+    },
+    {
+      "at": "2026-09-27T19:35:24.946Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "9e4f505ea5e0b610a963b9175bdcbfaf1fd10c57d89efbbbda9f6b5f57c19b37",
+      "entry_hash": "5247c7ccce7235623ae50a3f1333f9bf4f9655e62ee79c392c8ec26a557d21e6"
+    },
+    {
+      "at": "2026-09-27T19:35:24.981Z",
+      "type": "scope",
+      "patterns": [
+        "tools/complexity-gate.mjs",
+        "tools/test-lint.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "5247c7ccce7235623ae50a3f1333f9bf4f9655e62ee79c392c8ec26a557d21e6",
+      "entry_hash": "89ad1f665851e1a286916cd36cf02bc7436bbf9ad8f5956b0373a49a4053d4a0"
+    },
+    {
+      "at": "2026-09-27T19:35:25.015Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "89ad1f665851e1a286916cd36cf02bc7436bbf9ad8f5956b0373a49a4053d4a0",
+      "entry_hash": "7a1190f3a27d83369916fea859c2a5755041bb2420a32bd87f3332af7afd8437"
+    },
+    {
+      "at": "2026-09-27T19:37:38.938Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: unstaged-deletion-guessed",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a2f51d1c5d68",
+      "seq": 4,
+      "parent_hash": "7a1190f3a27d83369916fea859c2a5755041bb2420a32bd87f3332af7afd8437",
+      "entry_hash": "3258aafdcb7125f43ea529e448ede49dd9cfdf0f30d0e5df6ef26da68cf04d75"
+    },
+    {
+      "at": "2026-09-27T19:37:42.668Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: unstaged-deletion-rerecorded",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a2f51d1c5d68",
+      "seq": 5,
+      "parent_hash": "3258aafdcb7125f43ea529e448ede49dd9cfdf0f30d0e5df6ef26da68cf04d75",
+      "entry_hash": "6423ce305177ed93783c82761d8ab178566c202d50a69d83187a126bd75db668"
+    },
+    {
+      "at": "2026-09-27T19:37:46.437Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: no-head-file-carried",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a2f51d1c5d68",
+      "seq": 6,
+      "parent_hash": "6423ce305177ed93783c82761d8ab178566c202d50a69d83187a126bd75db668",
+      "entry_hash": "dbeb3b42d838859bde8a619d9a6f564ab67a8aa926cba6fb2cdb0174e048cdc0"
+    },
+    {
+      "at": "2026-09-27T19:37:50.108Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: no-head-file-kept",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a2f51d1c5d68",
+      "seq": 7,
+      "parent_hash": "dbeb3b42d838859bde8a619d9a6f564ab67a8aa926cba6fb2cdb0174e048cdc0",
+      "entry_hash": "b8b086f8e286fb6087dd2b1f00c3b01f68baa9d447b6bec1eb03570e8d87f3f2"
+    },
+    {
+      "at": "2026-09-27T19:40:28.457Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 8,
+      "parent_hash": "b8b086f8e286fb6087dd2b1f00c3b01f68baa9d447b6bec1eb03570e8d87f3f2",
+      "entry_hash": "210b9465224c6d43e502cd1665439199a1dfb562fa1693c726bd88b26cbaa1aa"
+    }
+  ]
+}
