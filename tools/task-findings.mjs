@@ -193,6 +193,20 @@ export function loadFindings(path) {
   return { ok: true, register: parsed };
 }
 
+/**
+ * The repair a register that fails its read owes: evidence plus a NON-destructive fix, one text for
+ * every reader. A "restore the last valid version" fix named no history for the untracked register
+ * of a pass in flight and, on a committed one, silently dropped every finding since — UNRESOLVED
+ * blockers included — so a verdict could turn CLEAN (task-state printed it while the runner
+ * forbade it). The rm-and-re-mint (by `mint`: prepare/calibrate) is offered only for a `register`
+ * the caller PARSED and counted empty: printed as a condition, it was run on a conflict-marked
+ * register holding a HIGH and the re-minted pass scored CLEAN. An unparsed count is unknown.
+ */
+export function findingsRepair(rel, id, mint = "prepare", register = null) {
+  const remint = Array.isArray(register?.findings) && register.findings.length === 0 ? `; it holds no findings, so a re-mint loses nothing: rm ${rel} && node tools/adversarial-runner.mjs ${mint} ${id}` : "";
+  return `\n  evidence: ${rel} — git diff -- ${rel} shows what changed since its last commit, if it has one\n  fix: repair ${rel} by hand, keeping every recorded finding (append-only: a dropped finding is a blocker silently cleared)${remint}`;
+}
+
 /** Self-test: drive every refusal AND every allowance — a validator nobody has watched refuse is decoration. */
 function selfTestValidate(fail) {
   const base = emptyFindings("self-test");
@@ -284,8 +298,20 @@ function selfTestStatusRepair(fail) {
   return cases.length;
 }
 
+/** The repair text: the rm-and-re-mint only for a register the caller PARSED and counted empty. */
+function selfTestRepairText(fail) {
+  const rel = "tasks/t.findings.json";
+  const cases = [
+    ["a register of unknown count gets hand repair only, never the rm-and-remint", !findingsRepair(rel, "t").includes(`rm ${rel}`)],
+    ["a register holding a finding gets hand repair only, never the rm-and-remint", !findingsRepair(rel, "t", "prepare", { findings: [{ id: "f1" }] }).includes(`rm ${rel}`)],
+    ["a parsed, empty register is offered the re-mint, by its own mint", findingsRepair(rel, "t", "calibrate", { findings: [] }).includes(`rm ${rel} && node tools/adversarial-runner.mjs calibrate t`)],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
+}
+
 export function selfTestFindings(fail) {
-  return selfTestValidate(fail) + selfTestAppendResolve(fail) + selfTestStatusGuards(fail) + selfTestStatusRepair(fail) + selfTestResolveEvidence(fail) + selfTestChain(fail) + selfTestProofLaw(fail) + selfTestDedup(fail) + selfTestLockCause(fail);
+  return selfTestValidate(fail) + selfTestAppendResolve(fail) + selfTestStatusGuards(fail) + selfTestStatusRepair(fail) + selfTestResolveEvidence(fail) + selfTestChain(fail) + selfTestProofLaw(fail) + selfTestDedup(fail) + selfTestLockCause(fail) + selfTestRepairText(fail);
 }
 
 /** Only contention retries: a lock that cannot be created for any other reason (its directory is

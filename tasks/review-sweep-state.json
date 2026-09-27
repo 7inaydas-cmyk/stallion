@@ -148,6 +148,157 @@
       "seq": 13,
       "parent_hash": "3a4728c3d2afcd8b20667db382ee448802ca5c09f20a83e41f73b4a2512fb188",
       "entry_hash": "e218f3898fe5e38059555d1a72c834a90987648182a675a768377d2df023ce08"
+    },
+    {
+      "at": "2026-09-27T08:02:22.187Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 14,
+      "parent_hash": "e218f3898fe5e38059555d1a72c834a90987648182a675a768377d2df023ce08",
+      "entry_hash": "2d0ca878395328e0b56b1039c838b09f9f39d003ef7defa6c29fe674cf7dbd69"
+    },
+    {
+      "at": "2026-09-27T09:47:34.969Z",
+      "type": "red-check",
+      "expect": "refuses a done record in the write seam's own words",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 15,
+      "parent_hash": "2d0ca878395328e0b56b1039c838b09f9f39d003ef7defa6c29fe674cf7dbd69",
+      "entry_hash": "01ebca577625161321801b4387a1656444d549ea9041e673c3f2d34eb933b743"
+    },
+    {
+      "at": "2026-09-27T09:47:35.731Z",
+      "type": "red-check",
+      "expect": "a pin re-recorded after its command was retired is a live pin|a retirement naming an expect retires that pin alone",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 16,
+      "parent_hash": "01ebca577625161321801b4387a1656444d549ea9041e673c3f2d34eb933b743",
+      "entry_hash": "fe92fed0d4f26e87b4833c72a01aed4b9884c19aa7d6bec4cf1ab73217fcc035"
+    },
+    {
+      "at": "2026-09-27T09:47:36.506Z",
+      "type": "red-check",
+      "expect": "the pinless-done remedy never offers a pin that fails now",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 17,
+      "parent_hash": "fe92fed0d4f26e87b4833c72a01aed4b9884c19aa7d6bec4cf1ab73217fcc035",
+      "entry_hash": "a3016c1d868ec86de68361f9a4899f085061ab3ab2111de2879c66ef4d6d05d5"
+    },
+    {
+      "at": "2026-09-27T09:47:37.280Z",
+      "type": "red-check",
+      "expect": "the handoff obligations carry the resolve-evidence fact",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 18,
+      "parent_hash": "a3016c1d868ec86de68361f9a4899f085061ab3ab2111de2879c66ef4d6d05d5",
+      "entry_hash": "418454030efe89468f1e7213a1703e9a4bbc2027f1f14cc0380eca7b9fec1b39"
+    },
+    {
+      "at": "2026-09-27T09:47:38.055Z",
+      "type": "red-check",
+      "expect": "red-check on a broken chain refuses BEFORE its pin command runs",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 19,
+      "parent_hash": "418454030efe89468f1e7213a1703e9a4bbc2027f1f14cc0380eca7b9fec1b39",
+      "entry_hash": "a03a7c36387aa8866a4069508ba82518008d9e20726149b5cb6681aadf494755"
+    },
+    {
+      "at": "2026-09-27T09:47:38.844Z",
+      "type": "red-check",
+      "expect": "advance done refuses a record that moved while the gate ran its pins",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 20,
+      "parent_hash": "a03a7c36387aa8866a4069508ba82518008d9e20726149b5cb6681aadf494755",
+      "entry_hash": "6da6b14592bc546a999c0e07c41c5deb2131eb525e924d8c1b11542c0deb433e"
+    },
+    {
+      "at": "2026-09-27T09:47:39.639Z",
+      "type": "red-check",
+      "expect": "is not the task its file names",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 21,
+      "parent_hash": "6da6b14592bc546a999c0e07c41c5deb2131eb525e924d8c1b11542c0deb433e",
+      "entry_hash": "3d971b00d8172af6128ed8fc44eeeefd69e9ef89ea7aa6bd6883f482ecef9a35"
+    },
+    {
+      "at": "2026-09-27T09:47:40.425Z",
+      "type": "red-check",
+      "expect": "an unreadable register prints the non-destructive repair",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "384c5b60dad7",
+      "seq": 22,
+      "parent_hash": "3d971b00d8172af6128ed8fc44eeeefd69e9ef89ea7aa6bd6883f482ecef9a35",
+      "entry_hash": "237bbef5bde7bb1a3b8ce23e044b3d5f4b4ad02add6c071c4991aec0e13c3cbd"
+    },
+    {
+      "at": "2026-09-27T10:07:12.377Z",
+      "type": "red-check",
+      "expect": "never prints the rm-and-remint repair",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "422fabd7b947",
+      "seq": 23,
+      "parent_hash": "237bbef5bde7bb1a3b8ce23e044b3d5f4b4ad02add6c071c4991aec0e13c3cbd",
+      "entry_hash": "171400b360ddda9786f11eaa99c1707779e214851034d6b250af7864b8c8ac47"
+    },
+    {
+      "at": "2026-09-27T10:07:13.373Z",
+      "type": "red-check",
+      "expect": "gets hand repair only, never the rm-and-remint",
+      "command": "node tools/task-findings.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f21e853e746c",
+      "seq": 24,
+      "parent_hash": "171400b360ddda9786f11eaa99c1707779e214851034d6b250af7864b8c8ac47",
+      "entry_hash": "05d029c37ea3db1bd4f6be9d77857aa6806b860a67c1e35ff4d73ffc431a2d1d"
+    },
+    {
+      "at": "2026-09-27T10:07:13.598Z",
+      "type": "red-check",
+      "expect": "advance on a broken chain refuses BEFORE its battery runs",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "422fabd7b947",
+      "seq": 25,
+      "parent_hash": "05d029c37ea3db1bd4f6be9d77857aa6806b860a67c1e35ff4d73ffc431a2d1d",
+      "entry_hash": "475cd9eaf6b580ecad5285638e9407fd80bae936e2cf188f8816a0d60d832da1"
+    },
+    {
+      "at": "2026-09-27T10:07:14.540Z",
+      "type": "red-check",
+      "expect": "the not-its-file refusal names the exit that works for a copy",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "422fabd7b947",
+      "seq": 26,
+      "parent_hash": "475cd9eaf6b580ecad5285638e9407fd80bae936e2cf188f8816a0d60d832da1",
+      "entry_hash": "422d6e7b7509b6dc8dfd7e206edef75501d8a837f56b6b09ee0a4e7ff3ccf9e2"
+    },
+    {
+      "at": "2026-09-27T10:11:31.727Z",
+      "type": "red-check",
+      "expect": "the status listing skips a record that is not the task its file names",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d16910bb9b98",
+      "seq": 27,
+      "parent_hash": "422d6e7b7509b6dc8dfd7e206edef75501d8a837f56b6b09ee0a4e7ff3ccf9e2",
+      "entry_hash": "7136734147713342e064eb1f9ca78599e56096fef82ca7e5acfe017a30c508c5"
     }
   ]
 }
