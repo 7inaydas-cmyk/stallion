@@ -90,6 +90,50 @@
       "seq": 8,
       "parent_hash": "b8b086f8e286fb6087dd2b1f00c3b01f68baa9d447b6bec1eb03570e8d87f3f2",
       "entry_hash": "210b9465224c6d43e502cd1665439199a1dfb562fa1693c726bd88b26cbaa1aa"
+    },
+    {
+      "at": "2026-09-27T19:57:40.070Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: linked-source-dropped",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "3add03bc4d7b",
+      "seq": 9,
+      "parent_hash": "210b9465224c6d43e502cd1665439199a1dfb562fa1693c726bd88b26cbaa1aa",
+      "entry_hash": "df0ee429c347da4b96f767128e424de2b512380275363df673d95a377d529e13"
+    },
+    {
+      "at": "2026-09-27T19:57:46.253Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: sparse-entry-refused",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "3add03bc4d7b",
+      "seq": 10,
+      "parent_hash": "df0ee429c347da4b96f767128e424de2b512380275363df673d95a377d529e13",
+      "entry_hash": "aee854c8c1011670e6ca4f137c02acd3a1b7d4cce10b43f17b05ae9ada950c52"
+    },
+    {
+      "at": "2026-09-27T19:57:58.676Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: unbaselined-skip-refused",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "78fb46749acf",
+      "seq": 11,
+      "parent_hash": "aee854c8c1011670e6ca4f137c02acd3a1b7d4cce10b43f17b05ae9ada950c52",
+      "entry_hash": "2f949f39189ae05e7155beabbf4d52380cd26c74c0314714e46a09c4300e14fa"
+    },
+    {
+      "at": "2026-09-27T19:58:11.014Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: sparse-row-under-threshold",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "dc8571bc16c7",
+      "seq": 12,
+      "parent_hash": "2f949f39189ae05e7155beabbf4d52380cd26c74c0314714e46a09c4300e14fa",
+      "entry_hash": "decaf2d7bb50287fefed80fc7b7679b00d2613631a421572b169bd570bc42ef0"
     }
   ]
 }
