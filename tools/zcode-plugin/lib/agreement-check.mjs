@@ -28,8 +28,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = fileURLToPath(new URL("./", import.meta.url));
 
-/** A synthetic but law-valid record: schema-honest, post-cutover, CHAIN-STAMPED, with scope. */
-function record(chainStampEvents, id, phase, scope) {
+/**
+ * A synthetic but law-valid record at `phase`: schema-honest, post-cutover, CHAIN-STAMPED, with
+ * scope. Its transitions walk the repo's OWN PHASES up to `phase` — never a re-typed chain, so a
+ * phase the repo adds is exercised by this matrix the day it lands — and a record that reached
+ * executing carries the red-check a lawful one would.
+ */
+function record(chainStampEvents, PHASES, id, phase, scope) {
+  const reached = PHASES.slice(1, PHASES.indexOf(phase) + 1);
   return {
     schema: "stallion/task-state@1",
     id,
@@ -37,18 +43,25 @@ function record(chainStampEvents, id, phase, scope) {
     events: chainStampEvents([
       { type: "created", at: "2026-09-19T12:00:00.000Z" },
       ...(scope ? [{ type: "scope", patterns: scope }] : []),
-      { type: "transition", to: "planned", at: "2026-09-19T12:01:00.000Z" },
-      { type: "transition", to: "executing", at: "2026-09-19T12:02:00.000Z" },
-      ...(phase === "executing" ? [] : [
-        { type: "transition", to: "verified", at: "2026-09-19T12:03:00.000Z" },
-        ...(phase === "verified" ? [] : [
-          { type: "transition", to: "adversarial", at: "2026-09-19T12:04:00.000Z" },
-          ...(phase === "adversarial" ? [] : [{ type: "transition", to: "done", at: "2026-09-19T12:05:00.000Z" }]),
-        ]),
-      ]),
-      { type: "red-check", command: "node --test synthetic.test.mjs", exitCode: 1, outputDigest: "abc", at: "2026-09-19T12:02:30.000Z" },
+      ...reached.map((to, i) => ({ type: "transition", to, at: `2026-09-19T12:${String(i + 1).padStart(2, "0")}:00.000Z` })),
+      ...(reached.includes("executing") ? [{ type: "red-check", command: "node --test synthetic.test.mjs", exitCode: 1, outputDigest: "abc", at: "2026-09-19T12:02:30.000Z" }] : []),
     ]),
   };
+}
+
+/**
+ * The fixture for one matrix row. Beyond the repo's PHASES, two derived terminal shapes: a
+ * RETIRED record (lawfully retired from planned — the terminal-by-event state every transport
+ * must refuse alike) and a FORGED one (an unstamped transition to a phase the law does not know:
+ * derivePhase ignores it, the chain law refuses it).
+ */
+function fixture(chainStampEvents, PHASES, phase, scope) {
+  const id = `probe-${phase}-${scope ? "scoped" : "bare"}`;
+  const base = { retired: "planned", forged: "executing" }[phase] ?? phase;
+  const r = record(chainStampEvents, PHASES, id, base, scope);
+  if (phase === "retired") r.events = chainStampEvents([...r.events, { type: "retired", because: "superseded by the agreement probe", at: "2026-09-19T12:30:00.000Z" }]);
+  if (phase === "forged") r.events.push({ type: "transition", to: "shipped" });
+  return r;
 }
 
 /** Run the matrix against the real law of the repo this file lives in. */
@@ -71,7 +84,7 @@ export async function checkAgreement(verbose = false) {
   const DOC = "docs/agreement-probe.md";
   if (!isCodePath(CODE) || isCodePath(DOC)) fail(`the real law must classify ${CODE} as code and ${DOC} as not-code (got ${isCodePath(CODE)}/${isCodePath(DOC)})`);
 
-  const phases = ["intake", "planned", "executing", "verified", "adversarial", "done", "forged"];
+  const phases = [...PHASES, "retired", "forged"];
   const scopeShapes = [["tools/**"], ["apps/**"], null];
   let checked = 0;
   let activeCount = 0;
@@ -79,13 +92,10 @@ export async function checkAgreement(verbose = false) {
   let uncoveredActiveCount = 0;
   for (const phase of phases) {
     for (const scope of scopeShapes) {
-      const r = record(chainStampEvents, `probe-${phase}-${scope ? "scoped" : "bare"}`, phase === "forged" ? "executing" : phase, scope);
-      if (phase === "forged") r.events.push({ type: "transition", to: "shipped" }); // derivePhase ignores unknown targets
-      if (phase === "intake") r.events = chainStampEvents([r.events[0]]);
-      if (phase === "planned") r.events = chainStampEvents([r.events[0], ...(scope ? [{ type: "scope", patterns: scope }] : []), { type: "transition", to: "planned", at: "2026-09-19T12:01:00.000Z" }]);
+      const r = fixture(chainStampEvents, PHASES, phase, scope);
       const stagedPass = stagedRefusal([CODE], [r]) === null;
       const decision = authoringDecision({ filePath: `${law.root}/${CODE}`, cwd: law.root }, law, [r]);
-      const gateActive = decision.reason ? !decision.reason.includes("no task is in flight") : true;
+      const gateActive = decision.code !== "no-active-task"; // the gate's structured verdict — never read out of its prose
       checked += 1;
       const expectedActive = recordRefusal(r) === null && window.includes(derivePhase(r.events));
       if (expectedActive) activeCount += 1;

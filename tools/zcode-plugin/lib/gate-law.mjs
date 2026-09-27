@@ -14,9 +14,11 @@
  * the lifecycle grants.
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, existsSync, readFileSync, realpathSync } from "node:fs";
+import { readdirSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { layoutAt } from "./law-source.mjs";
 
 /**
  * The phases that authorize code — DERIVED from whatever taxonomy the edited repo's own
@@ -26,17 +28,35 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  */
 export const authorizingPhases = (PHASES) => new Set(PHASES.slice(PHASES.indexOf("executing"), PHASES.indexOf("done")));
 
+const PAYLOAD_FIX = "if the runner's payload shape changed, update parseEditPayload in tools/zcode-plugin/lib/gate-law.mjs deliberately";
+const NOT_AN_OBJECT = [
+  "the hook payload is not an object",
+  "  rule: a gate that cannot read its input refuses the edit it was asked to bless",
+  `  fix: this hook reads the standard PreToolUse stdin payload (an object carrying tool_input); ${PAYLOAD_FIX}`,
+].join("\n");
+
+/** The refusal for a payload that names no file: the rule, what the payload DID carry, the fix. */
+function unnamedFileReason(toolName, input) {
+  const keys = input && typeof input === "object" ? Object.keys(input).join(", ") || "(none)" : "(no tool_input)";
+  return [
+    `cannot determine the target file of the ${toolName} edit — a gate that cannot name the file refuses`,
+    "  rule: a gate that cannot name the file it is asked to bless refuses the edit, never guesses",
+    `  evidence: tool_input keys: ${keys}`,
+    `  fix: retry the edit naming its file in tool_input.file_path; ${PAYLOAD_FIX}`,
+  ].join("\n");
+}
+
 /**
  * Parse a PreToolUse hook payload (the stdin JSON). Returns { ok, toolName, filePath, cwd } or
  * { ok: false, reason }. Edit/Write carry file_path; runtimes that spell it path or filePath
  * are accepted — a gate that cannot name the file it is asked to bless must refuse, not guess.
  */
 export function parseEditPayload(payload) {
-  if (!payload || typeof payload !== "object") return { ok: false, reason: "hook payload is not an object" };
+  if (!payload || typeof payload !== "object") return { ok: false, reason: NOT_AN_OBJECT };
   const toolName = typeof payload.tool_name === "string" && payload.tool_name.length > 0 ? payload.tool_name : "(unknown tool)";
   const raw = payload.tool_input?.file_path ?? payload.tool_input?.filePath ?? payload.tool_input?.path;
   if (typeof raw !== "string" || raw.length === 0) {
-    return { ok: false, reason: `cannot determine the target file of the ${toolName} edit — a gate that cannot name the file refuses` };
+    return { ok: false, reason: unnamedFileReason(toolName, payload.tool_input) };
   }
   const cwd = typeof payload.cwd === "string" && payload.cwd.length > 0 ? payload.cwd : process.cwd();
   return { ok: true, toolName, filePath: raw, cwd };
@@ -61,60 +81,120 @@ export function readRecords(stateDir) {
   return records;
 }
 
+/** The harness's task-state CLI, repo-relative — from the layout law-source resolved, never
+ *  re-derived from the shape name here (three ternaries once each re-typed the layout table). */
+const stateToolOf = (law) => join(law.harnessDir, "task-state.mjs");
+
+/**
+ * One record's standing: null outside the authorizing window, else { record, id, phase, refusal }
+ * where a null refusal means it authorizes. A record the law THROWS on (a hand-edited events
+ * shape) authorizes nothing and never crashes the gate — the hook must not fail open on an
+ * exit 1, and one junk file must not block every other task either (a review finding).
+ */
+function standingOf(law, record) {
+  try {
+    const phase = law.state.derivePhase(record.events ?? []);
+    if (!authorizingPhases(law.state.PHASES).has(phase)) return null;
+    return { record, id: record.id, phase, refusal: law.coverage.recordRefusal(record) };
+  } catch (e) {
+    return { record, id: String(record?.id ?? "(no id)"), phase: "unjudgeable", refusal: `the law throws on this record (${e?.message ?? e}) — repair or remove it` };
+  }
+}
+
+/** Every in-window record's standing, in record order. Pure over the law module. */
+const standingsOf = (law, records) => records.map((record) => standingOf(law, record)).filter((s) => s !== null);
+
+/**
+ * The new-task fix for relPath. A path on the fence's own surface is protected-tier blast radius:
+ * a runtime-code task can never scope over it, so printing that fix walked the agent straight
+ * into the tier law's refusal (a review finding). Optional call — a harness predating the tier
+ * law has no fenceSurfaceRefusal, and its fix stays runtime-code.
+ */
+function newTaskFix(law, relPath) {
+  const stateTool = stateToolOf(law);
+  const tier = law.state.fenceSurfaceRefusal?.({ riskClass: "runtime-code", events: [] }, [relPath]);
+  return tier
+    ? `node ${stateTool} new <id> --risk-class protected   then: node ${stateTool} approve <id> --decision "<full DECISIONS.md heading>", advance it to executing, declare scope, and retry the edit`
+    : `node ${stateTool} new <id> --risk-class runtime-code   then advance it to executing, declare scope, and retry the edit`;
+}
+
+/**
+ * The no-task refusal. It states the repo's OWN window (derived, never re-typed), names every
+ * in-window record the law refused WITH the law's reason — so the gate never claims "nothing in
+ * flight" while the banner shows a task — and carries a machine-readable code, so a consumer
+ * never reads the verdict out of the prose.
+ */
+function noActiveTaskDenial(law, relPath, standings) {
+  const window = [...authorizingPhases(law.state.PHASES)].join("/");
+  const refused = standings.map((s) => `${s.id} (${s.phase}): ${s.refusal}`).join(" | ");
+  return {
+    decision: "deny",
+    code: "no-active-task",
+    reason: [
+      `REFUSED — the edit touches lifecycle-governed code (${relPath}) but no in-flight task authorizes code (in flight: ${window}).`,
+      "  rule: code lands only under a task the machine has authorized, within its declared scope",
+      `  evidence: ${refused || `no record is ${window}`}`,
+      `  fix: ${newTaskFix(law, relPath)}`,
+    ].join("\n"),
+  };
+}
+
 /**
  * The authoring decision, pure over (payload facts, law module, records). The law module is
  * the repo's OWN imported harness (see law-source.mjs) — never a copy. Returns
- * { decision: "allow", hint } or { decision: "deny", reason }.
+ * { decision: "allow", hint } or { decision: "deny", reason, code? }.
  */
 export function authoringDecision({ filePath, cwd }, law, records) {
-  const { isCodePath, recordRefusal, scopeRefusal, citationRefusal } = law.coverage;
-  const { derivePhase, scopeOf } = law.state;
+  const { isCodePath, scopeRefusal, citationRefusal } = law.coverage;
+  const { scopeOf } = law.state;
   const absolute = isAbsolute(filePath) ? filePath : join(cwd, filePath);
   const relPath = relative(law.root, absolute);
   if (relPath.startsWith("..")) {
     return {
       decision: "deny",
-      reason: `the edit targets ${filePath}, outside the harness repo at ${law.root} — the lifecycle governs that repo's code; edit it from a session rooted there`,
-    };
-  }
-  if (!isCodePath(relPath)) return { decision: "allow", hint: `${relPath} is not lifecycle-governed code` };
-  const active = records.filter((record) => {
-    if (recordRefusal(record) !== null) return false;
-    return authorizingPhases(law.state.PHASES).has(derivePhase(record.events ?? []));
-  });
-  if (active.length === 0) {
-    return {
-      decision: "deny",
       reason: [
-        `REFUSED — the edit touches lifecycle-governed code (${relPath}) but no task is in flight (executing/verified/adversarial).`,
-        `  rule: code lands only under a task the machine has authorized, within its declared scope`,
-        `  fix: node ${relative(law.root, join(law.root, law.shape === "vendored" ? "tools/harness/task-state.mjs" : "tools/task-state.mjs"))} new <id> --risk-class runtime-code   then advance it to executing, declare scope, and retry the edit`,
+        `REFUSED — the edit targets ${filePath}, outside the harness repo at ${law.root}.`,
+        "  rule: this gate judges only the repo whose law it loaded — the lifecycle governs that repo's code from a session rooted there",
+        `  fix: start the session in the repo that owns ${filePath} (its own harness judges the edit), then retry`,
       ].join("\n"),
     };
   }
-  for (const record of active) {
+  if (!isCodePath(relPath)) return { decision: "allow", hint: `${relPath} is not lifecycle-governed code` };
+  const standings = standingsOf(law, records);
+  const active = standings.filter((s) => s.refusal === null);
+  if (active.length === 0) return noActiveTaskDenial(law, relPath, standings);
+  for (const { record, phase } of active) {
     const refusal = citationRefusal(record, [relPath], true) ?? scopeRefusal(record, [relPath]);
     if (!refusal) {
-      return { decision: "allow", hint: `${relPath} is within task '${record.id}'s declared scope (${derivePhase(record.events ?? [])})` };
+      return { decision: "allow", hint: `${relPath} is within task '${record.id}'s declared scope (${phase})` };
     }
   }
-  const inFlightIds = active.map((record) => `${record.id} (${derivePhase(record.events ?? [])})`).join(", ");
+  const inFlightIds = active.map((s) => `${s.id} (${s.phase})`).join(", ");
   return {
     decision: "deny",
     reason: [
       `REFUSED — the edit touches ${relPath}, which is outside every in-flight task's declared scope.`,
       `  rule: a task binds its code commits and edits with declared blast radius, not a bearer intent`,
-      `  evidence: in-flight tasks: ${inFlightIds || "(none)"}; their scopes: ${active.map((record) => `${record.id}: ${scopeOf(record).join(", ") || "(none)"}`).join(" | ") || "(none)"}`,
-      `  fix: widen the record (append-only, auditable): node ${relative(law.root, join(law.root, law.shape === "vendored" ? "tools/harness/task-state.mjs" : "tools/task-state.mjs"))} scope <id> --add "<the missing glob>"   — or open the task that owns ${relPath}`,
+      `  evidence: in-flight tasks: ${inFlightIds || "(none)"}; their scopes: ${active.map((s) => `${s.id}: ${scopeOf(s.record).join(", ") || "(none)"}`).join(" | ") || "(none)"}`,
+      `  fix: widen the record (append-only, auditable): node ${stateToolOf(law)} scope <id> --add "<the missing glob>"   — or open the task that owns ${relPath}: ${newTaskFix(law, relPath)}`,
     ].join("\n"),
   };
 }
 
-/** The next command the banner prescribes for a task, by phase. Pure. */
-function nextCommand(phase, stateTool, id) {
-  if (phase === "executing") return `pin the RED check, fix, then: node ${stateTool} advance ${id} verified`;
-  if (phase === "verified") return `sweep the change, then: node ${stateTool} advance ${id} adversarial`;
-  return `verdict clean, then: node ${stateTool} advance ${id} done`;
+/** The next command the banner prescribes: the phase's own obligation, then the advance to the
+ *  NEXT phase in the repo's own PHASES — a declared phase is never skipped (the chain was once
+ *  re-typed here and sent a task at a new phase straight to a done the machine refuses). Pure. */
+function nextCommand(PHASES, phase, stateTool, id) {
+  const prep = { executing: "pin the RED check, fix", verified: "sweep the change", adversarial: "verdict clean" }[phase] ?? `meet ${phase}'s obligations`;
+  return `${prep}, then: node ${stateTool} advance ${id} ${PHASES[PHASES.indexOf(phase) + 1]}`;
+}
+
+/** One banner line per in-window record — a record the law refuses is shown as authorizing
+ *  NOTHING, with the law's reason, so the banner and the gate never contradict each other. */
+function bannerLine(law, { record, id, phase, refusal }) {
+  if (refusal !== null) return `[stallion] task '${id}' — ${phase} — authorizes NO code: ${refusal}`;
+  const scope = law.state.scopeOf(record).join(", ") || "(none declared)";
+  return `[stallion] task '${id}' — ${phase} (scope: ${scope}) — next: ${nextCommand(law.state.PHASES, phase, stateToolOf(law), id)}`;
 }
 
 /**
@@ -126,18 +206,11 @@ function nextCommand(phase, stateTool, id) {
  * what three derived numbers now say. Absent facts leave the banner exactly as it was.
  */
 export function bannerContext(law, records, facts = null) {
-  const { derivePhase, scopeOf, PHASES } = law.state;
-  const active = records.filter((record) => authorizingPhases(PHASES).has(derivePhase(record.events ?? [])));
-  const stateTool = relative(law.root, join(law.root, law.shape === "vendored" ? "tools/harness/task-state.mjs" : "tools/task-state.mjs"));
+  const standings = standingsOf(law, records);
   const lines = ["[stallion] this repo writes code under the task lifecycle — refusals print the rule, the evidence, and the fix; run the fix, never work around it."];
-  if (active.length === 0) {
-    lines.push(`[stallion] no task in flight — code edits will refuse until one is: node ${stateTool} new <id> --risk-class runtime-code`);
-  } else {
-    for (const record of active) {
-      const phase = derivePhase(record.events ?? []);
-      const scope = scopeOf(record).join(", ") || "(none declared)";
-      lines.push(`[stallion] task '${record.id}' — ${phase} (scope: ${scope}) — next: ${nextCommand(phase, stateTool, record.id)}`);
-    }
+  lines.push(...standings.map((s) => bannerLine(law, s)));
+  if (!standings.some((s) => s.refusal === null)) {
+    lines.push(`[stallion] no task in flight authorizes code — code edits will refuse until one does: node ${stateToolOf(law)} new <id> --risk-class runtime-code`);
   }
   const sitrep = sitrepLine(facts);
   if (sitrep !== "") lines.push(sitrep);
@@ -179,7 +252,12 @@ export function doneFactsOf(law, records) {
  * and must fail open, and one missing fact must never cost the rest.
  */
 export function sitrepFacts(law, records, aheadOf = defaultAheadOf) {
-  const facts = { ...doneFactsOf(law, records), ahead: null };
+  const facts = { doneCount: 0, lastDone: null, ahead: null };
+  try {
+    Object.assign(facts, doneFactsOf(law, records));
+  } catch {
+    // a record the law cannot read costs the done facts, never the banner (it stays advisory)
+  }
   try {
     facts.ahead = aheadOf(law.root);
   } catch {
@@ -212,9 +290,98 @@ export function sitrepLine(facts) {
   return parts.length === 0 ? "" : `[stallion] sitrep: ${parts.join("; ")}`;
 }
 
-/** Self-test: the refusals ARE the feature — every law both directions, over a FAKE law module
- *  that implements the same export contract the real harnesses do (the live probes exercise
- *  the real ones). */
+/** A throwaway harness whose law THROWS, for driving the hooks as processes — so their exit-code
+ *  contract is pinned, not assumed. PHASES is empty on purpose: nothing here is taxonomy. */
+function withThrowingHarness(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "gate-law-harness-"));
+  try {
+    mkdirSync(join(dir, "tools"));
+    writeFileSync(join(dir, "tools/task-coverage.mjs"), 'const boom = () => { throw new TypeError("events is not iterable"); };\nexport { boom as isCodePath, boom as recordRefusal, boom as scopeRefusal, boom as citationRefusal };\n');
+    writeFileSync(join(dir, "tools/task-state.mjs"), 'export const PHASES = [];\nexport const derivePhase = () => "intake";\nexport const scopeOf = () => [];\n');
+    return fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Run one of the plugin's hooks as the runner does: the payload on stdin, the verdict in the exit. */
+function runHook(name, payload) {
+  return spawnSync(process.execPath, [fileURLToPath(new URL(`../hooks/${name}`, import.meta.url))], { input: JSON.stringify(payload), encoding: "utf8" });
+}
+
+/** The hook's event name as the banner answered it, or null when it printed nothing parseable. */
+function bannerEvent(payload) {
+  try {
+    return JSON.parse(runHook("banner.mjs", payload).stdout).hookSpecificOutput.hookEventName;
+  } catch {
+    return null;
+  }
+}
+
+/** The fail-closed and evidence case family: a law that throws, a record the law refuses, a
+ *  path the tier law reserves, and the hooks' own contracts over a throwing harness. */
+function failClosedCases(fakeLaw, task) {
+  const code = { filePath: "/repo/tools/x.mjs", cwd: "/repo" };
+  const refused = { schema: "nope", id: "t-docs", events: [{ to: "executing" }], scope: ["tools/**"] };
+  const fenceLaw = {
+    ...fakeLaw,
+    coverage: { ...fakeLaw.coverage, isCodePath: (p) => p.startsWith(".githooks/") || fakeLaw.coverage.isCodePath(p) },
+    state: { ...fakeLaw.state, fenceSurfaceRefusal: (r, patterns) => (patterns.some((p) => p.startsWith(".githooks/")) ? { reason: "fence surface" } : null) },
+  };
+  return [
+    ["a record the law throws on authorizes nothing and never crashes the gate", (() => {
+      const bomb = { ...task("executing", ["tools/**"]), id: "t-bomb", bomb: true };
+      const law = { ...fakeLaw, coverage: { ...fakeLaw.coverage, recordRefusal: (r) => (r.bomb ? r.events.x.y : fakeLaw.coverage.recordRefusal(r)) } };
+      try {
+        const alone = authoringDecision(code, law, [bomb]);
+        const beside = authoringDecision(code, law, [bomb, task("executing", ["tools/**"])]);
+        return alone.decision === "deny" && alone.reason.includes("t-bomb") && beside.decision === "allow";
+      } catch {
+        return false;
+      }
+    })()],
+    ["the authoring hook fails CLOSED (exit 2, with the rule) when the law itself throws", withThrowingHarness((dir) => {
+      const run = runHook("authoring-gate.mjs", { tool_name: "Edit", cwd: dir, tool_input: { file_path: join(dir, "tools/x.mjs") } });
+      return run.status === 2 && run.stderr.includes("rule:") && run.stderr.includes("fix:");
+    })],
+    ["the banner answers the hook event it was fired for (SessionStart names SessionStart)", withThrowingHarness((dir) => bannerEvent({ hook_event_name: "SessionStart", cwd: dir }) === "SessionStart" && bannerEvent({ cwd: dir }) === "UserPromptSubmit")],
+    ["the no-task refusal names each in-window record the law refused, with the law's reason", (() => {
+      const d = authoringDecision(code, fakeLaw, [refused]);
+      return d.decision === "deny" && d.reason.includes("evidence:") && d.reason.includes("t-docs") && d.reason.includes("bad schema");
+    })()],
+    ["the banner never lists a law-refused record as authorizing", (() => {
+      const b = bannerContext(fakeLaw, [refused]);
+      return b.includes("t-docs") && b.includes("authorizes NO code") && !b.includes("pin the RED check");
+    })()],
+    ["a fence-surface path's fix opens a protected task, not a runtime-code dead end", (() => {
+      const d = authoringDecision({ filePath: "/repo/.githooks/pre-push", cwd: "/repo" }, fenceLaw, []);
+      return d.decision === "deny" && d.reason.includes("--risk-class protected") && !d.reason.includes("--risk-class runtime-code");
+    })()],
+    ["an ordinary code path's fix stays the runtime-code task", authoringDecision(code, fenceLaw, []).reason.includes("--risk-class runtime-code")],
+    ["readRecords reads task records only — findings registers and malformed files are not tasks", (() => {
+      const dir = mkdtempSync(join(tmpdir(), "gate-law-records-"));
+      try {
+        writeFileSync(join(dir, "t.json"), JSON.stringify({ id: "t" }));
+        writeFileSync(join(dir, "t.findings.json"), JSON.stringify({ id: "register" }));
+        writeFileSync(join(dir, "torn.json"), "{");
+        writeFileSync(join(dir, "notes.md"), "{}");
+        const ids = readRecords(dir).map((r) => r.id);
+        return ids.length === 1 && ids[0] === "t";
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    })()],
+    ["a payload without a file path refuses with the rule, the evidence, and a fix", (() => {
+      const r = parseEditPayload({ tool_name: "Edit", tool_input: { content: "x" } }).reason;
+      return ["rule:", "evidence:", "fix:"].every((k) => r.includes(k));
+    })()],
+    ["an edit outside the harness repo refuses with the rule and a fix", (() => {
+      const d = authoringDecision({ filePath: "/elsewhere/x.mjs", cwd: "/repo" }, fakeLaw, []);
+      return d.decision === "deny" && d.reason.includes("rule:") && d.reason.includes("fix:");
+    })()],
+  ];
+}
+
 /** The sitrep case family, split from selfTest so the ratchet keeps its word on both. */
 function sitrepCases(fakeLaw) {
   return [
@@ -228,15 +395,25 @@ function sitrepCases(fakeLaw) {
       return facts.doneCount === 1 && facts.lastDone.id === "t-d1" && facts.ahead === 4;
     })()],
     ["sitrepFacts fails open on a throwing ahead reader", sitrepFacts(fakeLaw, [], () => { throw new Error("no git"); }).doneCount === 0],
+    ["sitrepFacts survives a record the law cannot read — a junk record costs the done facts, never the banner", (() => {
+      try {
+        return sitrepFacts(fakeLaw, [null], () => 2).ahead === 2 && bannerContext(fakeLaw, [null], sitrepFacts(fakeLaw, [null], () => 2)).includes("tip 2 commit(s) ahead");
+      } catch {
+        return false;
+      }
+    })()],
   ];
 }
 
+/** Self-test: the refusals ARE the feature — every law both directions, over a FAKE law module
+ *  that implements the same export contract the real harnesses do (the live probes exercise
+ *  the real ones). */
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
   const fakeLaw = {
     root: "/repo",
-    shape: "stallion",
+    harnessDir: "tools",
     coverage: {
       isCodePath: (p) => p.startsWith("tools/") && p.endsWith(".mjs"),
       recordRefusal: (r) => (r.schema !== "stallion/task-state@1" ? "bad schema" : null),
@@ -250,6 +427,7 @@ export function selfTest() {
     },
   };
   const task = (phase, scope, done = false) => ({ schema: "stallion/task-state@1", id: `t-${phase}`, events: [{ to: phase }], scope, done });
+  const shippingLaw = { ...fakeLaw, state: { ...fakeLaw.state, PHASES: [...fakeLaw.state.PHASES.slice(0, -1), "shipping", "done"] } };
   const cases = [
     ["a non-code path is allowed without any task", authoringDecision({ filePath: "/repo/README.md", cwd: "/repo" }, fakeLaw, []).decision === "allow"],
     ["a code path with no in-flight task is DENIED with rule and fix", (() => { const d = authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, fakeLaw, []); return d.decision === "deny" && d.reason.includes("fix:"); })()],
@@ -262,26 +440,23 @@ export function selfTest() {
     ["a relative file_path resolves against the payload cwd", authoringDecision({ filePath: "tools/x.mjs", cwd: "/repo" }, fakeLaw, [task("executing", ["tools/**"])]).decision === "allow"],
     ["a payload without a file path refuses (fail closed, not guess)", parseEditPayload({ tool_name: "Edit", tool_input: {} }).ok === false],
     ["the frozen law pins still resolve — a harness rename must fail the battery, not a live session", (() => {
-      // Layout-aware (f5): probe every base × shape the plugin supports and SKIP where no harness
-      // tree is present, so a copied-plugin install never sees a false red. Anti-vacuous (f10):
-      // existsSync takes PATHS, not file:// URL strings (a URL string is a literal relative
-      // pathname and never matches — the repair before this one silently checked nothing), and
-      // when the plugin DOES sit in a repo, the probe must actually find a tree: the skip note in
-      // an in-repo run is a vacuous pass and fails the case.
+      // Layout-aware (f5): probe every base through law-source's OWN layout table and loader — the
+      // very resolution the hooks run, so neither the layout dirs nor the export lists are
+      // re-typed here — and SKIP where no harness tree is present, so a copied-plugin install
+      // never sees a false red. Anti-vacuous (f10): when the plugin DOES sit in a repo, the probe
+      // must actually find a tree: the skip note in an in-repo run is a vacuous pass and fails.
       const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-      const inRepo = ["tools", "tools/harness"].some((shape) => existsSync(join(pluginRoot, shape, "task-coverage.mjs")));
+      const inRepo = layoutAt(pluginRoot) !== null;
+      const lawSource = JSON.stringify(new URL("./law-source.mjs", import.meta.url).href);
       const bases = [pluginRoot, process.cwd()].map((b) => JSON.stringify(b));
-      const code = `const { existsSync } = await import("node:fs"); const { pathToFileURL: p } = await import("node:url");
-const bases = [${bases.join(", ")}];
+      const code = `const { layoutAt, loadLaw } = await import(${lawSource});
 let checked = 0;
-for (const base of bases) for (const shape of ["tools", "tools/harness"]) {
-  const cov = base + "/" + shape + "/task-coverage.mjs";
-  if (!existsSync(cov)) continue;
+for (const base of [${bases.join(", ")}]) {
+  const layout = layoutAt(base);
+  if (layout === null) continue;
   checked++;
-  const c = await import(p(cov).href);
-  for (const n of ["isCodePath", "recordRefusal", "scopeRefusal", "citationRefusal"]) {
-    if (typeof c[n] !== "function") { console.error("missing law export: " + n); process.exit(1); }
-  }
+  const law = await loadLaw(layout);
+  if (!law.ok) { console.error(law.reason); process.exit(1); }
 }
 if (checked === 0) console.error("(no harness tree found from the plugin location or cwd — pins unchecked here)");`;
       const run = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" });
@@ -294,10 +469,12 @@ if (checked === 0) console.error("(no harness tree found from the plugin locatio
     ["the banner with no tasks names the new-task command", bannerContext(fakeLaw, []).includes("new <id>")],
     ["the banner's first line states the law", bannerContext(fakeLaw, []).startsWith("[stallion] this repo writes code under the task lifecycle")],
     ["the authorizing window follows the repo's own PHASES (derive, don't declare)", (() => {
-      const mutated = { ...fakeLaw, state: { ...fakeLaw.state, PHASES: [...fakeLaw.state.PHASES.slice(0, -1), "shipping", "done"] } };
       const rec = { schema: "stallion/task-state@1", id: "t-ship", events: [{ to: "shipping" }], scope: ["tools/**"] };
-      return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, mutated, [rec]).decision === "allow";
+      return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, shippingLaw, [rec]).decision === "allow";
     })()],
+    ["the banner's next step follows the repo's own PHASES (a declared phase is the next advance, never a skip to done)", bannerContext(shippingLaw, [task("adversarial", ["tools/**"])]).includes("advance t-adversarial shipping")],
+    ["the no-task refusal states the repo's own authorizing window", authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, shippingLaw, []).reason.includes("shipping")],
+    ...failClosedCases(fakeLaw, task),
     ["a phase the repo's PHASES does not declare still refuses", (() => {
       const rec = { schema: "stallion/task-state@1", id: "t-ship", events: [{ to: "shipping" }], scope: ["tools/**"] };
       return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, fakeLaw, [rec]).decision === "deny";

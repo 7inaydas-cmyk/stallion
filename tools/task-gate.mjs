@@ -16,18 +16,25 @@
  *                    commands (rm -rf, reset --hard, push --force, commit --amend, SQL drops…)
  *                    deny-once per session with a rollback demand. Quote-aware: a flag-looking
  *                    VALUE inside quotes is not a flag.
+ *   --stdin          read the PreToolUse hook payload (tool_input.file_path / .command,
+ *                    session_id) instead of argv — the runtime's own contract, no env guessing.
  *   --self-test      the refusals are the feature; every classifier proven both directions.
  *
  * Denial dampening (ECC's empirical find): identical repeated denials push models into loops,
- * so denials condense after the third and always carry an ordinal — never textually identical
- * twice. And a hook sees one call at a time: edit denials say the batch truth out loud ("other
- * edits in this batch may already be applied — re-read the file").
+ * so denials condense after the third FULL demand shown (the once-per-session rollback demand
+ * excepted) and always carry an ordinal — bypass refusals included, though they never count
+ * toward condensing — never textually identical twice. And a hook
+ * sees one call at a time: edit denials say the batch truth out loud ("other edits in this
+ * batch may already be applied — re-read the file").
  *
  * State: .stallion/gate-state-<session>.json — repo-local (stallion gets vendored; session
  * state must not leak across repos), atomic writes through the shared task-findings lock,
  * 30-minute TTL, bounded to 500 targets. The directory is gitignored; nothing here is law.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { atomicWriteJson, withLock } from "./task-findings.mjs";
 
@@ -48,7 +55,15 @@ const INTERPRETER = "(?:[\\w./-]*\\/)?(?:[a-z]{0,6}sh\\d?|eval)";
 /** THE payload extractor — one law, no drift: a review caught this regex maintained in two
  *  places while the comment claimed one dialect. Both call sites build from this source. */
 const PAYLOAD_REGEX_SRC = `(?:^|[\\s;&|])${INTERPRETER}\\s+(?:-{1,2}[a-zA-Z][\\w-]*\\s+){0,8}('([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)")`;
-const QUOTE_RE = /'([^']*)'|"((?:[^"\\\\]|\\\\.)*)"|\\$'([^']*)'|\\\$"((?:[^"\\\\]|\\\\.)*)"/g;
+
+/** Every interpreter/eval payload in the raw text, decoded — the ONE capture both the classifier
+ *  and the splitter read (the loop was copied into each under a no-drift comment). */
+function interpreterPayloads(raw) {
+  return [...raw.matchAll(new RegExp(PAYLOAD_REGEX_SRC, "g"))].map((m) => {
+    const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
+    return m[0].includes("$'") ? decodeAnsiC(inner) : inner;
+  });
+}
 
 /** Decode ANSI-C escapes inside $'…' — bash decodes these before argv exists. */
 function decodeAnsiC(text) {
@@ -72,12 +87,7 @@ function decodeAnsiC(text) {
  */
 export function classifiedText(command) {
   const raw = String(command ?? "");
-  const payloads = [];
-  const payloadRegex = new RegExp(PAYLOAD_REGEX_SRC, "g");
-  for (const m of raw.matchAll(payloadRegex)) {
-    const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
-    payloads.push(m[0].includes("$'") ? decodeAnsiC(inner) : inner);
-  }
+  const payloads = interpreterPayloads(raw);
   let out = "";
   for (let i = 0; i < raw.length; i += 1) {
     const c = raw[i];
@@ -123,18 +133,23 @@ export function classifiedText(command) {
   return [out, ...payloads].join("\n");
 }
 
-/** Back-compat alias: the single-view form (tests and callers). */
-export const unquoted = classifiedText;
-
 const GIT_HOOKED = /(?:^|\s)(?:commit|merge|cherry-pick|rebase|am|push)(?:\s|$)/;
+
+/** Pure: does ONE segment skip the hooks? Judged per segment, never over the whole compound: a
+ *  `git commit` beside an unrelated `-n` (git log -n, head -n) is not `commit -n` (a review
+ *  caught the whole-string join refusing the common commit-then-log compound on every retry). */
+function skipsHooks(segment) {
+  const s = classifiedText(segment);
+  return GIT_HOOKED.test(s) && (/(?:^|\s)--no-verify(?:\s|$)/.test(s) || (/(?:^|\s)commit\s/.test(s) && /(?:^|\s)-n(?:\s|$)/.test(s)));
+}
 
 /** Pure: does this command attempt to bypass the gates? ALWAYS refused — not a fact request. */
 export function bypassRefusal(command) {
-  const t = unquoted(command);
+  const t = classifiedText(command);
   const rawText = String(command ?? "");
   const git = /(?:^|\s)git\s+/.test(t) || /GIT_CONFIG_KEY_\d+=core\.hooksPath/i.test(rawText);
   if (!git) return null;
-  if (GIT_HOOKED.test(t) && (/(?:^|\s)--no-verify(?:\s|$)/.test(t) || (/(?:^|\s)commit\s/.test(t) && /(?:^|\s)-n(?:\s|$)/.test(t)))) {
+  if (commandSegments(command).some(skipsHooks)) {
     return "this command bypasses the commit hooks (--no-verify / commit -n) — the hooks ARE the gates; run them";
   }
   if (/(?:^|\s)-c\s+core\.hooksPath=/.test(t) || /GIT_CONFIG_KEY_\d+=core\.hooksPath/i.test(rawText)) {
@@ -166,24 +181,22 @@ export function bypassRefusal(command) {
  *  value inside quotes is not a flag); CONTENT-shaped dangers (SQL payloads) match the RAW
  *  command, because the payload lives inside the quotes. */
 const DESTRUCTIVE = [
-  [/\brm\s+[^;|&]*-(?:[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r|[a-zA-Z]*r)/, "recursive forced delete", "unquoted"],
-  [/\brm\s+-[a-zA-Z]*r/, "recursive delete", "unquoted"],
+  // rm's flag must START a token — a hyphen inside a file name (rm old-report.txt) is not -r
+  // (a review caught single-file removes spending the session's one destructive ask). These rows
+  // judge `git rm` too; its own unanchored row only ever matched a hyphen in a path or --dry-run.
+  [/\brm\s+(?:[^;|&]*\s)?-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])/, "recursive forced delete", "unquoted"],
+  [/\brm\s+(?:[^;|&]*\s)?(?:-[a-zA-Z]*[rR]|--recursive\b)/, "recursive delete", "unquoted"],
   [/git\s+reset\s+--hard/, "hard reset (uncommitted work is unrecoverable)", "unquoted"],
   [/git\s+(?:checkout\s+--|checkout\s+\.|restore\s+(?!--staged))/, "discard working-tree changes", "unquoted"],
   [/git\s+clean\s+-[a-zA-Z]*f/, "clean -f (untracked files are unrecoverable)", "unquoted"],
   [/git\s+push\s+[^;|&]*(?:--force(?:\s|$|=)|(?:^|\s)-f(?:\s)|\+refs\/)/, "force push (rewrites remote history)", "unquoted"],
   [/git\s+commit\s+[^;|&]*--amend/, "amend (rewrites an existing commit)", "unquoted"],
-  [/git\s+rm\s+[^;|&]*-r/, "recursive git rm", "unquoted"],
   [/git\s+switch\s+[^;|&]*(?:-f|-C)\s/, "forced branch switch (discards local changes)", "unquoted"],
   [/find\s+[^;|&]*-exec\s+rm/, "find -exec rm", "unquoted"],
   [/\bdd\s+[^;|&]*if=/, "dd (raw device write)", "unquoted"],
   [/\b(?:DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM)\b/i, "bulk SQL data loss", "raw"],
 ];
 
-/** Pure: is this command destructive? Returns the human name of the danger, or null.
- *  Compounds are judged SEGMENT by segment (an adversarial pass caught the whole-string
- *  lease exemption nullifying a chained rm -rf); --force-with-lease exempts only its own
- *  segment — the lease is that push's safety, not the compound's. */
 /** Split a compound at SEPARATOR characters OUTSIDE quotes — a pipe inside a quoted message
  *  is data, and splitting on it stranded flags from their command heads (a regression a sweep
  *  caught: git commit -m "a|b" --amend stopped classifying as an amend). */
@@ -219,22 +232,20 @@ export function quoteAwareSplit(raw) {
 
 export function commandSegments(command) {
   const raw = String(command ?? "");
-  const segments = quoteAwareSplit(raw);
   // interpreter/eval payloads are commands too — appended as their own segments, one level
-  // deep; the SAME dialect as classifiedText (one law, no drift).
-  const payloadRegex = new RegExp(PAYLOAD_REGEX_SRC, "g");
-  for (const m of raw.matchAll(payloadRegex)) {
-    const inner = m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
-    segments.push(m[0].includes("$'") ? decodeAnsiC(inner) : inner);
-  }
-  return segments;
+  // deep; the SAME capture as classifiedText (one law, no drift).
+  return [...quoteAwareSplit(raw), ...interpreterPayloads(raw)];
 }
 
+/** Pure: is this command destructive? Returns the human name of the danger, or null.
+ *  Compounds are judged SEGMENT by segment (an adversarial pass caught the whole-string
+ *  lease exemption nullifying a chained rm -rf); --force-with-lease exempts only its own
+ *  segment — the lease is that push's safety, not the compound's. */
 export function destructiveAs(command) {
   for (const segment of commandSegments(command)) {
     if (/git\s+push\s+[^;|&]*--force-with-lease/.test(segment)) continue;
     for (const [pattern, name, where] of DESTRUCTIVE) {
-      if (pattern.test(where === "raw" ? segment : unquoted(segment))) return name;
+      if (pattern.test(where === "raw" ? segment : classifiedText(segment))) return name;
     }
   }
   return null;
@@ -272,7 +283,9 @@ function statePath(session) {
   return `${STATE_DIR}/gate-state-${safe}.json`;
 }
 
-function loadState(path, nowMs) {
+/** Load a session's state, TTL applied at the read: stale entries drop and a stale ordinal
+ *  counter resets. Exported for the self-test — the TTL and re-ask laws are pinned, not trusted. */
+export function loadState(path, nowMs) {
   if (!existsSync(path)) return { version: 1, entries: {} };
   try {
     const state = JSON.parse(readFileSync(path, "utf8"));
@@ -282,11 +295,7 @@ function loadState(path, nowMs) {
           delete state.entries[key];
         }
       }
-      // The ordinal counter TTLs with everything else — a session months later gets full
-      // demands again, never a condensed line citing denials it never saw (a sweep finding).
-      const counterAge = typeof state.sessionDenialsAt === "number" ? nowMs - state.sessionDenialsAt : Infinity;
-      const denials = counterAge <= TTL_MS && typeof state.sessionDenials === "number" ? state.sessionDenials : 0;
-      return { version: 1, sessionDenials: denials, sessionDenialsAt: counterAge <= TTL_MS ? state.sessionDenialsAt : undefined, entries: state.entries };
+      return { version: 1, ...freshCounters(state, nowMs), entries: state.entries };
     }
   } catch {
     // unreadable state re-asks — a gate that cannot read state errs toward asking again
@@ -294,33 +303,55 @@ function loadState(path, nowMs) {
   return { version: 1, entries: {} };
 }
 
-function saveState(path, state, nowMs) {
+/** A count field, or 0 when absent or malformed — unreadable counts re-ask, never condense. */
+function countOf(value) {
+  return typeof value === "number" ? value : 0;
+}
+
+/** The session counters, zeroed once their TTL lapses with everything else — a session months
+ *  later gets full demands again, never a condensed line citing denials it never saw (a sweep finding). */
+function freshCounters(state, nowMs) {
+  if (typeof state.sessionDenialsAt !== "number" || nowMs - state.sessionDenialsAt > TTL_MS) return { sessionDenials: 0, fullShown: 0 };
+  return { sessionDenials: countOf(state.sessionDenials), fullShown: countOf(state.fullShown), sessionDenialsAt: state.sessionDenialsAt };
+}
+
+/** Pure: the state stays bounded — past MAX_TARGETS, the oldest asks are evicted first. */
+export function boundTargets(entries) {
+  const keys = Object.keys(entries);
+  if (keys.length <= MAX_TARGETS) return entries;
+  keys.sort((a, b) => entries[a].askedAt - entries[b].askedAt);
+  return Object.fromEntries(keys.slice(keys.length - MAX_TARGETS).map((key) => [key, entries[key]]));
+}
+
+function saveState(path, state) {
   mkdirSync(STATE_DIR, { recursive: true });
-  const keys = Object.keys(state.entries);
-  if (keys.length > MAX_TARGETS) {
-    keys.sort((a, b) => state.entries[a].askedAt - state.entries[b].askedAt);
-    for (const key of keys.slice(0, keys.length - MAX_TARGETS)) delete state.entries[key];
-  }
-  atomicWriteJson(path, state);
+  atomicWriteJson(path, { ...state, entries: boundTargets(state.entries) });
 }
 
 /**
  * The deny-once decision, pure over the state object. Per target: first fresh touch REFUSES
  * with the full demand; the retry (and every later touch until the TTL expires) passes. The
  * dampening counter is SESSION-wide (ECC's shape): every refusal carries a strictly increasing
- * ordinal — so no two denial texts are ever identical — and from the fourth denial on, the
- * message condenses to one line pointing back at the full demands already shown.
+ * ordinal — so no two denial texts are ever identical — and once three FULL demands have been
+ * shown, the message condenses to one line pointing back at them. The count is of full demands,
+ * not the ordinal: bypass refusals ride the ordinal, and counting them condensed a session's
+ * first edit demand to a line citing demands never shown (a review finding). The destructive
+ * demand never condenses: its one ask per session is the only time the danger and the rollback
+ * are named, and three earlier EDIT demands are not that demand (a review caught a hard reset
+ * after three first edits getting a condensed line, and the retry running with no rollback ever
+ * stated). It refuses at most once per TTL, so it cannot feed the loop dampening exists for.
  */
 export function gateDecision(state, target, fullDemand, nowMs) {
-  const prior = typeof state.sessionDenials === "number" ? state.sessionDenials : 0;
   const entry = state.entries[target];
   const fresh = entry && typeof entry.askedAt === "number" && nowMs - entry.askedAt <= TTL_MS;
   if (fresh) return { refuse: false, text: `asked — proceeding (${target})`, next: state };
-  const n = prior + 1;
-  const text = n <= 3
+  const n = countOf(state.sessionDenials) + 1;
+  const shown = countOf(state.fullShown);
+  const full = shown < 3 || target === destructiveTarget();
+  const text = full
     ? `${fullDemand}\n[denial #${n} this session]`
-    : `${target}: denial #${n} this session — present the facts and retry, or change the plan; the full demands were shown at denials 1-3`;
-  return { refuse: true, text, next: { ...state, sessionDenials: n, sessionDenialsAt: nowMs, entries: { ...state.entries, [target]: { askedAt: nowMs } } } };
+    : `${target}: denial #${n} this session — present the facts and retry, or change the plan; the full demands were already shown ${shown} times this session`;
+  return { refuse: true, text, next: { ...state, sessionDenials: n, fullShown: full ? shown + 1 : shown, sessionDenialsAt: nowMs, entries: { ...state.entries, [target]: { askedAt: nowMs } } } };
 }
 
 /** The gate target for a destructive command: ONE key per session regardless of danger class
@@ -335,26 +366,66 @@ function die(message) {
   process.exit(1);
 }
 
-function runGate(target, fullDemand, session) {
+/**
+ * A bypass refusal is LAW — refused every time, never deny-once — yet it rides the same session
+ * ordinal, so a retried bypass never reads textually identical twice (a review caught bypass
+ * denials skipping the counter: the loop-feeding repeat the dampening exists to prevent). It
+ * leaves fullShown alone — a bypass is not a fact demand, so it never condenses the next one.
+ */
+export function bypassDecision(state, refusal, nowMs) {
+  const n = countOf(state.sessionDenials) + 1;
+  return { refuse: true, text: `${refusal}\n[denial #${n} this session]`, next: { ...state, sessionDenials: n, sessionDenialsAt: nowMs } };
+}
+
+/** Load, decide, save — under the shared lock; `decide` is a pure (state, nowMs) decision. */
+function decideUnderLock(session, decide) {
   const path = statePath(session);
   mkdirSync(STATE_DIR, { recursive: true }); // the lockfile lives here before any state does
   const nowMs = Date.now();
   let outcome;
   withLock(path, () => {
-    const state = loadState(path, nowMs);
-    outcome = gateDecision(state, target, fullDemand, nowMs);
-    saveState(path, outcome.next, nowMs);
+    outcome = decide(loadState(path, nowMs), nowMs);
+    saveState(path, outcome.next);
   });
+  return outcome;
+}
+
+function runGate(target, fullDemand, session) {
+  const outcome = decideUnderLock(session, (state, nowMs) => gateDecision(state, target, fullDemand, nowMs));
   if (outcome.refuse) die(outcome.text);
   console.log(`task-gate: facts presented for ${target} — proceeding.`);
 }
+
+/**
+ * Map a PreToolUse stdin payload (Claude Code's hook contract: tool_input + session_id) onto the
+ * argv laws — a file path is an edit, a command is a bash judgment. That runtime sets no env var
+ * carrying the file or the command, so wiring that read env blocked every edit and passed every
+ * command (a review finding); the payload IS the contract. A payload naming neither judges
+ * nothing, and nothing-to-judge refuses.
+ */
+export function argsFromHookPayload(payload) {
+  const input = payload?.tool_input ?? {};
+  const edit = input.file_path ?? input.filePath ?? input.path;
+  return { edit: typeof edit === "string" ? edit : undefined, bash: typeof input.command === "string" ? input.command : undefined, session: payload?.session_id };
+}
+
+/** The --stdin payload, or a refusal: a gate that cannot read its input never guesses a pass. */
+function readHookPayload() {
+  try {
+    return JSON.parse(readFileSync(0, "utf8"));
+  } catch (e) {
+    return die(`the --stdin hook payload is not readable JSON (${e.message})\n  rule: a gate that cannot read its input refuses — it never guesses a pass\n  fix: pipe the runtime's PreToolUse payload on stdin ({"tool_input":{"file_path" or "command"},"session_id"}), or pass --edit <file> / --bash <command> explicitly`);
+  }
+}
+
+const USAGE = "usage: task-gate.mjs --edit <file> | --bash <command> [--session <id>] | --stdin (the PreToolUse payload) (--self-test)";
 
 function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--self-test") { args["self-test"] = true; continue; }
-    if (a === "--edit" || a === "--bash" || a === "--session") {
+    if (a === "--self-test" || a === "--stdin") { args[a.slice(2)] = true; continue; }
+    if (["--edit", "--bash", "--session"].includes(a)) {
       const next = argv[i + 1];
       if (next === undefined || next.startsWith("--")) {
         console.error(`task-gate: --${a.slice(2)} requires a value`);
@@ -364,10 +435,86 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
-    console.error(`task-gate: unknown flag: ${a} — usage: task-gate.mjs --edit <file> | --bash <command> [--session <id>] (--self-test)`);
+    console.error(`task-gate: unknown flag: ${a} — ${USAGE}`);
     process.exit(1);
   }
   return args;
+}
+
+/** Run this tool's own CLI — the entry dispatch, not just the pure core — for the live cases. */
+function cli(args, input) {
+  return spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...args], { encoding: "utf8", input });
+}
+
+/** The state-law cases: TTL at load, re-ask on unreadable state, the bound — driven through the
+ *  real loadState over fixture files, so a regression in the load path fails the battery. */
+function stateCases() {
+  const dir = mkdtempSync(join(tmpdir(), "task-gate-state-"));
+  const fixture = (name, text) => {
+    const path = join(dir, name);
+    writeFileSync(path, text);
+    return path;
+  };
+  const load = (name, state, nowMs) => loadState(fixture(name, JSON.stringify(state)), nowMs);
+  try {
+    return [
+      ["a stale ordinal counter loads as zero: a later session's first denial is #1 with the full demand", (() => {
+        const s = load("stale-counter.json", { sessionDenials: 7, fullShown: 3, sessionDenialsAt: 0, entries: {} }, TTL_MS + 1);
+        return s.sessionDenials === 0 && s.sessionDenialsAt === undefined && gateDecision(s, "f", "FULL", TTL_MS + 1).text === "FULL\n[denial #1 this session]";
+      })()],
+      ["a fresh ordinal counter and full-demand count survive the load", (() => {
+        const s = load("fresh-counter.json", { sessionDenials: 2, fullShown: 1, sessionDenialsAt: 1000, entries: {} }, 2000);
+        return s.sessionDenials === 2 && s.fullShown === 1 && s.sessionDenialsAt === 1000;
+      })()],
+      ["stale entries drop at load while fresh ones stay", (() => {
+        const s = load("entries.json", { entries: { old: { askedAt: 0 }, recent: { askedAt: TTL_MS } } }, TTL_MS + 1);
+        return !("old" in s.entries) && "recent" in s.entries;
+      })()],
+      ["unreadable state loads empty, so the gate asks again", (() => {
+        try {
+          return Object.keys(loadState(fixture("torn.json", '{"entries":{"edit:a":{"askedAt":1'), 1000).entries).length === 0;
+        } catch {
+          return false;
+        }
+      })()],
+      ["past the bound, the oldest asks are evicted first", (() => {
+        const entries = Object.fromEntries(Array.from({ length: MAX_TARGETS + 1 }, (_, i) => [`t${i}`, { askedAt: i + 1 }]));
+        const bounded = boundTargets(entries);
+        return Object.keys(bounded).length === MAX_TARGETS && !("t0" in bounded) && `t${MAX_TARGETS}` in bounded;
+      })()],
+    ];
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The state laws through the real CLI — load, decide, SAVE — so the wiring between the pure
+ *  pieces is pinned too (a review dropped the counter's timestamp at the load, and the eviction
+ *  call from saveState, and the battery stayed green both times). */
+function liveStateCases() {
+  const inSession = (tag, body) => {
+    const session = `selftest-${tag}-${process.pid}-${Date.now()}`;
+    try {
+      return body(session);
+    } finally {
+      rmSync(statePath(session), { force: true });
+    }
+  };
+  return [
+    ["the ordinal keeps rising across a passing retry (the counter's timestamp survives the load)", inSession("ordinal", (session) => {
+      const bypass = ["--bash", "git commit --no-verify -m x"];
+      const runs = [bypass, ["--edit", "a.mjs"], ["--edit", "a.mjs"], bypass].map((flags) => cli([...flags, "--session", session]));
+      return runs[2].status === 0 && runs[3].stderr.includes("[denial #3 this session]");
+    })],
+    ["saving a session's state evicts past the bound (saveState calls boundTargets)", inSession("bound", (session) => {
+      const now = Date.now();
+      mkdirSync(STATE_DIR, { recursive: true });
+      writeFileSync(statePath(session), JSON.stringify({ version: 1, entries: Object.fromEntries(Array.from({ length: MAX_TARGETS + 1 }, (_, i) => [`edit:t${i}`, { askedAt: now - i }])) }));
+      cli(["--edit", "x.mjs", "--session", session]);
+      const entries = JSON.parse(readFileSync(statePath(session), "utf8")).entries;
+      return Object.keys(entries).length === MAX_TARGETS && "edit:x.mjs" in entries;
+    })],
+  ];
 }
 
 /** Self-test: the refusals are the feature — classifiers and damping proven both directions. */
@@ -401,7 +548,6 @@ export function selfTest() {
     ["zsh and dash payloads are classified", destructiveAs("zsh -c 'git reset --hard HEAD~1'") !== null && destructiveAs("dash -c 'git reset --hard HEAD~1'") !== null],
     ["a lease push PIPED into a mass delete is destructive", destructiveAs("git push --force-with-lease origin main | xargs rm -rf apps/") !== null],
     ["the documented activation (git config core.hooksPath .githooks) is allowed", bypassRefusal("git config core.hooksPath .githooks") === null],
-    ["re-pointing hooksPath elsewhere still refuses", bypassRefusal("git config core.hooksPath /tmp/empty") !== null],
     ["unsetting hooksPath refuses", bypassRefusal("git config --unset core.hooksPath") !== null],
     ["--unset-all refuses (the -all spelling)", bypassRefusal("git config --unset-all core.hooksPath") !== null],
     ["--remove-section core refuses", bypassRefusal("git config --remove-section core") !== null],
@@ -416,20 +562,64 @@ export function selfTest() {
     ["rm single file is not classed destructive", destructiveAs("rm notes.tmp") === null],
     ["git reset --hard is destructive", destructiveAs("git reset --hard HEAD~1") !== null],
     ["push --force is destructive", destructiveAs("git push --force origin main") !== null],
-    ["push --force-with-lease is NOT (the lease is the safety)", destructiveAs("git push --force-with-lease origin main") === null],
     ["git commit --amend is destructive", destructiveAs('git commit --amend -m "x"') !== null],
     ["DELETE FROM is destructive", destructiveAs('psql -c "DELETE FROM users"') !== null],
     ["echo is routine", destructiveAs("echo hi") === null],
+    ["a commit beside an unrelated -n (git log -n, head -n) is not a bypass — judged per segment", ['git commit -m "wip" && git log --oneline -n 3', "git add -A && git commit -m fix && head -n 5 CHANGELOG.md"].every((c) => bypassRefusal(c) === null)],
+    ["a real commit -n in a later segment still refuses", bypassRefusal("git commit -m x && git commit -n -m y") !== null],
+    ["the rollback demand shows in full even after three earlier denials (destructive never condenses)", (() => {
+      const d = gateDecision({ sessionDenials: 3, fullShown: 3, entries: {} }, destructiveTarget(), bashFactDemand("git reset --hard HEAD~3", "hard reset"), 1000);
+      return d.refuse && d.text.includes("rollback") && d.text.includes("#4 this session");
+    })()],
+    ["a retried bypass never reads identical and names the command as evidence (the ordinal rides law refusals too)", (() => {
+      const session = `selftest-bypass-${process.pid}-${Date.now()}`;
+      try {
+        const runs = [1, 2].map(() => cli(["--bash", "git commit --no-verify -m x", "--session", session]));
+        return runs.every((r) => r.status === 1 && r.stderr.includes("evidence: git commit --no-verify -m x")) && runs[0].stderr !== runs[1].stderr;
+      } finally {
+        rmSync(statePath(session), { force: true });
+      }
+    })()],
+    ["a hyphenated single-file rm is not a recursive delete (the flag must start a token)", ["rm tools/adversarial-runner.mjs", "rm -f old-report.txt"].every((c) => destructiveAs(c) === null)],
+    ["rm's recursive flag after the path, capitalized, or spelled long still classifies", ["rm build/ -rf", "rm -Rf build/", "rm --recursive build/"].every((c) => destructiveAs(c) !== null)],
+    ["rm -r is named a recursive delete", destructiveAs("rm -r build/") === "recursive delete"],
+    ["rm -fr is named a recursive forced delete", destructiveAs("rm -fr build/") === "recursive forced delete"],
+    ["a hyphenated single-file git rm, a --cached rm, or a dry run is not destructive", ["git rm tools/adversarial-runner.mjs", "git rm --cached tools/x-ray.mjs", "git rm --dry-run notes.md"].every((c) => destructiveAs(c) === null)],
+    ["a real recursive git rm still classifies (-r, -rf, flag after the path)", ["git rm -r dir/", "git rm -rf dir/", "git rm dir/ -r"].every((c) => destructiveAs(c) !== null)],
+    ["an empty --bash value fails closed, never routine (a miswired hook is loud)", cli(["--bash", ""]).status !== 0],
+    ["--stdin reads the PreToolUse payload: a bypass command refuses, a file path is an edit", (() => {
+      const session = `selftest-stdin-${process.pid}-${Date.now()}`;
+      try {
+        const bash = cli(["--stdin"], JSON.stringify({ session_id: session, tool_name: "Bash", tool_input: { command: "git commit --no-verify -m x" } }));
+        const edit = cli(["--stdin"], JSON.stringify({ session_id: session, tool_name: "Edit", tool_input: { file_path: "src/a.ts" } }));
+        return bash.status === 1 && bash.stderr.includes("bypasses the commit hooks") && edit.status === 1 && edit.stderr.includes("Before editing src/a.ts");
+      } finally {
+        rmSync(statePath(session), { force: true });
+      }
+    })()],
+    ["--stdin with an unreadable payload fails closed", cli(["--stdin"], "not json").status !== 0],
     ["the edit demand names the file and the batch truth", editFactDemand("src/a.ts").includes("src/a.ts") && editFactDemand("src/a.ts").includes("already be applied")],
     ["the bash demand names the danger and the rollback", bashFactDemand("rm -rf build/", "recursive forced delete").includes("rollback")],
     ["first touch refuses with the full demand and the session ordinal", (() => { const d = gateDecision({ entries: {} }, "f", "FULL", 1000); return d.refuse && d.text === "FULL\n[denial #1 this session]"; })()],
     ["the retry passes (deny-ONCE)", (() => { const d1 = gateDecision({ entries: {} }, "f", "FULL", 1000); const d2 = gateDecision(d1.next, "f", "FULL", 2000); return !d2.refuse; })()],
     ["later touches keep passing until the TTL expires", (() => { const d1 = gateDecision({ entries: {} }, "f", "FULL", 1000); const d3 = gateDecision(d1.next, "f", "FULL", 1000 + TTL_MS - 1); return !d3.refuse; })()],
     ["a stale entry re-asks after the TTL", (() => { const d1 = gateDecision({ entries: {} }, "f", "FULL", 1000); const d3 = gateDecision(d1.next, "f", "FULL", 1000 + TTL_MS + 1); return d3.refuse && d3.text.includes("FULL"); })()],
-    ["the fourth session denial condenses to one line", (() => {
-      const d = gateDecision({ sessionDenials: 3, entries: {} }, "f", "FULL", 1000);
+    ["the denial after three full demands condenses to one line", (() => {
+      const d = gateDecision({ sessionDenials: 3, fullShown: 3, entries: {} }, "f", "FULL", 1000);
       return d.refuse && d.text.includes("#4 this session") && !d.text.startsWith("FULL");
     })()],
+    ["three bypass refusals never condense the first edit demand (condensing counts full demands shown, not the ordinal)", (() => {
+      let state = { entries: {} };
+      for (const at of [1, 2, 3]) state = bypassDecision(state, "B", at).next;
+      const d = gateDecision(state, "edit:f", editFactDemand("f"), 4);
+      return d.refuse && d.text.startsWith(editFactDemand("f")) && d.text.includes("#4 this session");
+    })()],
+    ["a condensed line never cites ordinals that were not full demands", (() => {
+      const d = gateDecision({ sessionDenials: 5, fullShown: 3, entries: {} }, "f", "FULL", 1000);
+      return d.refuse && !d.text.startsWith("FULL") && d.text.includes("#6 this session") && !d.text.includes("denials 1-3");
+    })()],
+    ...stateCases(),
+    ...liveStateCases(),
     ["no two denial texts are ever identical (the ordinal strictly increases)", (() => {
       const seen = new Set();
       let state = { entries: {} };
@@ -457,13 +647,19 @@ if (isEntry) {
   const argv = process.argv.slice(2);
   const args = parseArgs(argv);
   if (args["self-test"]) process.exit(selfTest() ? 0 : 1);
+  if (args.stdin) Object.assign(args, argsFromHookPayload(readHookPayload()));
   if (args.edit) {
     runGate(`edit:${args.edit}`, editFactDemand(args.edit), args.session);
     process.exit(0);
   }
-  if (args.bash !== undefined) {
+  // An EMPTY command judges nothing and falls through to the refusal below — never "routine"
+  // (a miswired hook that passes "" must be loud, the way an empty --edit already is).
+  if (args.bash) {
     const bypass = bypassRefusal(args.bash);
-    if (bypass) die(`${bypass}\n  rule: gates are not optional; fix: run the command without the bypass flag and let the hooks judge`);
+    if (bypass) {
+      const refusal = `${bypass}\n  rule: gates are not optional — a bypass is refused every time, never asked once\n  evidence: ${args.bash}\n  fix: run the command without the bypass (drop --no-verify / commit -n; leave core.hooksPath at .githooks) and let the hooks judge`;
+      die(decideUnderLock(args.session, (state, nowMs) => bypassDecision(state, refusal, nowMs)).text);
+    }
     const danger = destructiveAs(args.bash);
     if (danger) {
       // Once per SESSION (the spec's shape): the first destructive command of any class asks;
@@ -474,6 +670,6 @@ if (isEntry) {
     console.log("task-gate: routine command — proceeding.");
     process.exit(0);
   }
-  console.error("task-gate: nothing to judge — usage: task-gate.mjs --edit <file> | --bash <command> [--session <id>] (--self-test)");
+  console.error(`task-gate: nothing to judge — ${USAGE}`);
   process.exit(1);
 }

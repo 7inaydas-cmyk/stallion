@@ -12,11 +12,15 @@ fence that re-judge the same code later.
 - `hooks/authoring-gate.mjs` — PreToolUse, matcher `Edit|Write|ApplyPatch`. A CODE edit is
   allowed only when an in-flight task (executing/verified/adversarial) whose declared scope
   covers the file exists. Everything else exits 2 (block) with the rule, the evidence, and an
-  exact fix command on stderr. Fails closed: unreadable payload, no vendored harness, or a
-  harness missing law exports all refuse.
-- `hooks/banner.mjs` — SessionStart + UserPromptSubmit. Re-injects the live task state (task,
-  phase, scope, next command) every turn, including after compaction. Fails open: advisory
-  context must never brick a session.
+  exact fix command on stderr. Fails closed: unreadable payload, no vendored harness, a
+  harness missing law exports, or a crash anywhere in the gate all refuse (exit 2). A task
+  record the law refuses or throws on authorizes nothing, and when no task authorizes code the
+  refusal names it with the law's reason; a record file that is not valid JSON is not a task
+  and authorizes nothing. A path on the fence's own surface gets the protected-task fix.
+- `hooks/banner.mjs` — SessionStart + UserPromptSubmit. Injects the live task state (task,
+  phase, scope, next command) at session start and re-injects it every turn — the per-turn
+  injection is what carries it past compaction. Its output names the event it answers. Fails
+  open: advisory context must never brick a session.
 - `lib/law-source.mjs` — locates the session repo's harness (stallion shape
   `tools/task-coverage.mjs` + `tasks/`, vendored shape `tools/harness/task-coverage.mjs` +
   `docs/harness/task-state/`) and imports `isCodePath`, `recordRefusal`, `scopeRefusal`,
@@ -43,7 +47,9 @@ printf '%s' '{"tool_name":"Edit","cwd":"<repo>","tool_input":{"file_path":"<repo
   | node tools/zcode-plugin/hooks/authoring-gate.mjs          # exit 0: docs are not code
 printf '%s' '{"tool_name":"Edit","cwd":"<repo>","tool_input":{"file_path":"<repo>/tools/x.mjs"}}' \
   | node tools/zcode-plugin/hooks/authoring-gate.mjs          # exit 2 with rule+fix
-printf '%s' '{"cwd":"<repo>"}' | node tools/zcode-plugin/hooks/banner.mjs   # task banner JSON
+printf '%s' '{"cwd":"<repo>"}' | node tools/zcode-plugin/hooks/banner.mjs   # task banner JSON (UserPromptSubmit)
+printf '%s' '{"hook_event_name":"SessionStart","cwd":"<repo>"}' \
+  | node tools/zcode-plugin/hooks/banner.mjs                  # the same banner, named SessionStart
 ```
 
 Then trigger a real edit in the client and read the hook run records (Settings → Plugin

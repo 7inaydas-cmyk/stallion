@@ -60,7 +60,7 @@ export async function loadLaw(layout) {
     if (missing.length > 0) {
       return { ok: false, reason: `the vendored harness at ${join(layout.root, layout.harnessDir)} does not export: ${missing.join(", ")} — update the vendored copy to the current stallion cut` };
     }
-    return { ok: true, coverage, state, stateDir: join(layout.root, layout.stateDir), root: layout.root, shape: layout.shape };
+    return { ok: true, coverage, state, stateDir: join(layout.root, layout.stateDir), root: layout.root, harnessDir: layout.harnessDir };
   } catch (e) {
     return { ok: false, reason: `cannot import the vendored harness at ${layout ? join(layout.root, layout.harnessDir) : "(none)"}: ${e.message}` };
   }

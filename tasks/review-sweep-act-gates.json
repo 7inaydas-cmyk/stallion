@@ -1,0 +1,230 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-act-gates",
+  "title": "2026-09-27 code-review sweep: the act-gates group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:09.079Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "29b1c72495d37a30f3045de96c986815ef0ce69c2fd56dc40b2e6d8fe5a2f1e9"
+    },
+    {
+      "at": "2026-09-27T05:54:09.112Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "29b1c72495d37a30f3045de96c986815ef0ce69c2fd56dc40b2e6d8fe5a2f1e9",
+      "entry_hash": "f2f3ab543bb0bebaf7989f948fdfa4153ae08fcd1018c2ee8da701fce7e0f62d"
+    },
+    {
+      "at": "2026-09-27T05:54:09.143Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-gate.mjs",
+        "tools/zcode-plugin/**"
+      ],
+      "seq": 2,
+      "parent_hash": "f2f3ab543bb0bebaf7989f948fdfa4153ae08fcd1018c2ee8da701fce7e0f62d",
+      "entry_hash": "06a0f86099b5c2981f42b71e823bf93b61e31dc7b262b11e7af9867ba4a8ffa5"
+    },
+    {
+      "at": "2026-09-27T05:54:09.178Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "06a0f86099b5c2981f42b71e823bf93b61e31dc7b262b11e7af9867ba4a8ffa5",
+      "entry_hash": "5b00c5bbc52a6cb2fb68e49ce1a18273a6f1347e8c0f5a896b85dd97d4ee33d1"
+    },
+    {
+      "at": "2026-09-27T06:10:11.791Z",
+      "type": "red-check",
+      "expect": "task-gate: a commit beside an unrelated -n \\(git log -n, head -n\\) is not a bypass",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7eeb249cca34",
+      "seq": 4,
+      "parent_hash": "5b00c5bbc52a6cb2fb68e49ce1a18273a6f1347e8c0f5a896b85dd97d4ee33d1",
+      "entry_hash": "f5af06321f121ff90fca8758ea68dc1b4a805bd11e0b57b43ead0c19b01a60f2"
+    },
+    {
+      "at": "2026-09-27T06:10:12.009Z",
+      "type": "red-check",
+      "expect": "task-gate: the rollback demand shows in full even after three earlier denials",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7eeb249cca34",
+      "seq": 5,
+      "parent_hash": "f5af06321f121ff90fca8758ea68dc1b4a805bd11e0b57b43ead0c19b01a60f2",
+      "entry_hash": "1933861323bb4f93d8e92339bed909cc0b38fd87e224f01180886cf64e206cb6"
+    },
+    {
+      "at": "2026-09-27T06:10:12.229Z",
+      "type": "red-check",
+      "expect": "task-gate: a retried bypass never reads identical and names the command as evidence",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7eeb249cca34",
+      "seq": 6,
+      "parent_hash": "1933861323bb4f93d8e92339bed909cc0b38fd87e224f01180886cf64e206cb6",
+      "entry_hash": "46e68bb3cbf628b914255b792ee88e4d0f1e8e43b9559b151e8c3046bbceddc9"
+    },
+    {
+      "at": "2026-09-27T06:10:12.449Z",
+      "type": "red-check",
+      "expect": "task-gate: a hyphenated single-file rm is not a recursive delete",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7eeb249cca34",
+      "seq": 7,
+      "parent_hash": "46e68bb3cbf628b914255b792ee88e4d0f1e8e43b9559b151e8c3046bbceddc9",
+      "entry_hash": "fff66b5bd81d735363fb68df553dcda3303af2a665dca4322bb49e9e0858840e"
+    },
+    {
+      "at": "2026-09-27T06:10:12.668Z",
+      "type": "red-check",
+      "expect": "task-gate: an empty --bash value fails closed, never routine",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7eeb249cca34",
+      "seq": 8,
+      "parent_hash": "fff66b5bd81d735363fb68df553dcda3303af2a665dca4322bb49e9e0858840e",
+      "entry_hash": "140fde52a72c3e248151dfb0ab620a7a4f1d61e61ec7188782ba72931c5d9774"
+    },
+    {
+      "at": "2026-09-27T06:10:12.891Z",
+      "type": "red-check",
+      "expect": "task-gate: --stdin reads the PreToolUse payload",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7eeb249cca34",
+      "seq": 9,
+      "parent_hash": "140fde52a72c3e248151dfb0ab620a7a4f1d61e61ec7188782ba72931c5d9774",
+      "entry_hash": "8b82a3b6bce0158535326cb718a48aba3e08317f73f2a4216efcc0da48d47259"
+    },
+    {
+      "at": "2026-09-27T06:13:34.157Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: a record the law throws on authorizes nothing and never crashes the gate",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 10,
+      "parent_hash": "8b82a3b6bce0158535326cb718a48aba3e08317f73f2a4216efcc0da48d47259",
+      "entry_hash": "e182fe738c1e88ba4b1af7b946308d9537e0afc98e27ab10b5e635792ffb3327"
+    },
+    {
+      "at": "2026-09-27T06:13:34.316Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: the authoring hook fails CLOSED \\(exit 2, with the rule\\) when the law itself throws",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 11,
+      "parent_hash": "e182fe738c1e88ba4b1af7b946308d9537e0afc98e27ab10b5e635792ffb3327",
+      "entry_hash": "cf6b6f6dd93b9d2755750e8e2d441074e7616fa1462e2ae188f2211ecd07ab1b"
+    },
+    {
+      "at": "2026-09-27T06:13:34.475Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: the banner's next step follows the repo's own PHASES",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 12,
+      "parent_hash": "cf6b6f6dd93b9d2755750e8e2d441074e7616fa1462e2ae188f2211ecd07ab1b",
+      "entry_hash": "81e901e6ca2c160c03ce508a3ba96aa23fde63220dc6e600061212883f8f9a96"
+    },
+    {
+      "at": "2026-09-27T06:13:34.627Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: the banner answers the hook event it was fired for",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 13,
+      "parent_hash": "81e901e6ca2c160c03ce508a3ba96aa23fde63220dc6e600061212883f8f9a96",
+      "entry_hash": "33447c722c5d4f9898c482cc8c5bd4de25c9c704a62203b94607301319b1582f"
+    },
+    {
+      "at": "2026-09-27T06:13:34.775Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: the no-task refusal names each in-window record the law refused",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 14,
+      "parent_hash": "33447c722c5d4f9898c482cc8c5bd4de25c9c704a62203b94607301319b1582f",
+      "entry_hash": "7fd561203a8cd3a82436ac3708d7ef641537e89287cabd00edcbca200c32227c"
+    },
+    {
+      "at": "2026-09-27T06:13:34.931Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: the banner never lists a law-refused record as authorizing",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 15,
+      "parent_hash": "7fd561203a8cd3a82436ac3708d7ef641537e89287cabd00edcbca200c32227c",
+      "entry_hash": "dc304141363dac223cf6ace33fab4e31fbe9999cdea679e8eb02704fda6707dd"
+    },
+    {
+      "at": "2026-09-27T06:13:35.080Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: a fence-surface path's fix opens a protected task",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fc55939538e0",
+      "seq": 16,
+      "parent_hash": "dc304141363dac223cf6ace33fab4e31fbe9999cdea679e8eb02704fda6707dd",
+      "entry_hash": "aa1d9587b3b12ef8a2f2d5add6385bc264d9c5a4354c822410536f20cd605058"
+    },
+    {
+      "at": "2026-09-27T06:16:23.916Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: sitrepFacts survives a record the law cannot read",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9aa97f69d25c",
+      "seq": 17,
+      "parent_hash": "aa1d9587b3b12ef8a2f2d5add6385bc264d9c5a4354c822410536f20cd605058",
+      "entry_hash": "ee6d775084b8c0f2c66bdb5a666f7b06005a6cee1e442f1dabc8b3231d12fbd8"
+    },
+    {
+      "at": "2026-09-27T06:27:47.022Z",
+      "type": "red-check",
+      "expect": "task-gate: three bypass refusals never condense the first edit demand",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9558892c38bb",
+      "seq": 18,
+      "parent_hash": "ee6d775084b8c0f2c66bdb5a666f7b06005a6cee1e442f1dabc8b3231d12fbd8",
+      "entry_hash": "4ba588f9701c092e6e46279b820cdcf54b99887e19b466f4e9694ea205bc67c1"
+    },
+    {
+      "at": "2026-09-27T06:27:47.265Z",
+      "type": "red-check",
+      "expect": "task-gate: a condensed line never cites ordinals that were not full demands",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9558892c38bb",
+      "seq": 19,
+      "parent_hash": "4ba588f9701c092e6e46279b820cdcf54b99887e19b466f4e9694ea205bc67c1",
+      "entry_hash": "6fb8e66d9b6d399bdbdc9fc80f602c0c26d73f0a564a177749495a9529db68a1"
+    },
+    {
+      "at": "2026-09-27T07:15:31.812Z",
+      "type": "red-check",
+      "expect": "task-gate: a hyphenated single-file git rm, a --cached rm, or a dry run is not destructive",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "454405122ed6",
+      "seq": 20,
+      "parent_hash": "6fb8e66d9b6d399bdbdc9fc80f602c0c26d73f0a564a177749495a9529db68a1",
+      "entry_hash": "569ca9ce0c66059527bbad7dd37204503b9335f07b46470d7e989fcc557175a8"
+    }
+  ]
+}
