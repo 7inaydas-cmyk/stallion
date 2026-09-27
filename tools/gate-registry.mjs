@@ -63,13 +63,14 @@ const WORKFLOWS_DIR = ".github/workflows";
 /** What a ci gate's MISSING refusal names: direction 1 reads narrower than the shadow sweep. */
 const CARRIED_CI = `${TRANSPORTS.ci} tracked by git, triggered on push or pull_request, with no continue-on-error and no always-false if:`;
 /** How a transport's text runs as shell. A git hook or the battery is ONE `sh` script, errexit off
- *  unless its shebang says `-e` (a `set -e` counts from its own line on — errexitAt); every npm
- *  alias is an `sh` script of one line; a workflow is YAML whose `run:` values each run under CI's
- *  default `bash -e`. */
-function shellOf(transport, text) {
+ *  until a `set -e` (it counts from its own line on — errexitAt); a shebang's `-e` never counts, as
+ *  the doctor reads it: `sh .githooks/pre-push` and git for Windows drop a shebang's options, and
+ *  the hook runs on past a failed line. Every npm alias is an `sh` script of one line; a workflow is
+ *  YAML whose `run:` values each run under CI's default `bash -e`. */
+function shellOf(transport) {
   if (transport === "ci") return { errexit: true, yaml: true };
   if (transport === "npm-alias") return { errexit: false, lineScripts: true };
-  return { errexit: /^#!\S+[ \t]+-[A-Za-z]*e/.test(text) };
+  return { errexit: false };
 }
 
 function die(message) {
@@ -368,18 +369,19 @@ function setsErrexit(m, quote) {
 }
 
 /** Does the command's exit status still decide its script (`rest` runs to the script's end)? An
- *  if-probe must exit with a failing status in a branch; any other run must be a clean chain
- *  (chainTail) that ends in `|| exit`, ends its script, or runs under errexit — which stops only on
- *  a failed command neither `!`-inverted nor followed by `&&` (POSIX `set -e`: `sh -e -c 'false &&
+ *  if-probe must exit with a failing status in a branch; a `!`-inverted run hands on the verdict's
+ *  negation (`! node … || exit 1` goes on past a refusal), so it keeps nothing; any other run must
+ *  be a clean chain (chainTail) that ends in `|| exit`, ends its script, or runs under errexit —
+ *  which stops only on a failed command not followed by `&&` (POSIX `set -e`: `sh -e -c 'false &&
  *  :'` runs on). */
 function keepsVerdict(rest, { cond, q }, errexit) {
   if (/\bif\b/.test(cond)) {
     const probe = IF_PROBE.exec(rest);
     return probe !== null && exitsNonzero(probe.groups.body);
   }
-  const tail = chainTail(q).exec(rest);
+  const tail = cond.includes("!") ? null : chainTail(q).exec(rest);
   if (tail === null) return false;
-  const stops = errexit && !cond.includes("!") && tail.groups.and === "";
+  const stops = errexit && tail.groups.and === "";
   return stops || tail.groups.exit !== undefined || rest.slice(tail[0].length).trim() === "";
 }
 
@@ -428,18 +430,26 @@ function missingErrors(gates, transportTexts) {
   for (const gate of gates) {
     for (const transport of gate.transports) {
       const text = transportTexts[transport] ?? "";
-      if (!carries(text, gate.invocation, carryOptions(gate, transport, text))) {
-        errors.push(`gate '${gate.id}' is declared to run in ${transport} (${transport === "ci" ? CARRIED_CI : TRANSPORTS[transport]}) but the file does not carry it as a live command whose failure fails the transport: ${gate.invocation}`);
+      if (!carries(text, gate.invocation, carryOptions(gate, transport))) {
+        errors.push(`gate '${gate.id}' is declared to run in ${transport} (${transport === "ci" ? CARRIED_CI : TRANSPORTS[transport]}) but the file does not carry it as a live command whose failure fails the transport: ${gate.invocation}\n  ${carryFix(gate, transport)}`);
       }
     }
   }
   return errors;
 }
 
+/** The fix a missing gate's refusal prints: the one shape each transport surely carries, or the
+ *  declaration dropped. A hook runs with errexit off (shellOf), so its line keeps `|| exit 1`. */
+function carryFix(gate, transport) {
+  const shapes = { ci: "a run: step's command in a tracked workflow that triggers on push or pull_request", battery: "a member of package.json's selftest chain, joined by && alone", "npm-alias": "a package.json script of its own" };
+  const shape = shapes[transport] ?? `a line of its own in ${TRANSPORTS[transport]}, ending in '|| exit 1'`;
+  return `fix: make '${gate.invocation}' ${shape} — or drop '${transport}' from gate '${gate.id}' in ${REGISTRY_PATH}`;
+}
+
 /** The liveness law's per-gate inputs: an ADVISORY gate may swallow its verdict, and the transport
  *  says how its text runs as shell (shellOf). */
-function carryOptions(gate, transport, text) {
-  return { ...shellOf(transport, text), advisory: gate.advisory === true };
+function carryOptions(gate, transport) {
+  return { ...shellOf(transport), advisory: gate.advisory === true };
 }
 
 /** One clean `&&` chain: commands (none `!`-inverted) with their arguments and redirections. */
@@ -466,7 +476,7 @@ function batteryChainErrors(battery = "") {
 function shadowErrors(gates, transportTexts) {
   const errors = [];
   for (const [transport, raw] of Object.entries(transportTexts)) {
-    const text = canonicalSpellings(liveText(raw, shellOf(transport, raw)));
+    const text = canonicalSpellings(liveText(raw, shellOf(transport)));
     for (const gate of gates) {
       if (!gate.transports.includes(transport) && mentions(text, gate.invocation)) {
         errors.push(`${TRANSPORTS[transport]} carries '${gate.invocation}' but gate '${gate.id}' does not declare the ${transport} transport — an undeclared invocation is a shadow gate`);
@@ -576,6 +586,7 @@ function selfTestLiveness(fail) {
     ["a command sequenced after || exit", "node tools/a.mjs || exit 1; echo next"],
     ["an exit status of 255", "node tools/a.mjs || exit 255"],
     ["an if-probe exiting from its else branch", "if node tools/a.mjs; then :; else exit 1; fi"],
+    ["an inverted if-probe", "if ! node tools/a.mjs; then exit 1; fi"],
   ];
   for (const [name, text] of live) if (!carries(text, "node tools/a.mjs")) fail(`a live invocation was not carried: ${name}`);
 }
@@ -592,6 +603,14 @@ function selfTestHookSemantics(fail) {
   if (errorsFor("node tools/a.mjs || true") !== 1) fail("a swallowed verdict carried a gate not declared advisory");
 }
 
+/** A missing gate's refusal names the rule and the evidence, then a runnable fix in every transport. */
+function selfTestRefusalFix(fail) {
+  for (const transport of Object.keys(TRANSPORTS)) {
+    const refusal = checkDeclarations([{ id: "a", invocation: "node tools/a.mjs", transports: [transport] }], {})[0] ?? "";
+    if (!refusal.includes("\n  fix: ") || !refusal.includes(REGISTRY_PATH)) fail(`a missing gate's refusal printed no runnable fix (${transport})`);
+  }
+}
+
 /** errexit is decided where the line runs, and it stops only on a failed command that is neither
  *  `!`-inverted nor followed by `&&` (POSIX `set -e`; `sh -e -c 'false && :'` runs on). */
 function selfTestErrexit(fail) {
@@ -605,11 +624,56 @@ function selfTestErrexit(fail) {
   ];
   for (const [name, hook] of runsOn) if (errorsFor(hook) !== 1) fail(name);
   const stops = [
-    ["a -e shebang did not count as errexit", "#!/bin/sh -e\nnode tools/a.mjs\necho done"],
     ["an &&-continued line kept by || exit under set -e was not carried", "set -e\nnode tools/a.mjs && echo ok || exit 1\necho done"],
     ["a line after set -e on its own line was not carried", "set -eu\necho start && node tools/a.mjs\necho done"],
   ];
   for (const [name, hook] of stops) if (errorsFor(hook) !== 0) fail(name);
+}
+
+/** The doctor's dialect: task-coverage's invokesMode judges its own hook lines by this same law — a
+ *  verdict that reaches git — and the two readings must not drift (no import: the doctor's self-test
+ *  pins its side). Each row goes through checkDeclarations, the path a real transport takes. Both
+ *  read errexit alike — a column-0 `set -e` turns it on, a `set +e` anywhere turns it off, options
+ *  end at `--`, a shebang's `-e` never counts — and both refuse a `!`-inverted run. Differences,
+ *  each failing closed on one side: the doctor's allowlist spells only `node … || exit N`, so the
+ *  && chain, the if-probe, a prefix and a bare `|| exit` reach git here alone; `|| exit 257` (sh
+ *  folds it to 1) there alone. */
+function selfTestDoctorDialect(fail) {
+  const carriedIn = (transport, text) => checkDeclarations([{ id: "a", invocation: "node tools/a.mjs", transports: [transport] }], { [transport]: text }).length === 0;
+  const refused = [
+    ["'|| echo x'", "pre-commit", "#!/bin/sh\nnode tools/a.mjs || echo x"],
+    ["'2>&1 || true'", "pre-commit", "#!/bin/sh\nnode tools/a.mjs 2>&1 || true"],
+    ["'| tee log'", "pre-commit", "#!/bin/sh\nnode tools/a.mjs | tee log"],
+    ["'; exit 0'", "pre-commit", "#!/bin/sh\nnode tools/a.mjs; exit 0"],
+    ["'|| exit 0'", "pre-push", "#!/bin/sh\nnode tools/a.mjs || exit 0"],
+    ["'|| exit 256'", "pre-push", "#!/bin/sh\nnode tools/a.mjs || exit 256"],
+    ["'|| exit 512'", "pre-commit", "#!/bin/sh\nnode tools/a.mjs || exit 512"],
+    ["a ci step's '|| echo'", "ci", "      run: node tools/a.mjs || echo fence-failed"],
+    ["a ci step's trailing '&'", "ci", "      run: node tools/a.mjs &"],
+    ["a non-final bare hook line", "pre-commit", "#!/bin/sh\nnode tools/a.mjs\necho staged"],
+    ["a non-final sh -c wrapper", "pre-push", '#!/bin/sh\nsh -c "node tools/a.mjs || exit 1"\necho pushed'],
+    ["set -e undone by set +e", "pre-push", "#!/bin/sh\nset -e\nset +e\nnode tools/a.mjs\necho pushed"],
+    ["set -eu undone by set +o errexit", "pre-commit", "#!/bin/sh\nset -eu\nset +o errexit\nnode tools/a.mjs\necho staged"],
+    ["set -e undone by a set +e after a separator", "pre-commit", "#!/bin/sh\nset -e\necho x; set +e\nnode tools/a.mjs\necho staged"],
+    ["an indented set -e inside an if-block", "pre-commit", '#!/bin/sh\nif [ -n "$CI" ]; then\n  set -e\nfi\nnode tools/a.mjs\necho staged'],
+    ["a set -- -e (positional parameters, not errexit)", "pre-commit", "#!/bin/sh\nset -- -e\nnode tools/a.mjs\necho staged"],
+    // git for Windows strips a shebang's options, and `sh .githooks/pre-commit` never reads them.
+    ["a -e shebang (sh <hook> drops it)", "pre-commit", "#!/bin/sh -e\nnode tools/a.mjs\necho staged"],
+    // `!` hands on the verdict's negation: a refused gate's exit 1 becomes 0.
+    ["an inverted last line", "pre-commit", "#!/bin/sh\necho start\n! node tools/a.mjs"],
+    ["an inverted '! … || exit 1'", "pre-push", "#!/bin/sh\n! node tools/a.mjs || exit 1\necho pushed"],
+    ["an inverted '! … || exit 1' under set -e", "pre-push", "#!/bin/sh\nset -e\n! node tools/a.mjs || exit 1\necho pushed"],
+    ["a ci step's inverted '! … || exit 1'", "ci", "      - run: ! node tools/a.mjs || exit 1"],
+  ];
+  for (const [name, transport, text] of refused) if (carriedIn(transport, text)) fail(`the doctor's dialect: a verdict that never reaches git was carried — ${name}`);
+  const certified = [
+    ["'|| exit 1'", "pre-push", "#!/bin/sh\nnode tools/a.mjs || exit 1\necho pushed"],
+    ["the hook's last bare line", "commit-msg", '#!/bin/sh\nnode tools/a.mjs "$1"\n'],
+    ["a bare line after set -eu (set +x leaves it on)", "pre-commit", "#!/bin/sh\nset -eu\nset +x\nnode tools/a.mjs\necho staged"],
+    ["a final sh -c wrapper's '|| exit 2'", "pre-commit", "sh -c 'node tools/a.mjs || exit 2'"],
+    ["a non-final bare ci run-block line (bash -e)", "ci", "      run: |\n          node tools/a.mjs\n          echo fenced\n"],
+  ];
+  for (const [name, transport, text] of certified) if (!carriedIn(transport, text)) fail(`the doctor's dialect: a verdict the doctor certifies was not carried — ${name}`);
 }
 
 /** The shadow sweep reads what the shell runs: a quoted `#` is data, not a comment; `--self-test`
@@ -793,7 +857,9 @@ export function selfTest() {
   selfTestFixtures(fail);
   selfTestLiveness(fail);
   selfTestHookSemantics(fail);
+  selfTestRefusalFix(fail);
   selfTestErrexit(fail);
+  selfTestDoctorDialect(fail);
   selfTestFlaggedShadow(fail);
   selfTestShadowSpellings(fail);
   selfTestShapes(fail);

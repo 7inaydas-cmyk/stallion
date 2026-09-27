@@ -355,6 +355,50 @@
       "seq": 32,
       "parent_hash": "0e5b43ff12d1f5ff80f6c74341ff8c7a28f9a608b939a451b7849fc1f32bdd3a",
       "entry_hash": "e263cbc686d321687eb2b3a74621bf0db48716147c7926e1c30263982ef6b9ca"
+    },
+    {
+      "at": "2026-09-27T11:19:39.018Z",
+      "type": "red-check",
+      "expect": "never reaches git was carried — a -e shebang",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1b4f139d863a",
+      "seq": 33,
+      "parent_hash": "e263cbc686d321687eb2b3a74621bf0db48716147c7926e1c30263982ef6b9ca",
+      "entry_hash": "d5717b3c25ce6a5e74e043e0c20c06be713a19bdb944e5546b6b403ba2aab1ca"
+    },
+    {
+      "at": "2026-09-27T11:28:28.715Z",
+      "type": "red-check",
+      "expect": "never reaches git was carried — an inverted",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8cf8cb1b3583",
+      "seq": 34,
+      "parent_hash": "d5717b3c25ce6a5e74e043e0c20c06be713a19bdb944e5546b6b403ba2aab1ca",
+      "entry_hash": "397dabec6fdad8e7755f1974da2340358d678f228ab205f04d3ff1ba52350c58"
+    },
+    {
+      "at": "2026-09-27T11:28:28.824Z",
+      "type": "red-check",
+      "expect": "refusal printed no runnable fix",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8cf8cb1b3583",
+      "seq": 35,
+      "parent_hash": "397dabec6fdad8e7755f1974da2340358d678f228ab205f04d3ff1ba52350c58",
+      "entry_hash": "e84cc6884d28658981b46f8d6143c095c4d54a4123fc55ffb6c2176b0344731e"
+    },
+    {
+      "at": "2026-09-27T11:28:37.993Z",
+      "type": "red-check",
+      "expect": "never reaches git was carried — a -e shebang",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f46d1931ef7f",
+      "seq": 36,
+      "parent_hash": "e84cc6884d28658981b46f8d6143c095c4d54a4123fc55ffb6c2176b0344731e",
+      "entry_hash": "e3b3d06835cd32756c0fca70328119564c0a5bf12759543b046ec7a39fee468d"
     }
   ]
 }
