@@ -17,9 +17,10 @@
  * never once executed. It was found by running the code, which is the only thing that ever finds
  * this class. So this lint is the standing replacement for "somebody runs it".
  *
- * WHAT IT CHECKS. Inside a double-quoted block opened by `--command "`, `<NAME>_REMOTE="` or a call
- * to a remote-dispatch wrapper, and closed by a line that starts with the closing `"` (alone, or
- * followed by `)`, `;`, `&&`, a pipe or a redirect):
+ * WHAT IT CHECKS. Inside a double-quoted block opened by `--command "`, `<NAME>_REMOTE="`, a
+ * direct `ssh [args] "` left open at end of line, or a call to a remote-dispatch wrapper, and closed
+ * by a line that starts with the closing `"` (alone, or followed by `)`, `;`, `&&`, a pipe or a
+ * redirect — and a closing line that opens the next remote string, `" && remote "`, opens it):
  *   - an UNESCAPED backtick        → command substitution, evaluated locally. ERROR.
  *   - an UNESCAPED `$(`            → same. ERROR.
  * `\`` and `\$(` are correct and pass: they reach the host literally.
@@ -178,14 +179,19 @@ export function remoteWrapperNames(text) {
   return [...new Set(names)];
 }
 
+// A bash function name, and one escaped for a regex: a `.` in a name is data, not a wildcard.
+const NAME = "[A-Za-z_][\\w:.-]*";
+const PAIR = { "{": "}", "(": ")" };
+const escapeName = (name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Every shell function in `text`, with its FULL body.
  *
- * Bodies are read to the matching brace, not to the end of the declaring line. The single-line form
- * was a real blind spot and it bit immediately: a shared lib declared `remote_run()` with a
- * multi-line `case` body, so a first-line-only scan found NO dispatchers in the whole corpus and
- * the union came back empty — silently, because an empty union simply means "no wrapper openers"
- * rather than an error.
+ * Bodies are read to the matching brace (or paren), not to the end of the declaring line. The
+ * single-line form was a real blind spot and it bit immediately: a shared lib declared
+ * `remote_run()` with a multi-line `case` body, so a first-line-only scan found NO dispatchers in
+ * the whole corpus and the union came back empty — silently, because an empty union simply means
+ * "no wrapper openers" rather than an error.
  */
 export function shellFunctions(text) {
   const out = [];
@@ -196,18 +202,28 @@ export function shellFunctions(text) {
     .split("\n")
     .map((line) => (/^\s*#/.test(line) ? "" : line))
     .join("\n");
-  // Every form bash declares a function with: `name() {`, `function name {`, `function name() {`,
-  // any case. Either the keyword or the `()` must be present, so a bare `word {` is not one. The
-  // lowercase `name() {` form alone once let a `function on_vm { ssh ... }` dispatcher go unseen.
-  const re = /^[ \t]*(?:function[ \t]+([A-Za-z_]\w*)(?:[ \t]*\(\))?|([A-Za-z_]\w*)[ \t]*\(\))\s*\{/gm;
+  // The declaration forms: `name() {`, `function name {`, `function name() {`, any case, and a
+  // subshell body `name() ( ... )`; a name may carry `-`, `.` and `:` (`remote-run`,
+  // `deploy::remote`), as bash allows. Either the keyword or the `()` must be present, so a bare
+  // `word {` is not one. The lowercase `name() {` form alone once let a `function on_vm { ssh ... }`
+  // dispatcher go unseen.
+  // ponytail: `{` and `(` bodies only — bash takes any compound command as a body (`f() if …; fi`,
+  // `f() [[ … ]]`); read the next compound command if a dispatcher is ever declared that way. The
+  // reader is quote-blind (a `}` or `)` used as data ends a body early; the dispatcher floor is the
+  // guard) and reads only the first `esac` of a nested `case`.
+  const re = new RegExp(`^[ \\t]*(?:function[ \\t]+(${NAME})(?:[ \\t]*\\(\\))?|(${NAME})[ \\t]*\\(\\))\\s*([{(])`, "gm");
+  // A `case` arm's pattern `a)` is not the end of a `( … )` body: parens from `case` to `esac` are
+  // blanked (length kept) for the depth count, so a subshell-bodied dispatcher is read to its `ssh`.
+  const depthText = text.replace(/\bcase\b[\s\S]*?\besac\b/g, (span) => span.replace(/[()]/g, " "));
   let m = re.exec(text);
   while (m !== null) {
-    const open = text.indexOf("{", m.index);
+    const open = m.index + m[0].length - 1;
+    const close = PAIR[m[3]];
     let depth = 0;
     let end = text.length;
     for (let i = open; i < text.length; i += 1) {
-      if (text[i] === "{") depth += 1;
-      else if (text[i] === "}") {
+      if (depthText[i] === m[3]) depth += 1;
+      else if (depthText[i] === close) {
         depth -= 1;
         if (depth === 0) {
           end = i;
@@ -262,12 +278,17 @@ export function corpusWrapperNames(files, read) {
   return [...names];
 }
 
-/** Functions whose single-line body invokes one of the already-known dispatcher names. */
+/**
+ * Functions whose body invokes one of the already-known dispatcher names. A name character AFTER
+ * the name ends the match (`remote-status` is not `remote`); BEFORE it only a word character or `.`
+ * does, because `-` is also how a shell default reaches a runner — `"${RUNNER:-remote_run}"` — and
+ * this union errs toward collecting more.
+ */
 export function indirectWrapperNames(text, known) {
   const out = [];
   for (const { name, body } of shellFunctions(text)) {
     for (const candidate of known) {
-      if (candidate !== name && new RegExp(`\\b${candidate}\\b`).test(body)) {
+      if (candidate !== name && new RegExp(`(?<![\\w.])${escapeName(candidate)}(?![\\w:.-])`).test(body)) {
         out.push(name);
         break;
       }
@@ -277,12 +298,20 @@ export function indirectWrapperNames(text, known) {
 }
 
 /**
- * `--command "` / `--command="` or `NAME_REMOTE="` at end of line — the two static openers. The
+ * The static openers, each at end of line: `--command "` / `--command="`, and `NAME_REMOTE="`. The
  * assignment may be indented (a block built inside a deploy function), carry `export` / `local` /
- * `readonly` / `declare`, and have digits in its name; a column-0-only anchor left every one of
- * those blocks unscanned.
+ * `readonly` / `declare` / `typeset` with flags, and have digits in its name; a column-0-only
+ * anchor left every one of those blocks unscanned.
  */
-const OPENS = /(--command(?:\s+|=)"|^\s*(?:(?:export|local|readonly|declare(?:\s+-\w+)*)\s+)?[A-Z_][A-Z0-9_]*_REMOTE=")\s*$/;
+const OPENS = /(--command(?:\s+|=)"|^\s*(?:(?:export|local|readonly|declare|typeset)(?:\s+-\S+)*\s+)?[A-Z_][A-Z0-9_]*_REMOTE=")\s*$/;
+/**
+ * The transport itself, `ssh [args] "`, with `ssh` as a whole word, so it opens behind any prefix
+ * (`elif`, `while`, `sudo -u deploy`, `timeout 30`); an enumerated list of command positions missed
+ * each of those. The final quote must belong to ssh's own command (no `;` `&` `|` before it), so
+ * `ssh "$H" "uptime"; echo "` opens nothing, and opensBlock also requires it UNPAIRED — an odd count
+ * of quotes on the line — so prose that names ssh inside a closed local string opens nothing.
+ */
+const SSH_OPENS = /(?:^|[\s;&|({!])ssh\s(?:[^";&|]|"[^"]*")*\s"\s*$/;
 // The closers that actually occur: a lone `"`, `" | tee ...`, `" || fail ...`, `" && ...`, `")` (the
 // `OUT=$(remote_run "` shape), `"; then` (the `if remote_run "` shape) and `" > log`. A
 // continuation line that merely STARTS with a quote (`  "https://..."`) is not a closer, which is
@@ -294,9 +323,10 @@ const CLOSES = /^\s*"\s*(?:$|\)|;|&&|\|\|?(?:\s|$)|\d*[<>])/;
 // script on purpose. Marked, not guessed: an unmarked one is still an error.
 const ALLOW = /lint-allow-local-expansion/;
 
-/** Either static opener, or a call to a remote-dispatch wrapper this file defines. */
+/** A static opener, a direct `ssh` left open at end of line, or a call to a wrapper the corpus defines. */
 function opensBlock(line, wrapperOpens) {
   if (OPENS.test(line)) return true;
+  if (SSH_OPENS.test(line) && (line.match(/(?<!\\)"/g) ?? []).length % 2 === 1) return true;
   return wrapperOpens !== null && wrapperOpens.test(line);
 }
 
@@ -317,7 +347,7 @@ function liveExpansion(line) {
 /**
  * Findings for one script's text. Exported shape so the self-test drives the real function.
  *
- * Openers are the two static forms PLUS a call to any remote-dispatch wrapper this file defines
+ * Openers are the static forms PLUS a call to any remote-dispatch wrapper this file defines
  * (see `remoteWrapperNames`), so the one-line-wrapper style is covered wherever it is adopted.
  */
 export function scan(text, file = "<input>", corpusWrappers) {
@@ -329,21 +359,21 @@ export function scan(text, file = "<input>", corpusWrappers) {
   // NOT anchored to line start, deliberately. `OPENS` matches `--command "` anywhere on the line, so
   // the literal transport was caught behind any prefix; anchoring the wrapper form NARROWED the lint
   // at the exact moment call sites moved onto it. These shapes all occur and were silent:
-  // `if remote_run "`, `OUT=$(remote_run "`, `printf x | remote_run "`.
+  // `if remote_run "`, `OUT=$(remote_run "`, `printf x | remote_run "`. The prefix and the `\s+"`
+  // bound the name on both sides, so `my-remote-run "` is not a call to `remote-run`.
   const wrapperOpens =
-    wrappers.length > 0 ? new RegExp(`(?:^|[\\s;&|(]|\\$\\()(?:${wrappers.join("|")})\\s+"\\s*$`) : null;
+    wrappers.length > 0 ? new RegExp(`(?:^|[\\s;&|(]|\\$\\()(?:${wrappers.map(escapeName).join("|")})\\s+"\\s*$`) : null;
   let inside = false;
-  // How many blocks were OPENED, carried on the result: main's "dispatching" count reads this
-  // rather than re-deriving the openers with a narrower pattern of its own.
+  // How many blocks were OPENED, carried on the result: lintCorpus's "dispatching" count reads
+  // this rather than re-deriving the openers with a narrower pattern of its own.
   out.blocks = 0;
   text.split("\n").forEach((line, i) => {
-    if (!inside) {
-      inside = opensBlock(line, wrapperOpens);
+    // A closing line is an opener check too: `" && remote "` closes one remote string and opens the
+    // next, and closing without asking read the second block as local. Its leading quote closed the
+    // previous string, so the check reads what follows it (the ssh opener counts quotes).
+    if (!inside || CLOSES.test(line)) {
+      inside = opensBlock(inside ? line.replace(/^\s*"/, "") : line, wrapperOpens);
       out.blocks += Number(inside);
-      return;
-    }
-    if (CLOSES.test(line)) {
-      inside = false;
       return;
     }
     if (ALLOW.test(line)) return;
@@ -353,7 +383,32 @@ export function scan(text, file = "<input>", corpusWrappers) {
   return out;
 }
 
+/**
+ * The whole corpus, scanned: every finding, and how many scripts DISPATCH (open at least one remote
+ * block). The count is read off the blocks scan() actually opened, never re-derived by a narrower
+ * pattern — main once counted with its own opener regex and missed every prefixed call. It is
+ * what the run prints for a human; the machine guard against a collapsed union is the dispatcher
+ * floor, and a collapse at the call sites (wrappers found, no block opened) shows only as this
+ * count falling — no floor reads it.
+ */
+export function lintCorpus(scripts, read, wrappers) {
+  const findings = [];
+  let dispatching = 0;
+  for (const rel of scripts) {
+    // NOT wrapped in try/continue. A discovered file that cannot be read is a broken walk,
+    // and a silent `continue` meant a renamed script simply stopped being checked.
+    const found = scan(read(rel), rel, wrappers);
+    dispatching += Number(found.blocks > 0);
+    findings.push(...found);
+  }
+  return { findings, dispatching };
+}
+
 function selfTest() {
+  // Fixtures whose wrapper is found only by the corpus closure, so their case passes its union in.
+  const DEFAULT_RUNNER = 'remote_run() { ssh "$H" "$1"; }\non_vm() { "${RUNNER:-remote_run}" "$1"; }\non_vm "\n  # `bad`\n"\n';
+  const LONGER_WORD = 'remote() { ssh "$H" "$1"; }\nstatus() { remote-status "$1"; }\nstatus "\n  A=$(date)\n"\n';
+  const unionOf = (text) => corpusWrapperNames([text], (t) => t);
   const cases = [
     // [name, input, expected finding count]
     ["a bare backtick in a remote comment is caught", 'x --command "\n  # `foo` bar\n"\n', 1],
@@ -445,6 +500,42 @@ function selfTest() {
     ["closer-and `\" && x` closes a block", 'x --command "\n  echo hi\n" && echo ok\n# `after` is local\n', 0],
     ["closer-redirect `\" > f` closes a block", 'x --command "\n  echo hi\n" > out.log\n# `after` is local\n', 0],
     ["a bare backtick INSIDE an `OUT=$(remote_run \"` block is still caught", 'remote_run() { ssh "$H" "$1"; }\nOUT=$(remote_run "\n  # `bad`\n")\n', 1],
+    // ── a closer that is ALSO an opener. A chained dispatch closes one remote string and opens the
+    // next on the same line; closing without re-checking the line read the second block as local.
+    ["closer-reopen-and `\" && y --command \"` opens the next block", 'x --command "\n  echo one\n" && y --command "\n  # `bad`\n"\n', 1],
+    ["closer-reopen-semicolon `\"; y --command \"` opens the next block", 'x --command "\n  echo one\n"; y --command "\n  # `bad`\n"\n', 1],
+    ["closer-reopen-pipe `\" | y --command \"` opens the next block", 'x --command "\n  echo one\n" | y --command "\n  # `bad`\n"\n', 1],
+    ["closer-reopen-subshell `\") && B=$(remote_run \"` opens the next block", 'remote_run() { ssh "$H" "$1"; }\nA=$(remote_run "\n  echo one\n") && B=$(remote_run "\n  # `bad`\n")\n', 1],
+    // ── declaration forms beyond `\w` names and `{` bodies: bash accepts all of these, and a
+    // wrapper declared any of these ways was never collected, so its call blocks never opened.
+    ["declaration-namespaced wrapper `deploy::remote() {` is found", 'deploy::remote() { gcloud compute ssh "$VM" --command "$1"; }\ndeploy::remote "\n  # `bad`\n"\n', 1],
+    ["declaration-hyphenated wrapper `remote-run() {` is found", 'remote-run() { ssh "$H" "$1"; }\nremote-run "\n  # `bad`\n"\n', 1],
+    ["declaration-hyphenated wrapper `function on-vm {` is found", 'function on-vm {\n  ssh "$H" "$1"\n}\non-vm "\n  # `bad`\n"\n', 1],
+    ["declaration-subshell wrapper `on_vm() ( ... )` is found", 'on_vm() ( ssh "$H" "$1" )\non_vm "\n  # `bad`\n"\n', 1],
+    ["a dotted wrapper name is matched literally, not as a regex", 'r.x() { ssh "$H" "$1"; }\nrZx "\n  # `local`\n"\n', 0],
+    ["a wrapper name inside a longer hyphenated word is not a call", 'remote-run() { ssh "$H" "$1"; }\nmy-remote-run "\n  # `local`\n"\n', 0],
+    ["declaration-subshell-case `on_vm() ( case … a) … esac; ssh )` is found", 'on_vm() (\n  case "$1" in\n    a) echo a ;;\n  esac\n  ssh "$H" "$1"\n)\non_vm "\n  # `bad`\n"\n', 1],
+    // ── the transitive closure, both sides of its name boundary.
+    ["indirect-default-runner `\"${RUNNER:-remote_run}\"` makes on_vm a dispatcher", DEFAULT_RUNNER, 1, unionOf(DEFAULT_RUNNER)],
+    ["indirect-longer-word `remote-status` is not a call to `remote`", LONGER_WORD, 0, unionOf(LONGER_WORD)],
+    // ── every static-opener prefix takes flags, typeset included.
+    ["static-opener `local -r PREFLIGHT_REMOTE=\"` opens a block", 'f() {\n  local -r PREFLIGHT_REMOTE="\n  # `x`\n"\n}\n', 1],
+    ["static-opener `typeset PREFLIGHT_REMOTE=\"` opens a block", 'typeset PREFLIGHT_REMOTE="\n  # `x`\n"\n', 1],
+    ["static-opener `readonly PREFLIGHT_REMOTE=\"` opens a block", 'readonly PREFLIGHT_REMOTE="\n  # `x`\n"\n', 1],
+    ["static-opener `declare -x PREFLIGHT_REMOTE=\"` opens a block", 'declare -x PREFLIGHT_REMOTE="\n  # `x`\n"\n', 1],
+    // ── the transport itself, no wrapper: `ssh [args] "` as an unquoted word, behind any prefix.
+    ["direct-ssh `ssh \"$HOST\" \"` opens a block", 'ssh "$HOST" "\n  # `bad`\n"\n', 1],
+    ["direct-ssh `if ! ssh -o X=1 \"$H\" \"` opens a block", 'if ! ssh -o BatchMode=yes "$H" "\n  A=$(date)\n"; then exit 1; fi\n', 1],
+    ["a single-line `ssh \"$H\" \"uptime\"` opens no block", 'ssh "$H" "uptime"\n# `after` is local\n', 0],
+    ["prose naming ssh inside a local string is not an opener", 'echo "use ssh to reach "\n# `after` is local\n', 0],
+    ["a local string opened after a one-line ssh is not remote", 'ssh "$H" "uptime"; echo "\n  $(date)\n"\n', 0],
+    ["direct-ssh-elif `elif ssh \"$H\" \"` opens a block", 'if x; then :\nelif ssh "$H" "\n  # `bad`\n"; then :; fi\n', 1],
+    ["direct-ssh-while `while ssh \"$H\" \"` opens a block", 'while ssh "$H" "\n  # `bad`\n"; do sleep 1; done\n', 1],
+    ["direct-ssh-timeout `timeout 30 ssh \"$H\" \"` opens a block", 'timeout 30 ssh "$H" "\n  # `bad`\n"\n', 1],
+    ["direct-ssh-sudo-user `sudo -u deploy ssh \"$H\" \"` opens a block", 'sudo -u deploy ssh "$H" "\n  # `bad`\n"\n', 1],
+    ["direct-ssh-reopen `\" && ssh \"$H\" \"` opens the next block", 'x --command "\n  echo one\n" && ssh "$H" "\n  # `bad`\n"\n', 1],
+    ["direct-ssh-prose-paren `echo \"retry (ssh failed) \"` opens no block", 'echo "retry (ssh failed) "\nrm -rf "$(mktemp -d)"\n', 0],
+    ["direct-ssh-prose-semicolon `log \"step 3; ssh to the host \"` opens no block", 'log "step 3; ssh to the host "\nOUT=$(date)\n', 0],
   ];
   let failed = 0;
   for (const [name, input, want, corpusWrappers] of cases) {
@@ -505,9 +596,13 @@ function selfTest() {
     expect("too few discovered SCRIPTS is a defect", floorDefects({ scripts: ["a"], wrappers: ["w"] }, config).length === 1);
     expect("too few discovered DISPATCHERS is a defect", floorDefects({ scripts: ["a", "b"], wrappers: [] }, config).length === 1);
 
-    // ── the "dispatching" count is the one visible symptom of a collapsed union, so it is read
-    // off the blocks scan() actually opened, never re-derived by a narrower pattern.
+    // ── the "dispatching" count is read off the blocks scan() actually opened, never re-derived by a
+    // narrower pattern; it is printed for a human, and no floor reads it.
     expect("dispatch-count: scan() reports the blocks it opened behind a prefixed call", scan('remote_run() { ssh "$H" "$1"; }\nOUT=$(remote_run "\n  echo\n")\n').blocks === 1);
+    // ...and the count main prints is lintCorpus's: a lib that only DEFINES the wrapper does not
+    // dispatch; a caller whose one dispatch is a prefixed `OUT=$(remote_run "` does.
+    const corpus = { "lib.sh": 'remote_run() { ssh "$H" "$1"; }\n', "caller.sh": 'OUT=$(remote_run "\n  echo\n")\n' };
+    expect("dispatch-count-corpus: lintCorpus counts the one script that opens a block", lintCorpus(Object.keys(corpus), (rel) => corpus[rel], ["remote_run"]).dispatching === 1);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -554,7 +649,8 @@ function main() {
   }
 
   // Unioned BEFORE the scan, so a wrapper in a shared lib is known to every caller that sources it.
-  const wrappers = corpusWrapperNames(scripts, (rel) => readFileSync(resolve(ROOT, rel), "utf8"));
+  const read = (rel) => readFileSync(resolve(ROOT, rel), "utf8");
+  const wrappers = corpusWrapperNames(scripts, read);
   const dispatcherDefects = floorDefects({ scripts, wrappers }, config).filter((d) => !defects.includes(d));
   if (dispatcherDefects.length > 0) {
     console.error(`\nremote-string-lint — GATE DEFECT: ${dispatcherDefects.join("; ")}.`);
@@ -562,16 +658,7 @@ function main() {
     return 1;
   }
 
-  let withRemoteBlocks = 0;
-  let findings = [];
-  for (const rel of scripts) {
-    // NOT wrapped in try/continue. A discovered file that cannot be read is a broken walk,
-    // and a silent `continue` meant a renamed script simply stopped being checked.
-    const text = readFileSync(resolve(ROOT, rel), "utf8");
-    const found = scan(text, rel, wrappers);
-    if (found.blocks > 0) withRemoteBlocks += 1;
-    findings = findings.concat(found);
-  }
+  const { findings, dispatching } = lintCorpus(scripts, read, wrappers);
 
   if (findings.length > 0) {
     console.error(`\nremote-string-lint — ${findings.length} live expansion(s) inside a remote command string:\n`);
@@ -587,7 +674,7 @@ function main() {
     return 1;
   }
   console.log(
-    `remote-string-lint — ${scripts.length} script(s) discovered under ${config.walk}, ${withRemoteBlocks} dispatching remote commands; no local expansion inside a remote string.`,
+    `remote-string-lint — ${scripts.length} script(s) discovered under ${config.walk}, ${dispatching} dispatching remote commands; no local expansion inside a remote string.`,
   );
   return 0;
 }

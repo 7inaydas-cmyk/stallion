@@ -281,6 +281,256 @@
       "seq": 25,
       "parent_hash": "6a8263e0449a43c5b83a119cc0cb08ef2b839222956cadc07c4bbcb1474dcd30",
       "entry_hash": "b5e06c59e0e0b5e2d390b49880e8416cb54c2dfe802d527fc994b6eb4faa486e"
+    },
+    {
+      "at": "2026-09-27T08:03:30.888Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 26,
+      "parent_hash": "b5e06c59e0e0b5e2d390b49880e8416cb54c2dfe802d527fc994b6eb4faa486e",
+      "entry_hash": "0c3816d8668301382245bcabd0d98db4c30352ea76df333d9d522dceae592b60"
+    },
+    {
+      "at": "2026-09-27T09:46:14.038Z",
+      "type": "red-check",
+      "expect": "✖ closer-reopen-and",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 27,
+      "parent_hash": "0c3816d8668301382245bcabd0d98db4c30352ea76df333d9d522dceae592b60",
+      "entry_hash": "fb8f0f17c64b6cc2137388384646a4ed2797bc89f7e55888925fbfa2e485e83d"
+    },
+    {
+      "at": "2026-09-27T09:46:14.097Z",
+      "type": "red-check",
+      "expect": "✖ closer-reopen-semicolon",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 28,
+      "parent_hash": "fb8f0f17c64b6cc2137388384646a4ed2797bc89f7e55888925fbfa2e485e83d",
+      "entry_hash": "a35b27bfae1b1ffe73755acd9f28be29c743c6d56e062ce3bc2e17d4c30a39c0"
+    },
+    {
+      "at": "2026-09-27T09:46:14.161Z",
+      "type": "red-check",
+      "expect": "✖ closer-reopen-subshell",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 29,
+      "parent_hash": "a35b27bfae1b1ffe73755acd9f28be29c743c6d56e062ce3bc2e17d4c30a39c0",
+      "entry_hash": "d38e6793f9cb0a3d831a1d04077c1a089248ddfc7796f655378bba207003042a"
+    },
+    {
+      "at": "2026-09-27T09:46:14.222Z",
+      "type": "red-check",
+      "expect": "✖ declaration-namespaced wrapper",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 30,
+      "parent_hash": "d38e6793f9cb0a3d831a1d04077c1a089248ddfc7796f655378bba207003042a",
+      "entry_hash": "460c8fc1abd16787966621666dabc3830eafc6d8fffdb5cf67759df8c319bc46"
+    },
+    {
+      "at": "2026-09-27T09:46:14.289Z",
+      "type": "red-check",
+      "expect": "✖ declaration-hyphenated wrapper `remote-run",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 31,
+      "parent_hash": "460c8fc1abd16787966621666dabc3830eafc6d8fffdb5cf67759df8c319bc46",
+      "entry_hash": "580fe598bf6a3cf9228ee0175815b32706a744d63aff9e49afa11e8012df3570"
+    },
+    {
+      "at": "2026-09-27T09:46:14.352Z",
+      "type": "red-check",
+      "expect": "✖ declaration-subshell wrapper",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 32,
+      "parent_hash": "580fe598bf6a3cf9228ee0175815b32706a744d63aff9e49afa11e8012df3570",
+      "entry_hash": "55745fc811279c6f3c4e8b7e21f83606e611bbab93aedcb1fd54a108247ed9a8"
+    },
+    {
+      "at": "2026-09-27T09:46:14.414Z",
+      "type": "red-check",
+      "expect": "✖ static-opener `local -r",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 33,
+      "parent_hash": "55745fc811279c6f3c4e8b7e21f83606e611bbab93aedcb1fd54a108247ed9a8",
+      "entry_hash": "6bd59971466c21bde396e68c812dd0ea59eeace89fa94ccbd0fa028e6eff8c5e"
+    },
+    {
+      "at": "2026-09-27T09:46:14.475Z",
+      "type": "red-check",
+      "expect": "✖ static-opener `typeset",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 34,
+      "parent_hash": "6bd59971466c21bde396e68c812dd0ea59eeace89fa94ccbd0fa028e6eff8c5e",
+      "entry_hash": "31673a847c12a566c7f25a4da64ef03777831de0e61477e29907c31a6c35fd87"
+    },
+    {
+      "at": "2026-09-27T09:46:14.532Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh `ssh",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bb4f0bc1ba27",
+      "seq": 35,
+      "parent_hash": "31673a847c12a566c7f25a4da64ef03777831de0e61477e29907c31a6c35fd87",
+      "entry_hash": "644d6c006aa2b11aec0da4679cda8332a8a04def24b25d6e5c767128dd1a3736"
+    },
+    {
+      "at": "2026-09-27T09:48:43.758Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: leading-division",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d97816a77d62",
+      "seq": 36,
+      "parent_hash": "644d6c006aa2b11aec0da4679cda8332a8a04def24b25d6e5c767128dd1a3736",
+      "entry_hash": "c7d00d866e71f93d4fbacd0c11a8641258d80f052c95f72e851d1b7e4c20ccad"
+    },
+    {
+      "at": "2026-09-27T09:48:43.821Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: strip-name-in-regex-literal",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d97816a77d62",
+      "seq": 37,
+      "parent_hash": "c7d00d866e71f93d4fbacd0c11a8641258d80f052c95f72e851d1b7e4c20ccad",
+      "entry_hash": "999f7eea4d241bcd00ad5d79ce695bd0ea288450d60f8070efda9ed69178e720"
+    },
+    {
+      "at": "2026-09-27T09:48:43.877Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: template-tautology",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d97816a77d62",
+      "seq": 38,
+      "parent_hash": "999f7eea4d241bcd00ad5d79ce695bd0ea288450d60f8070efda9ed69178e720",
+      "entry_hash": "4f8ae8eb34540561c2371896a554d92f51ed089d281e8534020a0f321c25ac95"
+    },
+    {
+      "at": "2026-09-27T09:48:43.934Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: literal-tautology",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d97816a77d62",
+      "seq": 39,
+      "parent_hash": "4f8ae8eb34540561c2371896a554d92f51ed089d281e8534020a0f321c25ac95",
+      "entry_hash": "aaee340f0bbf39ae538669dc321d402cf2ceb522273cfc90cc4250f54916891b"
+    },
+    {
+      "at": "2026-09-27T09:50:16.853Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: opt-out-fix-host-registration",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e3be6c873e4c",
+      "seq": 40,
+      "parent_hash": "aaee340f0bbf39ae538669dc321d402cf2ceb522273cfc90cc4250f54916891b",
+      "entry_hash": "aa9b22393ccd1c2df677759aacda8ccae5c200b95981a8bb2b6354d775ae0c21"
+    },
+    {
+      "at": "2026-09-27T10:10:39.390Z",
+      "type": "red-check",
+      "expect": "✖ declaration-subshell-case",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 41,
+      "parent_hash": "aa9b22393ccd1c2df677759aacda8ccae5c200b95981a8bb2b6354d775ae0c21",
+      "entry_hash": "f9c8218ef21f08aa0d9dc07ccd88be8037555cb74544ac29a937301db2e38ebd"
+    },
+    {
+      "at": "2026-09-27T10:10:39.452Z",
+      "type": "red-check",
+      "expect": "✖ indirect-default-runner",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 42,
+      "parent_hash": "f9c8218ef21f08aa0d9dc07ccd88be8037555cb74544ac29a937301db2e38ebd",
+      "entry_hash": "7b0c140403b0867e819ffaa11e5c236b189dccd5d10dc787cb225055d0c5e359"
+    },
+    {
+      "at": "2026-09-27T10:10:39.532Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh-elif",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 43,
+      "parent_hash": "7b0c140403b0867e819ffaa11e5c236b189dccd5d10dc787cb225055d0c5e359",
+      "entry_hash": "4f9b8ff4810440c41f1ebcd0887f0fe7c546a9ea680155f042621681d66ea729"
+    },
+    {
+      "at": "2026-09-27T10:10:39.614Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh-while",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 44,
+      "parent_hash": "4f9b8ff4810440c41f1ebcd0887f0fe7c546a9ea680155f042621681d66ea729",
+      "entry_hash": "fbac984c86d8c086ec17a0feced77e3fdd20392e6d9fa6b0261b88642ec13ad0"
+    },
+    {
+      "at": "2026-09-27T10:10:39.682Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh-timeout",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 45,
+      "parent_hash": "fbac984c86d8c086ec17a0feced77e3fdd20392e6d9fa6b0261b88642ec13ad0",
+      "entry_hash": "78589bf95868366216c7a5db455fab6439f0456c4c4e92ce81d6e0ed7eef4bb1"
+    },
+    {
+      "at": "2026-09-27T10:10:39.744Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh-sudo-user",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 46,
+      "parent_hash": "78589bf95868366216c7a5db455fab6439f0456c4c4e92ce81d6e0ed7eef4bb1",
+      "entry_hash": "693fa3ab7503c8e0d25101d500412b842e310d48596406516ddbe89505ae09fc"
+    },
+    {
+      "at": "2026-09-27T10:10:39.804Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh-prose-paren",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 47,
+      "parent_hash": "693fa3ab7503c8e0d25101d500412b842e310d48596406516ddbe89505ae09fc",
+      "entry_hash": "7eda46747d25b39f0ce61a56f21eb666c3e8643a2f18b3337ee24e00d5cd79c1"
+    },
+    {
+      "at": "2026-09-27T10:10:39.866Z",
+      "type": "red-check",
+      "expect": "✖ direct-ssh-prose-semicolon",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b423f80a194e",
+      "seq": 48,
+      "parent_hash": "7eda46747d25b39f0ce61a56f21eb666c3e8643a2f18b3337ee24e00d5cd79c1",
+      "entry_hash": "1453f70f49da2ee16d8bb6bfd3cc443edaf60857b611b322656b1407ccbebc86"
     }
   ]
 }

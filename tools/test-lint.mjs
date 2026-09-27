@@ -98,23 +98,31 @@ function walk(dir, prefix = dir) {
  * cannot be mistaken for a real assertion, while offsets stay stable for line reporting.
  *
  * ONE LEFT-TO-RIGHT TOKEN PASS: string, template and regex literals are matched in the same pass as
- * comments, so whichever starts first is consumed whole — order is the algorithm (doc-reconcile's
- * CODE_TOKENS). The two-regex stripper this replaces ran its comment pass over string contents, so
- * a glob like "src/*" opened a fake block comment that blanked real code up to the next `*\/` and
- * hid both blocking checks. A regex literal is recognised by what precedes it (an operator, an
- * arrow's `>`, an opening bracket, `return`), so a quote or backtick inside one opens nothing.
- * ponytail: a heuristic, not a parser — a regex right after `)`, or a backtick nested inside a
- * template's `${}`, still misreads; bring in a real tokenizer if either shows up in a test.
+ * comments, so whichever starts first is consumed whole — order is the algorithm. The two-regex
+ * stripper this replaces ran its comment pass over string contents, so a glob like "src/*" opened a
+ * fake block comment that blanked real code up to the next `*\/` and hid both blocking checks. A
+ * regex literal is recognised by what precedes it (an operator, an arrow's `>`, an opening bracket,
+ * `return`, or a line start), so a quote or backtick inside one opens nothing. A line start counts
+ * only when the line before does not end an expression (a word, `)` or `]`): `total\n  / count` is
+ * division, as JS reads it, and taking it for a regex swallowed a backtick and blanked every line
+ * to the next one.
+ * ponytail: a heuristic, not a parser — a regex right after `)`, a regex opening a line after a
+ * comment that ends in a word, a backtick nested inside a template's `${}`, and a glob in JSX text
+ * (`<p>src/*.ts</p>` opens a block comment) still misread; bring in a real tokenizer if any shows
+ * up in a test.
  */
 const TOKENS =
-  /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^\\`])*`|(?<=(?:^|[(,=:[!&|?{};>]|\breturn)\s*)\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[a-z]*)|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/gm;
+  /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^\\`])*`|(?<=(?:(?<![\w$)\]]\s*)^|[(,=:[!&|?{};>]|\breturn)\s*)\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[a-z]*)|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/gm;
 
 const blank = (text) => text.replace(/[^\n]/g, " ");
 
-/** Comments blanked; literals kept — or, with `emptyStrings`, string and template contents blanked between their quotes. */
-function mask(source, emptyStrings) {
+/**
+ * Comments blanked; literals kept — or, with `emptyStrings`, string and template contents blanked
+ * between their quotes, and with `emptyRegexes`, regex literals blanked whole.
+ */
+function mask(source, emptyStrings, emptyRegexes = false) {
   return source.replace(TOKENS, (token, literal) => {
-    if (literal === undefined) return blank(token);
+    if (literal === undefined || (emptyRegexes && token[0] === "/")) return blank(token);
     return emptyStrings && "\"'`".includes(token[0]) ? token[0] + blank(token.slice(1, -1)) + token.at(-1) : token;
   });
 }
@@ -127,21 +135,26 @@ function strip(source) {
   return mask(source, true);
 }
 
-/** `expect(X).toBe(X)` / `toEqual` / `toStrictEqual` where both sides are textually identical. */
-export function findTautologies(stripped) {
+/**
+ * `expect(X).toBe(X)` / `toEqual` / `toStrictEqual` where both sides are textually identical.
+ *
+ * FOUND on fully-stripped text, so a string or comment cannot host a fake assertion; JUDGED on the
+ * comment-stripped text at the same offsets (blanking keeps length), because a blanked literal is
+ * all spaces and its contents are the evidence. Judged blanked, identical templates and strings
+ * were once skipped as "not evidence" — `expect(`${r}`).toBe(`${r}`)` passed — while
+ * `expect(a + "x").toBe(a + "y")` read as a tautology.
+ */
+export function findTautologies(stripped, raw) {
+  const code = stripComments(raw);
   const out = [];
-  const re = /expect\(\s*([^)]{1,80}?)\s*\)\s*\.\s*(?:toBe|toEqual|toStrictEqual)\(\s*([^)]{1,80}?)\s*\)/g;
+  const re = /expect\(\s*([^)]{1,80}?)\s*\)\s*\.\s*(?:toBe|toEqual|toStrictEqual)\(\s*([^)]{1,80}?)\s*\)/dg;
   for (const m of stripped.matchAll(re)) {
-    const [lhs, rhs] = [m[1].trim(), m[2].trim()];
-    if (lhs.length === 0 || rhs.length === 0) continue;
-    // A blanked string or template literal is not evidence either way — the strip pass emptied it.
-    if (/^["'`]\s*["'`]$/.test(lhs)) continue;
-    if (lhs === rhs) {
-      out.push({
-        index: m.index ?? 0,
-        detail: `expect(${lhs}) compared to itself — asserts nothing\n      fix: assert against an independently derived expected value, or delete the placeholder`,
-      });
-    }
+    const [lhs, rhs] = [m.indices[1], m.indices[2]].map(([from, to]) => code.slice(from, to).trim());
+    if (lhs.length === 0 || lhs !== rhs) continue;
+    out.push({
+      index: m.index ?? 0,
+      detail: `expect(${lhs}) compared to itself — asserts nothing\n      fix: assert against an independently derived expected value, or delete the placeholder`,
+    });
   }
   return out;
 }
@@ -171,14 +184,17 @@ export function findUnstrippedSourceReads(stripped, raw) {
     /readFileSync\([^)]*(?:\.\.\/src\/|\.\.\/public\/)/.test(commentsGone);
   if (!readsSource) return [];
   // The EXEMPTION is judged on code only, or this check repeats the mistake it exists for: a TODO
-  // naming stripComments, or a message quoting `strip(` or the strip regex, is prose about the fix,
-  // not the fix. Every arm reads `stripped` — comments and string contents gone, regex literals kept.
+  // naming stripComments, a message quoting `strip(` or the strip regex, or an assertion's regex
+  // matching the strip call is text about the fix, not the fix. The regex-idiom arms read
+  // `stripped` — comments and string contents gone, regex literals kept, since the strip regex IS
+  // one; the name arms read `bare`, where regex literals are gone too.
+  const bare = mask(raw, true, true);
   const stripsComments =
     /replace\(\s*\/\\\/\\\*/.test(stripped) ||
     /\/\\\/\\\*\[\\s\\S\]\*\?\\\*\\\//.test(stripped) ||
     /replace\([^)]*\/\*/.test(stripped) ||
-    stripped.includes("stripComments") ||
-    stripped.includes("strip(");
+    bare.includes("stripComments") ||
+    bare.includes("strip(");
   if (stripsComments) return [];
   const index = commentsGone.search(/readFileSync/);
   return [
@@ -212,19 +228,20 @@ const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 function selfTest() {
   const cases = [];
   const t = (name, pass) => cases.push([name, pass]);
+  const taut = (source) => findTautologies(strip(source), source);
 
-  t("flags expect(true).toBe(true)", findTautologies(strip("expect(true).toBe(true);")).length === 1);
-  t("flags expect(x).toBe(x)", findTautologies(strip("expect(row.id).toBe(row.id);")).length === 1);
-  t("does NOT flag a real assertion", findTautologies(strip("expect(row.id).toBe(other.id);")).length === 0);
+  t("flags expect(true).toBe(true)", taut("expect(true).toBe(true);").length === 1);
+  t("flags expect(x).toBe(x)", taut("expect(row.id).toBe(row.id);").length === 1);
+  t("does NOT flag a real assertion", taut("expect(row.id).toBe(other.id);").length === 0);
   // The check must not fire on its own documentation — the strip pass blanks string contents.
   t(
     "does NOT flag a tautology quoted inside a string",
-    findTautologies(strip('const msg = "expect(true).toBe(true)";')).length === 0,
+    taut('const msg = "expect(true).toBe(true)";').length === 0,
   );
   // ...nor on one inside a comment, which is the mistake this lint exists to prevent.
   t(
     "does NOT flag a tautology inside a comment",
-    findTautologies(strip("// e.g. expect(true).toBe(true) is meaningless\nexpect(a).toBe(b);")).length === 0,
+    taut("// e.g. expect(true).toBe(true) is meaningless\nexpect(a).toBe(b);").length === 0,
   );
 
   const unstripped = 'const s = readFileSync(new URL("../src/x.ts", u), "utf8");\nexpect(s).toContain("y");';
@@ -258,18 +275,32 @@ function selfTest() {
   // STRINGS ARE NOT COMMENTS. A glob like "src/*" once opened a fake block comment that blanked
   // every line up to the next `*/` (a later JSDoc), hiding both blocking checks.
   const globTautology = 'const p = "src/*";\nexpect(true).toBe(true);\n/** h */';
-  t("glob-string-opens-comment: a \"src/*\" string hides the tautology after it", findTautologies(strip(globTautology)).length === 1);
+  t("glob-string-opens-comment: a \"src/*\" string hides the tautology after it", taut(globTautology).length === 1);
   const globRead = `const p = "src/*";\n${sibling}\n/** h */`;
   t("glob-string-hides-read: a \"src/*\" string hides the source read after it", findUnstrippedSourceReads(strip(globRead), globRead).length === 1);
   t("does NOT treat a // inside a string as a comment", stripComments('const u = "https://x"; f();') === 'const u = "https://x"; f();');
-  t("does NOT flag equal-length blanked templates", findTautologies(strip("expect(`ab`).toBe(`cd`);")).length === 0);
+  t("does NOT flag equal-length blanked templates", taut("expect(`ab`).toBe(`cd`);").length === 0);
   // A regex literal carrying a quote or a backtick must not open a string that runs on.
-  t("a quote inside a regex literal opens no string", findTautologies(strip('const r = /"/; expect(true).toBe(true); const q = "x";')).length === 1);
-  t("a backtick inside a regex literal opens no template", findTautologies(strip("const r = /`/g;\nexpect(true).toBe(true);\nconst q = `x`;")).length === 1);
-  t("regex-after-arrow: a backtick in a regex after => opens no template", findTautologies(strip("const f = (s) => /`/.test(s);\nexpect(true).toBe(true);\nconst q = `x`;")).length === 1);
+  t("a quote inside a regex literal opens no string", taut('const r = /"/; expect(true).toBe(true); const q = "x";').length === 1);
+  t("a backtick inside a regex literal opens no template", taut("const r = /`/g;\nexpect(true).toBe(true);\nconst q = `x`;").length === 1);
+  t("regex-after-arrow: a backtick in a regex after => opens no template", taut("const f = (s) => /`/.test(s);\nexpect(true).toBe(true);\nconst q = `x`;").length === 1);
+  t("regex-after-return: a backtick in a regex after return opens no template", taut("function f() { return /`/g; }\nexpect(true).toBe(true);\nconst q = `x`;").length === 1);
+  // ...and a line that OPENS with `/` after an expression is division, as JS reads it: taken for a
+  // regex it swallowed a backtick and blanked every line to the next one.
+  t("leading-division: a line opening with / after an expression is division, not a regex", taut("const avg = total\n  / count; const label = `a/b`;\nexpect(true).toBe(true);\nconst z = `end`;").length === 1);
+  const templateMention = "const note = `call stripComments first`;\n" + sibling;
+  t("exempt-by-template: a template naming stripComments does not excuse the read", findUnstrippedSourceReads(strip(templateMention), templateMention).length === 1);
+  const regexMention = "expect(src).toMatch(/stripComments\\(readFileSync/);\n" + sibling;
+  t("strip-name-in-regex-literal: a regex naming stripComments does not excuse the read", findUnstrippedSourceReads(strip(regexMention), regexMention).length === 1);
+
+  // Blanking finds the assertion; the literal text judges it. A blanked operand once read as "not
+  // evidence", so identical templates and strings stopped being tautologies.
+  t("template-tautology: identical templates still flag", taut("expect(`user-${id}`).toBe(`user-${id}`);\nexpect(`abc`).toEqual(`abc`);").length === 2);
+  t("literal-tautology: identical string literals still flag", taut('expect("abc").toBe("abc");').length === 1);
+  t("does NOT flag differing literals behind a shared prefix", taut('expect(a + "x").toBe(a + "y");').length === 0);
 
   // Every blocking finding carries its remedy, as every refusal in this harness must.
-  t("blocking-without-fix: a TAUTOLOGY finding names its fix", findTautologies(strip("expect(true).toBe(true);"))[0]?.detail.includes("fix:"));
+  t("blocking-without-fix: a TAUTOLOGY finding names its fix", taut("expect(true).toBe(true);")[0]?.detail.includes("fix:"));
   t("blocking-without-fix: an UNSTRIPPED finding names its fix", findUnstrippedSourceReads(strip(sibling), sibling)[0]?.detail.includes("fix:"));
 
   t(
@@ -301,7 +332,7 @@ function main() {
   for (const file of files) {
     const raw = readFileSync(file, "utf8");
     const stripped = strip(raw);
-    for (const hit of findTautologies(stripped)) {
+    for (const hit of findTautologies(stripped, raw)) {
       blocking.push(`${file}:${lineOf(raw, hit.index)} TAUTOLOGY — ${hit.detail}`);
     }
     for (const hit of findUnstrippedSourceReads(stripped, raw)) {

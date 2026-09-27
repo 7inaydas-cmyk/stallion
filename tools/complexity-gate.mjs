@@ -58,25 +58,43 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 // The compiler is the OPTIONAL peer dependency (see package.json): a missing typescript must
 // refuse with a fix line naming the two honest exits, not crash the battery with a bare
 // ERR_MODULE_NOT_FOUND (an adversarial finding: the static import made the battery unrunnable
 // in any fresh clone).
-// The opt-out names EVERY place that registers this gate: a partial list left guard-reach red.
-const NO_COMPILER_FIX =
-  "npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate: delete tools/complexity-gate.mjs and drop its battery line, " +
-  "docs/gates/complexity*.json, and the complexity-gate-new-file guard in docs/gates/guard-reach.json (guard-reach rewrites guard-reach-modes.json itself)";
 let ts;
 try {
   ts = await import("typescript");
 } catch {
   console.error("complexity-gate: the TypeScript compiler is not installed — the ratchet cannot count what it cannot parse");
-  console.error(`  fix: ${NO_COMPILER_FIX}`);
+  console.error(`  fix: ${noCompilerFix()}`);
   process.exit(1);
 }
 import { matches } from "./pathspec.mjs";
 
-const ROOT = fileURLToPath(new URL("../", import.meta.url));
+/**
+ * The missing-compiler fix names EVERY gate file that registers this tool — a partial list left
+ * guard-reach red — read off the gate directory when the refusal prints, never listed here. In a
+ * vendoring host those files are the host's own: a hardcoded list of ours turned the host's honest
+ * registration of this gate into a red self-test it could clear only by patching vendored code.
+ */
+function noCompilerFix(gatesDir = `${ROOT}docs/gates`) {
+  const named = registrations(gatesDir);
+  const entries = named.length > 0 ? `, and every entry naming it in ${named.join(", ")}` : "";
+  const modes = named.includes("docs/gates/guard-reach.json") ? " (guard-reach rewrites guard-reach-modes.json itself)" : "";
+  return `npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate: delete tools/complexity-gate.mjs and drop its battery line, docs/gates/complexity*.json${entries}${modes}`;
+}
+
+/** The gate files (`docs/gates/*.json`, this gate's own complexity* aside) that name this tool. */
+function registrations(gatesDir) {
+  return (existsSync(gatesDir) ? readdirSync(gatesDir) : [])
+    .filter((file) => file.endsWith(".json") && !file.startsWith("complexity"))
+    .filter((file) => readFileSync(join(gatesDir, file), "utf8").includes("tools/complexity-gate.mjs"))
+    .map((file) => `docs/gates/${file}`);
+}
+
 const CONFIG_PATH = "docs/gates/complexity.json";
 export const BASELINE_PATH = "docs/gates/complexity-baseline.json";
 const CONFIG_SHAPE = '{"threshold": 8, "includes": ["tools/**/*.mjs"], "excludes": ["**/node_modules/**", "**/fixtures/**"], "testGlobs": []}';
@@ -334,6 +352,9 @@ export function judge(current, baseline, mentioned, threshold, hatchOpen = false
   return errors;
 }
 
+/** The test-names hatch is open only where testGlobs names a test corpus (see header). */
+const hatchOpenOf = (config) => config.testGlobs.length > 0;
+
 /**
  * The birth refusal names only exits that exist HERE. With testGlobs empty the test-names hatch is
  * closed, so "pin it with a test" sent an agent to write a test the gate then ignored.
@@ -489,26 +510,41 @@ function selfTestRemedies(fail) {
   const big = { file: "a.ts", name: "big", line: 1, complexity: 12 };
   const born = { file: "b.ts", name: "fresh", line: 4, complexity: 9 };
   const base = { threshold: 8, functions: [{ file: "a.ts", name: "big", complexity: 12 }] };
-  const [closed] = judge([big, born], base, new Set(), 8, false);
-  if (!closed.includes("\n  fix: ") || closed.includes("pin it with a test")) fail("born-remedy-closed-hatch: with testGlobs empty the birth refusal still offers the closed test hatch as its fix");
-  const [open] = judge([big, born], base, new Set(), 8, true);
-  if (!open.includes("testGlobs")) fail("with the hatch open the birth refusal does not name the test route");
+  // Driven through hatchOpenOf, the switch both call sites use: the remedy AND the switch are pinned.
+  const [closed] = judge([big, born], base, new Set(), 8, hatchOpenOf({ testGlobs: [] }));
+  if (!closed.includes("\n  fix: ") || /pin it with a test|name it in a test/.test(closed) || !closed.includes("CLOSED")) fail("born-remedy-closed-hatch: with testGlobs empty the birth refusal still offers the closed test hatch as its fix");
+  const [open] = judge([big, born], base, new Set(), 8, hatchOpenOf({ testGlobs: ["**/*.test.ts"] }));
+  if (!open.includes("name it in a test under testGlobs") || open.includes("CLOSED")) fail("born-remedy-open-hatch: with testGlobs set the birth refusal does not offer the test route, or calls the hatch closed");
   const [rose] = judge([{ ...big, complexity: 13 }], base, new Set(), 8);
   if (!rose.includes("\n  fix: ")) fail("rise-without-fix: the ratchet refusal names no fix");
   const [stale] = judge([], base, new Set(), 8);
   if (!stale.includes("\n  fix: node tools/complexity-gate.mjs --update-baseline")) fail("stale-fix-not-a-command: the stale-row refusal does not print the runnable refresh command");
 }
 
-/** The opt-out fix must name every gate file that registers this tool, or following it leaves the battery red. */
+/**
+ * The opt-out fix must name every gate file that registers this tool, or following it leaves the
+ * battery red. Driven from a fixture directory, not the live one: the live docs/gates is a host's
+ * own data, and judging it against a list of ours failed every host that registered this gate.
+ */
 function selfTestOptOut(fail) {
-  for (const file of readdirSync(`${ROOT}docs/gates`)) {
-    const rel = `docs/gates/${file}`;
-    if (!file.endsWith(".json") || file.startsWith("complexity") || !readFileSync(`${ROOT}${rel}`, "utf8").includes("tools/complexity-gate.mjs")) continue;
-    if (!NO_COMPILER_FIX.includes(rel)) fail(`opt-out-fix-incomplete: ${rel} registers tools/complexity-gate.mjs, but the missing-compiler fix does not say to drop it`);
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-gates-"));
+  try {
+    writeFileSync(join(dir, "gate-registry.json"), '{"gates": [{"id": "complexity-ratchet", "invocation": "node tools/complexity-gate.mjs"}]}');
+    writeFileSync(join(dir, "guard-reach.json"), '{"entries": [{"script": "tools/complexity-gate.mjs"}]}');
+    writeFileSync(join(dir, "complexity.json"), '{"_comment": "read by tools/complexity-gate.mjs"}');
+    writeFileSync(join(dir, "unrelated.json"), "{}");
+    const fix = noCompilerFix(dir);
+    if (!fix.includes("docs/gates/gate-registry.json")) fail("opt-out-fix-host-registration: a host gate file that registers tools/complexity-gate.mjs is not named in the missing-compiler fix");
+    for (const rel of ["docs/gates/gate-registry.json", "docs/gates/guard-reach.json"]) {
+      if (!fix.includes(rel)) fail(`opt-out-fix-incomplete: ${rel} registers tools/complexity-gate.mjs, but the missing-compiler fix does not say to drop it`);
+    }
+    if (/docs\/gates\/(?:complexity|unrelated)\.json/.test(fix)) fail(`opt-out-fix-overreach: the missing-compiler fix names a gate file that does not register this tool: ${fix}`);
+    // task-coverage --doctor requires every self-testing tool in tools/ to ride the battery, so
+    // dropping the battery line while the file stays leaves the doctor red.
+    if (!fix.includes("delete tools/complexity-gate.mjs")) fail("opt-out-keeps-tool: the missing-compiler fix drops the battery line but keeps tools/complexity-gate.mjs, which task-coverage --doctor then refuses");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  // task-coverage --doctor requires every self-testing tool in tools/ to ride the battery, so
-  // dropping the battery line while the file stays leaves the doctor red.
-  if (!NO_COMPILER_FIX.includes("delete tools/complexity-gate.mjs")) fail("opt-out-keeps-tool: the missing-compiler fix drops the battery line but keeps tools/complexity-gate.mjs, which task-coverage --doctor then refuses");
 }
 
 function selfTestJudgeCollisions(fail) {
@@ -536,7 +572,7 @@ export function selfTest() {
 
   // And the repo's own config + baseline must be honest right now, or the gate ships pre-broken.
   const config = orDie(loadConfig(), "config");
-  const live = judge(scan(config), readBaseline(), testMentions(config), config.threshold, config.testGlobs.length > 0);
+  const live = judge(scan(config), readBaseline(), testMentions(config), config.threshold, hatchOpenOf(config));
   if (live.length !== 0) fail(`the committed baseline does not describe this tree:\n    ${live.join("\n    ")}`);
 
   // THE GATE MUST NOT NEED TO EXEMPT ITSELF. A ratchet whose own author is in the baseline is an
@@ -584,7 +620,7 @@ if (isEntry) {
     process.exit(0);
   }
 
-  const errors = judge(current, readBaseline(), testMentions(config), config.threshold, config.testGlobs.length > 0);
+  const errors = judge(current, readBaseline(), testMentions(config), config.threshold, hatchOpenOf(config));
   if (errors.length === 0) {
     // "over the threshold", not "baselined": `current` may include a NEW function permitted by the
     // named-by-a-test hatch, which is deliberately not written to the baseline.
