@@ -34,7 +34,7 @@
  * own constants, never the repo's live gate list).
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -187,17 +187,18 @@ export function census(config, files) {
 
 /** The tracked file list this census walks, and how many generated paths it skipped. A git
  *  failure is NOT an empty repo — fail closed. */
-function trackedSources() {
+function trackedSources(root = ROOT, env = process.env) {
   let out;
   try {
-    out = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    out = execFileSync("git", ["ls-files", "-z"], { cwd: root, env, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   } catch (e) {
     console.error(`gate-coverage: cannot list tracked files — git ls-files failed (${String(e.message).split("\n")[0]})`);
     console.error(`  rule: a census that cannot read the file list must not pass`);
     console.error(`  fix: run from a git checkout of this repo (or repair git here), then retry`);
     process.exit(1);
   }
-  const sources = out.split("\n").filter(Boolean).filter(isSource);
+  // NUL-separated: plain output C-quotes a non-ASCII or special path, which no source rule matches.
+  const sources = out.split("\0").filter(Boolean).filter(isSource);
   return { files: sources.filter((f) => !isGenerated(f)), generated: sources.filter(isGenerated).length };
 }
 
@@ -217,6 +218,21 @@ function sourceSetChecks(ok) {
     ["README.md", false, "prose is not source"],
   ];
   for (const [file, expected, why] of sources) ok(isSource(file) === expected, `source set: ${why} — ${file} expected source=${expected}`);
+}
+
+/** The census walks what git TRACKS, byte for byte: git C-quotes a non-ASCII path in plain
+ *  `ls-files` output (`"deploy/na\303\257ve.sh"`), which no source rule matches — the file fell
+ *  out of the census, its count and its orphan report alike. Driven in a scratch repo with the
+ *  inherited GIT_* env removed. */
+function trackedSourceChecks(ok, dir) {
+  const repo = join(dir, "repo");
+  mkdirSync(join(repo, "deploy"), { recursive: true });
+  writeFileSync(join(repo, "deploy", "naïve-push.sh"), "echo hi\n");
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+  execFileSync("git", ["init", "-q"], { cwd: repo, env, stdio: "ignore" });
+  execFileSync("git", ["add", "deploy"], { cwd: repo, env, stdio: "ignore" });
+  const { files } = trackedSources(repo, env);
+  ok(files.includes("deploy/naïve-push.sh"), `a tracked non-ASCII deploy script is invisible to the census (saw: ${files.join(", ")})`);
 }
 
 /**
@@ -240,6 +256,7 @@ export function selfTest() {
     };
 
     sourceSetChecks(ok);
+    trackedSourceChecks(ok, dir);
 
     // The loader fails closed, NAMING THE PATH — the config seam is this port's new surface.
     const missingP = join(dir, "absent.json");

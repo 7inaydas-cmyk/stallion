@@ -182,6 +182,179 @@
       "seq": 16,
       "parent_hash": "adb98dd58d4e26a7169090c848fbdb319debf313d0732a02fc3aa7041c6ccafe",
       "entry_hash": "90a5f85697e3447579a2cd4416421efe8c283ca63b97ae1721ebe88e8cecaecb"
+    },
+    {
+      "at": "2026-09-27T08:03:07.987Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 17,
+      "parent_hash": "90a5f85697e3447579a2cd4416421efe8c283ca63b97ae1721ebe88e8cecaecb",
+      "entry_hash": "04e7be4381c0fe853514ac43cc9bfcda6c76fba25b2987bba20d7d11d22b0f94"
+    },
+    {
+      "at": "2026-09-27T09:52:37.745Z",
+      "type": "red-check",
+      "expect": "a redirected swallowed verdict counted as carried|an echo fallback counted as carried|a piped verdict counted as carried|a bare non-final hook line \\(no set -e\\) counted as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 18,
+      "parent_hash": "04e7be4381c0fe853514ac43cc9bfcda6c76fba25b2987bba20d7d11d22b0f94",
+      "entry_hash": "0efc6c7a38e3536e09aeaebc62e86f315f512128deacdf2c22b0f9f9e3bfa9a5"
+    },
+    {
+      "at": "2026-09-27T09:52:37.815Z",
+      "type": "red-check",
+      "expect": "an invocation after a quoted # was cut from the shadow sweep",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 19,
+      "parent_hash": "0efc6c7a38e3536e09aeaebc62e86f315f512128deacdf2c22b0f9f9e3bfa9a5",
+      "entry_hash": "229a6ae1f46e1d14c68ddb4af27ea7a487d76ab66d3949aee6e46e22f048402b"
+    },
+    {
+      "at": "2026-09-27T09:52:37.882Z",
+      "type": "red-check",
+      "expect": "a --self-test spelling outside the battery hid an unregistered gate|a --self-test= spelling hid an unregistered gate in the battery",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 20,
+      "parent_hash": "229a6ae1f46e1d14c68ddb4af27ea7a487d76ab66d3949aee6e46e22f048402b",
+      "entry_hash": "b40ec65692e192e6356d4c38993048ab87905e5f47edad930f96d7a13d0367e8"
+    },
+    {
+      "at": "2026-09-27T09:52:37.954Z",
+      "type": "red-check",
+      "expect": "a command start inside an echoed string counted as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 21,
+      "parent_hash": "b40ec65692e192e6356d4c38993048ab87905e5f47edad930f96d7a13d0367e8",
+      "entry_hash": "29c9afcd15788774f26306b15e3da2d2b6cc2035db3b4a32fed1e5f013542888"
+    },
+    {
+      "at": "2026-09-27T09:52:42.735Z",
+      "type": "red-check",
+      "expect": "a ci gate carried only by a workflow_dispatch workflow passed as carried|a ci gate carried only by an untracked workflow passed as carried|a ci gate carried by a continue-on-error workflow passed as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 22,
+      "parent_hash": "29c9afcd15788774f26306b15e3da2d2b6cc2035db3b4a32fed1e5f013542888",
+      "entry_hash": "47234b16e2e0acece126219866ace4d2eb137c3a2f8f16fb3897edb928b102bd"
+    },
+    {
+      "at": "2026-09-27T09:52:42.805Z",
+      "type": "red-check",
+      "expect": "a live gate carried only by an npm alias passed as a battery member",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 23,
+      "parent_hash": "47234b16e2e0acece126219866ace4d2eb137c3a2f8f16fb3897edb928b102bd",
+      "entry_hash": "c8e70fd8867c042e4580aa3a3e6a2652713afe5c8a64acc6fccd6607932b582c"
+    },
+    {
+      "at": "2026-09-27T09:52:42.875Z",
+      "type": "red-check",
+      "expect": "a prefixed, quoted or optioned spelling hid a shadow gate",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 24,
+      "parent_hash": "c8e70fd8867c042e4580aa3a3e6a2652713afe5c8a64acc6fccd6607932b582c",
+      "entry_hash": "42c35d1071aff74ea3097b142f2666fa43112e69d8ff838692d0bc39d4adf2bd"
+    },
+    {
+      "at": "2026-09-27T09:52:42.940Z",
+      "type": "red-check",
+      "expect": "a live invocation was not carried: an env-prefixed run|a declared advisory gate's swallowed verdict was not carried|shape refusal missing: a non-boolean advisory flag",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 25,
+      "parent_hash": "42c35d1071aff74ea3097b142f2666fa43112e69d8ff838692d0bc39d4adf2bd",
+      "entry_hash": "da11f77cafae25348622d91975726fef156e0fee60e002eba154f8daad2d8bf8"
+    },
+    {
+      "at": "2026-09-27T09:52:43.010Z",
+      "type": "red-check",
+      "expect": "the ci refusal names a glob that excludes the \\.yaml workflow it found",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e0e4ffc0dc9f",
+      "seq": 26,
+      "parent_hash": "da11f77cafae25348622d91975726fef156e0fee60e002eba154f8daad2d8bf8",
+      "entry_hash": "98fa8f0f1f18c32e7c235829160fb6622f386fd74f5ab84c821bf954a37697cf"
+    },
+    {
+      "at": "2026-09-27T09:58:25.392Z",
+      "type": "red-check",
+      "expect": "a lock naming a live pid this user cannot signal \\(EPERM\\) is refused, not stolen: got false|an empty lock \\(a run between create and write\\) is refused, not stolen: got false|a run whose lock was taken over leaves the new holder's lock in place on exit: got false",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e1308714a284",
+      "seq": 27,
+      "parent_hash": "98fa8f0f1f18c32e7c235829160fb6622f386fd74f5ab84c821bf954a37697cf",
+      "entry_hash": "39056d6a765fe212e5ea45d95d49021fa473b48a5d83baf7ec2a1c9ac138150a"
+    },
+    {
+      "at": "2026-09-27T10:00:29.073Z",
+      "type": "red-check",
+      "expect": "a tracked non-ASCII deploy script is invisible to the census",
+      "command": "node tools/gate-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8acf51185489",
+      "seq": 28,
+      "parent_hash": "39056d6a765fe212e5ea45d95d49021fa473b48a5d83baf7ec2a1c9ac138150a",
+      "entry_hash": "eeb8cfde051b051e347e960b0cda702e583a1986b96c41f8d2cb1c76b915a9cd"
+    },
+    {
+      "at": "2026-09-27T10:28:30.338Z",
+      "type": "red-check",
+      "expect": "a swallowed self-test verdict in the battery chain passed",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1be80c3283c9",
+      "seq": 29,
+      "parent_hash": "eeb8cfde051b051e347e960b0cda702e583a1986b96c41f8d2cb1c76b915a9cd",
+      "entry_hash": "c8b80474040b1f7c68f7e75992e3e22342291aa01415d7017165c12ae925048f"
+    },
+    {
+      "at": "2026-09-27T10:28:30.427Z",
+      "type": "red-check",
+      "expect": "a set -e after the line counted as errexit|a non-final &&-continued line under set -e counted as carried|an inverted line under set -e counted as carried|a set \\+e before the line left errexit on|an indented set -e \\(a branch that may never run\\) counted as errexit|a non-final &&-continued ci run-block line counted as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1be80c3283c9",
+      "seq": 30,
+      "parent_hash": "c8b80474040b1f7c68f7e75992e3e22342291aa01415d7017165c12ae925048f",
+      "entry_hash": "d1d087affdb01a6135647caf7a88607cd284cca4b3c83e921ca40c81e5d97fa9"
+    },
+    {
+      "at": "2026-09-27T10:28:30.518Z",
+      "type": "red-check",
+      "expect": "an exit backgrounded after \\|\\| exit counted as carried|an exit piped after \\|\\| exit counted as carried|an exit status of 256 \\(it exits 0\\) counted as nonzero|a quoted exit in an if-probe body counted as carried|a swallowed sh -c status counted as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1be80c3283c9",
+      "seq": 31,
+      "parent_hash": "d1d087affdb01a6135647caf7a88607cd284cca4b3c83e921ca40c81e5d97fa9",
+      "entry_hash": "0e5b43ff12d1f5ff80f6c74341ff8c7a28f9a608b939a451b7849fc1f32bdd3a"
+    },
+    {
+      "at": "2026-09-27T10:28:30.605Z",
+      "type": "red-check",
+      "expect": "a command start inside a multi-line echo counted as carried|a quote spanning lines hid an unregistered gate|a command start inside a multi-line echo in a run block counted as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1be80c3283c9",
+      "seq": 32,
+      "parent_hash": "0e5b43ff12d1f5ff80f6c74341ff8c7a28f9a608b939a451b7849fc1f32bdd3a",
+      "entry_hash": "e263cbc686d321687eb2b3a74621bf0db48716147c7926e1c30263982ef6b9ca"
     }
   ]
 }

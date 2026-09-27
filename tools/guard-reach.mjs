@@ -74,6 +74,9 @@ import { fileURLToPath } from "node:url";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { stripComments } from "./test-lint.mjs";
+// The glue law is defined ONCE, in the committed-bytes probe that polices this file — never here,
+// where one edit could splice runGuard's call site and loosen the law together.
+import { GLUE_SITE } from "./zz-head-glue-probe.mjs";
 
 // resolve() so ROOT carries NO trailing slash — validateEntry's inside-the-repo test is
 // `startsWith(ROOT + sep)`, and a URL-derived path would double the separator and refuse
@@ -218,31 +221,15 @@ export function acquireLock(probeDirs, lock = LOCK) {
     try {
       writeFileSync(lock, `${process.pid}\n`, { flag: "wx" });
       // Released on EVERY exit, a failing run's process.exit included (the leak that left a dead
-      // pid holding the lock), and only by its owner: a refused run never registers this.
-      process.on("exit", () => {
-        try {
-          rmSync(lock, { force: true });
-        } catch {
-          // Best effort — a stale lock is reclaimed by the next run's dead-pid check.
-        }
-      });
+      // pid holding the lock), and only by its owner: a refused run never registers this, and a
+      // run whose lock was taken over leaves the new holder's lock alone.
+      process.on("exit", () => releaseLock(lock));
       return true;
     } catch {
       // Held — but by a live process, or by a corpse?
-      let holder = 0;
-      try {
-        holder = Number.parseInt(readFileSync(lock, "utf8").trim(), 10);
-      } catch {
-        holder = 0;
-      }
-      let alive = false;
-      try {
-        process.kill(holder, 0);
-        alive = true;
-      } catch {
-        alive = false;
-      }
-      if (alive) return false;
+      const holder = lockHolder(lock);
+      if (holder === null) continue; // released between the attempt and the read: try again
+      if (holderAlive(holder)) return false;
       // Stale: the holder is gone. Sweep its residue as well as its lock, because a killed run is
       // exactly the case that leaves probes behind.
       rmSync(lock, { force: true });
@@ -252,19 +239,46 @@ export function acquireLock(probeDirs, lock = LOCK) {
   return false;
 }
 
+function lockHolder(lock) {
+  try {
+    return readFileSync(lock, "utf8").trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Fails CLOSED: an empty or unparseable lock is a run between its exclusive create and its pid
+ *  write (held — stealing it put two runs in one checkout's corpora), and EPERM means the pid
+ *  exists under another user (alive). Only "no such process" is a corpse. */
+function holderAlive(holder) {
+  const pid = Number(holder);
+  if (!Number.isInteger(pid) || pid <= 0) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+
+/** The exit hook: remove the lock only while it still names this run. */
+function releaseLock(lock) {
+  try {
+    if (readFileSync(lock, "utf8").trim() === String(process.pid)) rmSync(lock, { force: true });
+  } catch {
+    // Already gone or unreadable — a stale lock is reclaimed by the next run's dead-pid check.
+  }
+}
+
 /** Take the run lock, or refuse with the rule, the evidence (the path and its live holder), and the
  *  fix — a reused pid would otherwise lock the tool out with nothing to act on. */
 function lockOrExit(probeDirs) {
   if (acquireLock(probeDirs)) return;
-  let holder = "unknown";
-  try {
-    holder = readFileSync(LOCK, "utf8").trim();
-  } catch {
-    // Released between the attempt and this read — a re-run takes it.
-  }
-  console.error(`guard-reach: ✖ the run lock ${LOCK} is held by pid ${holder}, which is alive`);
+  // null: released between the attempt and this read — a re-run takes it.
+  const holder = lockHolder(LOCK) ?? "unknown";
+  console.error(`guard-reach: ✖ the run lock ${LOCK} is held by pid '${holder}' — alive, or not a pid this run can prove dead`);
   console.error("  rule: one run per checkout at a time — every guard's corpus would hold the other run's probes");
-  console.error(`  fix: wait for that run to finish and re-run; if pid ${holder} is not a guard-reach run (a reused pid), rm ${LOCK} and re-run`);
+  console.error(`  fix: wait for that run to finish and re-run; if '${holder}' is not a live guard-reach run (a reused pid, or an empty lock a killed run left), rm ${LOCK} and re-run`);
   process.exit(1);
 }
 
@@ -325,10 +339,6 @@ function pidPath(rel) {
   // without the prefix, and "./x" would never match the guard's own output.
   return dir === "." ? name : `${dir}/${name}`;
 }
-
-/** runGuard's call site joins the captured streams with a newline (the glue law) — exported so the
- *  committed-bytes probe (zz-head-glue-probe) pins the same shape, defined once. */
-export const GLUE_SITE = /\$\{error\.stdout \?\? ""\}\\n\$\{error\.stderr \?\? ""\}/;
 
 /** Run a guard, capturing BOTH streams. The output is what lets us tell a catch from a crash. */
 function runGuard(script, env, args = []) {
@@ -572,14 +582,14 @@ function lockCases(dir) {
   writeFileSync(stale, `${spawnSync("node", ["-e", ""]).pid}\n`);
   const leak = join(dir, "leak.lock");
   const child = spawnSync("node", ["--input-type=module", "-e", `const m = await import(${JSON.stringify(import.meta.url)}); if (!m.acquireLock([], ${JSON.stringify(leak)})) process.exit(3); process.exit(7);`], { cwd: ROOT });
-  const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const src = ownCode();
   return [
     ["a lock held by a live process is refused and left in place", !acquireLock([], held) && existsSync(held), true],
     ["a lock left by a dead process is reclaimed", acquireLock([], stale) && readFileSync(stale, "utf8").trim() === String(process.pid), true],
     ["a lock taken by a run that then fails is released on exit", child.status === 7 && !existsSync(leak), true],
     ["the run lock is keyed by checkout, so two repositories never refuse each other", lockPathFor("/x/one") !== lockPathFor("/x/two") && LOCK === lockPathFor(ROOT), true],
     ["the self-test plants its probes only under the run lock (call-site pinned)",
-      /lockOrExit\([^\n]*\);\n\s*process\.exit\(selfTest\(\)/.test(src) && /lockOrExit\([^\n]*\);\n\s*if \(!selfTest\(\)\) process\.exit\(1\);/.test(src), true],
+      /^[ \t]*lockOrExit\([^\n]*\);\n\s*process\.exit\(selfTest\(\)/m.test(src) && /^[ \t]*lockOrExit\([^\n]*\);\n\s*if \(!selfTest\(\)\) process\.exit\(1\);/m.test(src), true],
     // Whichever entry reclaims a dead run's lock is the only one that sweeps its residue: the
     // battery's --self-test runs first, so a tools/-only sweep there left a deploy/ probe to redden
     // the bare run (which then found no stale lock and never swept).
@@ -587,7 +597,42 @@ function lockCases(dir) {
       JSON.stringify(probeDirsOf([{ probe: "deploy/zz-a.sh" }, { probe: "tools/zz-b.mjs" }, { probe: "zz-c.mjs" }])), JSON.stringify([join(ROOT, "tools"), join(ROOT, "deploy"), ROOT])],
     ["an unreadable registry still sweeps tools/", JSON.stringify(probeDirsOf([])), JSON.stringify([join(ROOT, "tools")])],
     ["a stale lock reclaimed at either entry sweeps every registered probe dir (call-site pinned)",
-      /lockOrExit\(probeDirsOf\(loadRegistry\(CONFIG_PATH\)\.guards \?\? \[\]\)\);\n\s*process\.exit\(selfTest\(\)/.test(src) && /lockOrExit\(probeDirsOf\(guards\)\);\n\s*if \(!selfTest\(\)\)/.test(src), true],
+      /^[ \t]*lockOrExit\(probeDirsOf\(loadRegistry\(CONFIG_PATH\)\.guards \?\? \[\]\)\);\n\s*process\.exit\(selfTest\(\)/m.test(src) && /^[ \t]*lockOrExit\(probeDirsOf\(guards\)\);\n\s*if \(!selfTest\(\)\)/m.test(src), true],
+  ];
+}
+
+/** This file's own CODE: every call-site pin reads it comment-stripped and anchors at a line
+ *  start, so a `// was: <old call>` decoy or a commented-out call satisfies nothing. */
+function ownCode() {
+  return stripComments(readFileSync(fileURLToPath(import.meta.url), "utf8"));
+}
+
+/** The lock at the entry, DRIVEN rather than grepped: this self-test runs holding LOCK (both
+ *  entries lock before selfTest), and a second run meanwhile refuses with the rule and the fix. */
+function lockEntryCases() {
+  const underLock = lockHolder(LOCK) === String(process.pid);
+  // Spawned only under the lock: a second run that got past it would run this whole self-test.
+  const second = underLock ? spawnSync("node", [fileURLToPath(import.meta.url), "--self-test"], { cwd: ROOT, encoding: "utf8" }) : { status: null, stderr: "" };
+  return [
+    ["the self-test runs holding the run lock", underLock, true],
+    ["a second run while the lock is held refuses with the rule and the fix", second.status === 1 && second.stderr.includes("rule: one run per checkout") && second.stderr.includes(`rm ${LOCK}`), true],
+  ];
+}
+
+/** The liveness test fails CLOSED: a holder this user cannot signal (EPERM) is alive, an empty or
+ *  unparseable lock (a run between the exclusive create and its pid write) is held, and a run's
+ *  exit releases the lock only while it still names that run. */
+function lockOwnershipCases(dir) {
+  const foreign = join(dir, "foreign.lock");
+  writeFileSync(foreign, "1\n");
+  const empty = join(dir, "empty.lock");
+  writeFileSync(empty, "");
+  const taken = join(dir, "taken.lock");
+  const child = spawnSync("node", ["--input-type=module", "-e", `import { writeFileSync } from "node:fs"; const m = await import(${JSON.stringify(import.meta.url)}); if (!m.acquireLock([], ${JSON.stringify(taken)})) process.exit(3); writeFileSync(${JSON.stringify(taken)}, "1\\n"); process.exit(0);`], { cwd: ROOT });
+  return [
+    ["a lock naming a live pid this user cannot signal (EPERM) is refused, not stolen", !acquireLock([], foreign) && readFileSync(foreign, "utf8") === "1\n", true],
+    ["an empty lock (a run between create and write) is refused, not stolen", !acquireLock([], empty) && readFileSync(empty, "utf8") === "", true],
+    ["a run whose lock was taken over leaves the new holder's lock in place on exit", child.status === 0 && existsSync(taken) && readFileSync(taken, "utf8") === "1\n", true],
   ];
 }
 
@@ -665,8 +710,8 @@ function ratchetCases(dir) {
     ["a guard with no recorded row is not a downgrade", downgradesOf({}, [r(OUTCOME.REACHABLE, "index")]).length, 0],
     ["an unproven guard is reported by its outcome, not as a downgrade", downgradesOf({ a: "disk" }, [r(OUTCOME.UNREACHABLE, "index")]).length, 0],
     ["the ratchet judges the run's own results against the recorded modes (call-site pinned)", (() => {
-      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
-      return /const recorded = orExit\(readRecordedModes\(MODES_PATH\)\)\.modes;\n\s*const downgrades = downgradesOf\(recorded, results\);/.test(src);
+      const src = ownCode();
+      return /^[ \t]*const recorded = orExit\(readRecordedModes\(MODES_PATH\)\)\.modes;\n[ \t]*const downgrades = downgradesOf\(recorded, results\);/m.test(src);
     })(), true],
   ];
 }
@@ -770,7 +815,7 @@ function selfTest() {
     // line glued onto stderr's first line can carry a banner (or an Error header) off line-start,
     // and both the banner clauses and the frames pair read line starts.
     ["runGuard separates stdout from stderr (the glue law, call-site pinned)", (() => {
-      return GLUE_SITE.test(stripComments(readFileSync(fileURLToPath(import.meta.url), "utf8")));
+      return GLUE_SITE.test(ownCode());
     })(), true],
     ["a REAL module-resolution crash after an unterminated stdout line is still a GATE_DEFECT", checkReach(entry(gluedCrash)).outcome, OUTCOME.GATE_DEFECT],
     [
@@ -794,16 +839,18 @@ function selfTest() {
     // call site was reverted (an adversarial pass proved exactly that shape stays green) — so the
     // case reads its own source for the CALL, not the name.
     ["the baseline and unstaged runs carry the HEAD-index env (the busy-tree law, call-site pinned)", (() => {
-      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      const src = ownCode();
       return /baselineEnv = \{ \.\.\.process\.env, \.\.\.headIndexEnv\(\) \};/.test(src) && src.match(/runGuard\(guard\.script, baselineEnv, args\)/g)?.length === 2;
     })(), true],
     // `read-tree --index-output` locks the REAL .git/index while it runs, colliding with the
     // developer's own git and with a sibling run; GIT_INDEX_FILE locks only the copy.
     ["HEAD-index copies are seeded through GIT_INDEX_FILE, never locking the real index (call-site pinned)", (() => {
-      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      const src = ownCode();
       return src.match(/execFileSync\("git", \["read-tree", "HEAD"\], \{ cwd: ROOT, env: \{ \.\.\.process\.env, GIT_INDEX_FILE: \w+ \} \}\);/g)?.length;
     })(), 2],
     ...lockCases(dir),
+    ...lockOwnershipCases(dir),
+    ...lockEntryCases(),
     ...registryCases(dir),
     ...ratchetCases(dir),
   ];
