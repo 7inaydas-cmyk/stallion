@@ -15,11 +15,13 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, raiseSeverity, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, normalizedEvidenceOf, raiseSeverity, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
 import { bundleBlock, lessonsIndex, loadRegisters } from "./retrospective.mjs";
-import { evidencePathIsFile } from "./task-state.mjs";
+import { evidencePathIsFile, findingsPath, TASK_ID } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CHECKLIST = `${ROOT}docs/ADVERSARIAL-CHECKLIST.md`;
@@ -53,9 +55,11 @@ export function lanesFromChecklist(text) {
 /**
  * The fresh-context refute prompt for one lane. Pure; the self-test pins the contract clauses.
  * `lessons` (optional) carries the retrospective block — what past lanes learned — so every
- * sweep starts standing on the registers instead of re-paying for the same escapes.
+ * sweep starts standing on the registers instead of re-paying for the same escapes. `diff` is
+ * diffUnderAudit's whole result, so its pinned base..head always rides along: without it the
+ * reviewer's only anchor was a --stat, and `git diff HEAD~1` later audits a different change.
  */
-export function renderBundle(lane, taskId, diffStat, fileList, lessons = "") {
+export function renderBundle(lane, taskId, diff, lessons = "") {
   return `# Adversarial pass — task ${taskId} — lane ${lane.n}: ${lane.title}
 
 You are an adversarial auditor with NO context about this change and NO stake in it being correct.
@@ -68,13 +72,14 @@ escape. Report findings, not reassurance — "looks fine" is a non-answer.
 ${lane.body}
 
 ## The change under audit
-
+\nPinned range: ${diff.base}..${diff.head} — the register certifies exactly this range as swept. Read it with
+\`git diff ${diff.base}..${diff.head}\` and file states with \`git show ${diff.head}:<path>\`, never a moving alias like HEAD~1.\n
 \`\`\`
-${diffStat}
+${diff.diffStat}
 \`\`\`
 
 Files touched:
-${fileList}
+${diff.fileList}
 ${lessons.length > 0 ? `\n${lessons}\n` : ""}
 ## The refutation contract
 
@@ -128,12 +133,8 @@ export function laneRefusal(lane, laneCount) {
   return null;
 }
 
-function findingsPath(id) {
-  return `${STATE_DIR}/${id}.findings.json`;
-}
-
 function requireKebabId(id) {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) die(`task id must be kebab-case (a-z, 0-9, -): ${id} — a traversal-bearing id must never reach a path join`);
+  if (!TASK_ID.test(id)) die(`task id must be kebab-case (a-z, 0-9, -): ${id} — a traversal-bearing id must never reach a path join`);
 }
 
 function requireTask(id) {
@@ -148,17 +149,18 @@ function requireTask(id) {
  * that verdict scored CLEAN and the done-gate accepted — a command that fails must leave no
  * state that passes.
  */
-function parseRegisterForWrite(text, id) {
+function parseRegisterForWrite(text, id, path = findingsPath(id)) {
   if (text === null) die(`no findings register for ${id} — a pass begins with 'prepare ${id}', not with a write\n  fix: node tools/adversarial-runner.mjs prepare ${id}`);
+  const restore = registerRepair(path, id);
   let register;
   try {
     register = JSON.parse(text);
   } catch (e) {
-    die(`findings register is not valid JSON: ${e.message}`);
+    die(`findings register is not valid JSON: ${e.message}${restore}`);
   }
   const error = validateFindings(register);
-  if (error) die(error);
-  if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
+  if (error) die(`${error}${restore}`);
+  if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'${restore}`);
   return register;
 }
 
@@ -179,46 +181,48 @@ function diffUnderAudit(args) {
  * require it, so "no findings" can never stand in for "no pass".
  */
 function mintPassMarker(id, base, head, sweptContent) {
-  mutateJson(findingsPath(id), (text) => {
-    if (text === null) {
-      return {
-        ...emptyFindings(id),
-        passStartedAt: new Date().toISOString(),
-        sweptBase: base,
-        sweptHead: head,
-        sweptDiffDigest: createHash("sha256").update(sweptContent).digest("hex").slice(0, 12),
-      };
-    }
-    let register;
-    try {
-      register = JSON.parse(text);
-    } catch (e) {
-      die(`findings register is not valid JSON: ${e.message}`);
-    }
-    const error = validateFindings(register);
-    if (error) die(error);
-    if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-    // A re-prepare is a NEW sweep of a possibly-new range: the marker re-pins to what this pass
-    // will audit (findings stay append-only; the marker is pass metadata).
-    return { ...register, passStartedAt: new Date().toISOString(), sweptBase: base, sweptHead: head, sweptDiffDigest: createHash("sha256").update(sweptContent).digest("hex").slice(0, 12) };
-  });
+  // A re-prepare is a NEW sweep of a possibly-new range: the marker re-pins to what this pass
+  // will audit (findings stay append-only; the marker is pass metadata). An existing register is
+  // read under the same law as every write path.
+  const marker = {
+    passStartedAt: new Date().toISOString(),
+    sweptBase: base, sweptHead: head,
+    sweptDiffDigest: createHash("sha256").update(sweptContent).digest("hex").slice(0, 12),
+  };
+  mutateJson(findingsPath(id), (text) => ({ ...(text === null ? emptyFindings(id) : parseRegisterForWrite(text, id)), ...marker }));
+}
+
+/**
+ * The checklist's lanes, pinned to the EIGHT escape classes — ONE reader for prepare, record,
+ * calibrate and calibrate-record. Four hand-copies had drifted: three let a missing checklist
+ * escape as a stack trace instead of a refusal, and calibrate-record dropped the eight-lane pin.
+ */
+function checklistLanes(path = CHECKLIST) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (e) {
+    die(`cannot read the checklist at ${path} (${e.code ?? e.message})\n  fix: restore the eight '### N. Title' escape classes: git checkout -- docs/ADVERSARIAL-CHECKLIST.md`);
+  }
+  const lanes = lanesFromChecklist(text);
+  if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
+  return lanes;
 }
 
 function cmdPrepare(args) {
   const id = args._[0];
   if (!id) die("usage: prepare <task-id> [--base <rev>] [--head <rev>]");
   requireTask(id);
-  const { diffStat, fileList, base, head, content } = diffUnderAudit(args);
-  const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
-  if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes) — the checklist format changed; update this parser and its count pin deliberately\n  fix: keep exactly eight '### N. Title' headings under '## The escape classes' in docs/ADVERSARIAL-CHECKLIST.md`);
+  const diff = diffUnderAudit(args);
+  const lanes = checklistLanes();
   const dir = `${BUNDLE_DIR}/${id}`;
   mkdirSync(dir, { recursive: true });
   const { registers: lessonRegisters, skipped } = loadRegisters(STATE_DIR);
   if (skipped > 0) console.error(`adversarial prepare: retrospective skipped ${skipped} malformed register(s) — the standing lessons in the bundles are INCOMPLETE until they parse`);
   const lessons = bundleBlock(lessonsIndex(lessonRegisters));
-  for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diffStat, fileList, lessons));
-  mintPassMarker(id, base, head, content);
-  console.log(`${lanes.length} refute bundles written to adversarial/${id}/`);
+  for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diff, lessons));
+  mintPassMarker(id, diff.base, diff.head, diff.content);
+  console.log(`${lanes.length} refute bundles written to adversarial/${id}/ — pinned range ${diff.base.slice(0, 10)}..${diff.head.slice(0, 10)}`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, then record findings here, then 'verdict ${id}'`);
 }
 
@@ -230,42 +234,83 @@ function cmdRecord(args) {
   if (!Number.isInteger(lane) || lane < 1) die("record requires --lane <n> (the checklist escape class)");
   if (!SEVERITIES.includes(args.severity)) die(`record requires --severity in ${SEVERITIES.join(", ")}`);
   if (!args.claim || typeof args.claim !== "string") die("record requires --claim <what is wrong, where, why it escapes>");
-  let laneCount = 0;
-  try {
-    const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
-    if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes, the same pin prepare enforces)\n  fix: restore exactly eight '### N. Title' headings in docs/ADVERSARIAL-CHECKLIST.md`);
-    laneCount = lanes.length;
-  } catch (e) {
-    if (e instanceof Refused) throw e;
-    die(`cannot read the checklist at ${CHECKLIST} to validate the lane\n  fix: restore docs/ADVERSARIAL-CHECKLIST.md (eight '### N. Title' escape classes)`);
-  }
+  const laneCount = checklistLanes().length;
   const laneLaw = laneRefusal(lane, laneCount);
   if (laneLaw) die(`${laneLaw}\n  fix: record with --lane between 1 and ${laneCount} (the lane whose sweep produced the finding)`);
+  const { next, mergeMsg } = recordFinding(id, args, lane);
+  if (mergeMsg) console.log(mergeMsg);
+  else console.log(`finding ${next.findings[next.findings.length - 1].id} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
+}
+
+/**
+ * Record's one write: the dedup and the append against the register (`path` lets the self-test
+ * drive it — the pure dedup alone let a call site that swapped in evidence-only dedup stay green).
+ */
+function recordFinding(id, args, lane, path = findingsPath(id)) {
   // The id mint and the append are one locked step: f{len+1} computed against a stale snapshot
   // collides with the sibling writer that already appended.
   let mergeMsg = null;
-  const next = mutateJson(findingsPath(id), (text) => {
-    const register = parseRegisterForWrite(text, id);
-    const dup = duplicateEvidenceOf(register, { claim: args.claim, ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
+  const next = mutateJson(path, (text) => {
+    const register = parseRegisterForWrite(text, id, path);
+    const evidence = typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {};
+    const dup = duplicateEscapeOf(register, { claim: args.claim, ...evidence }, id);
     if (dup) {
-      // The spec's severity-merge (ECC's orch-review: dedup keeps the STRICTEST severity): a
-      // stricter finding on the same evidence RAISES the existing one; an equal-or-weaker
-      // duplicate refuses — resolution lanes are not spent twice on one escape.
-      // A raise INTO a proof-owing severity carries the duplicate's proof with it (the law
-      // travels with the severity, not with which CLI path set it).
-      const proof = typeof args.proof === "string" && args.proof.trim() ? args.proof : undefined;
-      const raised = raiseSeverity(register, dup, args.severity, proof);
-      if (typeof raised === "string") die(`${raised}
-  fix: the finding is already recorded on this evidence — re-record with a STRICTER severity (adding --proof when the raise enters CRITICAL/HIGH), resolve/wont-fix ${dup}, or record a DISTINCT escape`);
       mergeMsg = `finding ${dup} carries this normalized evidence — severity raised to ${args.severity} (strictest wins), no new lane spent`;
-      return raised;
+      return raiseDuplicate(register, dup, args);
     }
-    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...(typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {}), ...(typeof args.evidence === "string" && args.evidence.trim() ? { evidence: args.evidence } : {}) });
+    const proof = typeof args.proof === "string" && args.proof.trim() ? { proof: args.proof } : {};
+    const appended = appendFinding(register, { id: `f${register.findings.length + 1}`, lane, severity: args.severity, claim: args.claim, ...proof, ...evidence });
     if (typeof appended === "string") die(appended);
     return appended;
   });
-  if (mergeMsg) console.log(mergeMsg);
-  else console.log(`finding ${next.findings[next.findings.length - 1].id} recorded (lane ${lane}, ${args.severity}) — UNRESOLVED`);
+  return { next, mergeMsg };
+}
+
+/**
+ * The spec's severity-merge (ECC's orch-review: dedup keeps the STRICTEST severity): a stricter
+ * finding on the same evidence RAISES the existing one; an equal-or-weaker duplicate refuses —
+ * resolution lanes are not spent twice on one escape. A raise INTO a proof-owing severity carries
+ * the duplicate's proof with it (the law travels with the severity, not with which CLI path set it).
+ */
+function raiseDuplicate(register, dup, args) {
+  const proof = typeof args.proof === "string" && args.proof.trim() ? args.proof : undefined;
+  const raised = raiseSeverity(register, dup, args.severity, proof);
+  if (typeof raised === "string") die(`${raised}
+  fix: the finding is already recorded on this evidence — re-record with a STRICTER severity (adding --proof when the raise enters CRITICAL/HIGH), resolve/wont-fix ${dup}, or record a DISTINCT escape`);
+  return raised;
+}
+
+/**
+ * The finding a candidate DUPLICATES: the same normalized evidence AND the same claim. A shared
+ * file:line is not a shared escape (found in review: a CRITICAL escape citing the line a LOW
+ * finding cited was folded into it — its claim and lane dropped, so resolving the trivial claim
+ * cleared both). The same evidence under a different claim refuses, naming the standing claim.
+ */
+function duplicateEscapeOf(register, candidate, id) {
+  const dup = duplicateEvidenceOf(register, candidate);
+  const standing = register.findings.find((f) => f.id === dup);
+  if (!standing || claimKey(standing.claim) === claimKey(candidate.claim)) return dup;
+  // POSIX single-quoted: a claim carrying ", $ or \ pasted inside double quotes came back
+  // CHANGED, missed the standing claim, and hit this same refusal again.
+  const quoted = `'${standing.claim.replace(/'/g, "'\\''")}'`;
+  die(`finding ${dup} already cites this evidence for a DIFFERENT claim — a shared file:line is not a shared escape, and merging would drop this claim and its lane\n  evidence: ${dup} claims "${standing.claim}"\n  fix: re-record with --evidence that names THIS escape (quote the offending token or the command output); if it IS ${dup}'s escape, raise it with ${dup}'s own claim: node tools/adversarial-runner.mjs record ${id} --lane <n> --severity <stricter> --claim ${quoted} --evidence "<the same evidence>"`);
+}
+
+/**
+ * The repair a register that fails its read owes: evidence plus a NON-destructive fix. The old
+ * `git checkout -- <register>` failed on the untracked register of a pass in flight, and on a
+ * tracked one silently dropped every finding since the last commit — UNRESOLVED blockers
+ * included — so a verdict could turn CLEAN. Only a register holding no findings is re-minted.
+ */
+function registerRepair(path, id) {
+  const rel = relative(ROOT, path);
+  const mint = path.endsWith(".calibration.json") ? "calibrate" : "prepare";
+  return `\n  evidence: ${rel} — git diff -- ${rel} shows what changed since its last commit, if it has one\n  fix: repair ${rel} by hand, keeping every recorded finding (append-only: a dropped finding is a blocker silently cleared); if it holds no findings yet: rm ${rel} && node tools/adversarial-runner.mjs ${mint} ${id}`;
+}
+
+/** The one normalization evidence dedup uses, applied to a claim (no evidence ⇒ the claim is the key). */
+function claimKey(claim) {
+  return normalizedEvidenceOf({ claim });
 }
 
 /** Parse + existence-check the --evidence list (comma-split, repo-relative or cwd-relative).
@@ -313,13 +358,21 @@ function cmdWontFix(args) {
   console.log(`finding ${findingId} WONT-FIX (justification recorded)`);
 }
 
-/** The register verdict scores: must exist, belong to this task, and carry a prepared-pass marker. */
-function loadMarkedRegister(id) {
-  const { ok, register, error } = loadFindings(findingsPath(id));
-  if (!ok) die(error);
-  if (!register) die(`FAIL — no adversarial findings register for ${id}: the pass was never recorded, and absent is not clean`);
-  if (register.task !== id) die(`FAIL — findings register belongs to task '${register.task}', not '${id}'`);
-  if (!register.passStartedAt) die(`FAIL — register for ${id} carries no pass marker: only a prepared pass counts, and an empty register is not a completed pass`);
+/** Pure: why a loaded register is not a completed pass of THIS task, or null — verdict scores
+ *  only a register that exists, belongs to the task, and carries a prepared-pass marker. */
+function markerRefusal(register, id, path = findingsPath(id)) {
+  if (!register) return `FAIL — no adversarial findings register for ${id}: the pass was never recorded, and absent is not clean\n  fix: node tools/adversarial-runner.mjs prepare ${id}`;
+  if (register.task !== id) return `FAIL — findings register belongs to task '${register.task}', not '${id}'${registerRepair(path, id)}`;
+  if (!register.passStartedAt) return `FAIL — register for ${id} carries no pass marker: only a prepared pass counts, and an empty register is not a completed pass\n  fix: node tools/adversarial-runner.mjs prepare ${id}`;
+  return null;
+}
+
+/** The register verdict scores, or die with markerRefusal's law (`path` lets the self-test drive the die sites). */
+function loadMarkedRegister(id, path = findingsPath(id)) {
+  const { ok, register, error } = loadFindings(path);
+  if (!ok) die(`${error}${registerRepair(path, id)}`);
+  const refusal = markerRefusal(register, id, path);
+  if (refusal) die(refusal);
   return register;
 }
 
@@ -376,7 +429,6 @@ function parseArgs(argv) {
 }
 
 function selfTestLanes(fail) {
-  let checks = 0;
   const fixture = [
     "# Checklist",
     "## The escape classes",
@@ -390,33 +442,204 @@ function selfTestLanes(fail) {
     "not a lane",
   ].join("\n");
   const lanes = lanesFromChecklist(fixture);
-  if (lanes.length !== 2) fail(`adversarial-runner: expected 2 lanes from fixture, got ${lanes.length}`);
-  if (lanes[0]?.n !== 1 || lanes[0]?.slug !== "input-forgeability-trust-boundaries-that-believe-the-client") fail("adversarial-runner: lane 1 parsed wrong");
-  if (!lanes[0]?.body.includes("Clause two.")) fail("adversarial-runner: lane body lost lines");
-  if (lanes[1]?.body.includes("not a lane")) fail("adversarial-runner: content after the next ## leaked into a lane");
-  return 4;
+  const cases = [
+    ["two lanes parse from the fixture", lanes.length === 2],
+    ["lane 1 parses its number and slug", lanes[0]?.n === 1 && lanes[0]?.slug === "input-forgeability-trust-boundaries-that-believe-the-client"],
+    ["a lane body keeps every line", lanes[0]?.body.includes("Clause two.") === true],
+    ["content after the next ## never leaks into a lane", !lanes[1]?.body.includes("not a lane")],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
+  return cases.length;
 }
 
 function selfTestBundle(fail) {
   const lane = { n: 1, title: "Input forgeability", slug: "input", body: "Clause two." };
-  const bundle = renderBundle(lane, "t9", " 3 files changed, 10 insertions(+)", "a.ts\nb.ts");
-  for (const clause of ["NO context", "REFUTE", "Clause two.", "3 files changed", "a.ts", '"findings"', '{"findings": []}', "never clears a blocker", '"proof"', "zero findings", "leaves the finding BLOCKING"]) {
-    if (!bundle.includes(clause)) fail(`adversarial-runner: bundle missing contract clause: ${clause}`);
-  }
-  return 9;
+  const bundle = renderBundle(lane, "t9", { diffStat: " 3 files changed, 10 insertions(+)", fileList: "a.ts\nb.ts", base: "b4se000000", head: "h3ad000000" });
+  const clauses = ["NO context", "REFUTE", "Clause two.", "3 files changed", "a.ts", '"findings"', '{"findings": []}', "never clears a blocker", '"proof"', "zero findings", "leaves the finding BLOCKING"];
+  for (const clause of clauses) if (!bundle.includes(clause)) fail(`adversarial-runner: bundle missing contract clause: ${clause}`);
+  const cases = [
+    ["a prepared bundle names the pinned base..head its register certifies as swept (never a moving HEAD~1)", bundle.includes("git diff b4se000000..h3ad000000") && bundle.includes("git show h3ad000000:<path>")],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
+  return clauses.length + cases.length;
 }
 
 function selfTestAggregation(fail) {
   // Verdict aggregation refusals, driven through the shared seam end-to-end.
   const register = appendFinding(emptyFindings("t9"), { id: "f1", lane: 1, severity: "HIGH", claim: "x", proof: "fixture proof: pinned" });
-  if (typeof register === "string") fail(`adversarial-runner: fixture append refused (${register})`);
-  if (aggregateFindings(register).clean) fail("adversarial-runner: unresolved register must not be clean");
-  const bareWontFix = setFindingStatus(register, "f1", { status: "WONT-FIX" });
-  if (typeof bareWontFix !== "string") fail("adversarial-runner: wont-fix without justification accepted");
   const resolved = setFindingStatus(register, "f1", { status: "WONT-FIX", justification: "duplicate of registered decision" });
-  if (typeof resolved === "string") fail(`adversarial-runner: justified wont-fix refused (${resolved})`);
-  if (!aggregateFindings(resolved).clean) fail("adversarial-runner: wont-fixed register must aggregate clean");
-  return 5;
+  const cases = [
+    ["the fixture append is accepted", typeof register !== "string"],
+    ["an unresolved register is not clean", !aggregateFindings(register).clean],
+    ["wont-fix without a justification refuses", typeof setFindingStatus(register, "f1", { status: "WONT-FIX" }) === "string"],
+    ["a justified wont-fix is accepted", typeof resolved !== "string"],
+    ["a wont-fixed register aggregates clean", typeof resolved !== "string" && aggregateFindings(resolved).clean],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
+  return cases.length;
+}
+
+/** The refusal `fn` raised (a Refused's message), or null — a return or a crash is no refusal. */
+function refusalOf(fn) {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e instanceof Refused ? e.message : null;
+  }
+}
+
+function refuses(fn) {
+  return refusalOf(fn) !== null;
+}
+
+/** What a POSIX shell makes of one printed argument, or null when it does not even parse. */
+function shellWord(printed) {
+  try {
+    return execFileSync("sh", ["-c", `printf %s ${printed}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return null;
+  }
+}
+
+/** A temp checklist of `n` escape-class headings under `dir`; returns its path. */
+function checklistFixture(dir, n) {
+  const path = join(dir, `c${n}.md`);
+  writeFileSync(path, ["## The escape classes", ...Array.from({ length: n }, (_, i) => `### ${i + 1}. Class ${i + 1}\nClause.`)].join("\n"));
+  return path;
+}
+
+/** The checklist reader's law, driven against real temp files: every site refuses the same way. */
+function selfTestChecklist(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "adversarial-checklist-"));
+  try {
+    const checklist = (n) => checklistFixture(dir, n);
+    const cases = [
+      ["a missing checklist REFUSES with a fix line — never a stack trace", refuses(() => checklistLanes(join(dir, "absent.md")))],
+      ["a nine-heading checklist refuses the eight-lane pin", refuses(() => checklistLanes(checklist(9)))],
+      ["an eight-heading checklist yields its eight lanes", checklistLanes(checklist(8)).length === 8],
+      ["calibrate-record reads the checklist's own lane law — a missing checklist refuses, never a hard-coded eight", refuses(() => calibrationRecordArgs({ lane: "3", severity: "LOW", claim: "x" }, [], join(dir, "absent.md")))],
+      ["calibrate-record takes a lane within the checklist's eight", calibrationRecordArgs({ lane: "3", severity: "LOW", claim: "x" }, [], checklist(8)).lane === 3],
+    ];
+    for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
+    return cases.length;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The die() SITES, driven against real temp files: the pure seams alone let a revert of a call
+ * site (verdict CLEAN on a never-prepared register, a verdict on a stale sweep, a re-calibration
+ * graded on the closed epoch's claims) keep the battery green.
+ */
+function selfTestRegisterFiles(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "adversarial-registers-"));
+  const put = (name, value) => {
+    writeFileSync(join(dir, name), typeof value === "string" ? value : JSON.stringify(value));
+    return join(dir, name);
+  };
+  try {
+    const at = "2026-09-27T00:00:00.000Z";
+    const letters = ["alpha", "bravo", "charlie"];
+    const wave = letters.reduce((r, l, i) => appendFinding(r, { id: `f${i + 1}`, lane: 1, severity: "HIGH", claim: `the walker coordinates defect variant ${l} manifests in manifests`, proof: "fixture proof" }), { ...emptyFindings("t9"), passStartedAt: at, sweptBase: "b1", sweptHead: "h1" });
+    const registerPath = put("t9.findings.json", wave);
+    const firstDispatch = letters.reduce((c, l, i) => appendFinding(c, { id: `f${i + 1}`, lane: 1, severity: "LOW", claim: `walker coordinates variant ${l} restated inside manifests` }), openDispatch(null, wave, "t9", at));
+    const calPath = put("t9.calibration.json", { ...firstDispatch, calibrationVerdict: { passed: true } });
+    const corrupt = refusalOf(() => loadMarkedRegister("t9", put("corrupt.findings.json", "{ bad"))) ?? "";
+    const onDisk = (path) => JSON.parse(readFileSync(path, "utf8"));
+    const recordPath = put("record.findings.json", { ...emptyFindings("t9"), passStartedAt: at });
+    const standing = put("standing.calibration.json", { ...firstDispatch, sweptBase: "b0", sweptHead: "h0", calibrationVerdict: { passed: true } });
+    const replay = { registerPath, path: standing, checklist: checklistFixture(dir, 8), diffOf: () => ({}) };
+    const cases = [
+      ["record's write raises the same claim on the same evidence to the stricter severity — no new lane spent", (() => {
+        recordFinding("t9", { severity: "LOW", claim: "stale comment in parseArgs", evidence: "tools/x.mjs:361" }, 3, recordPath);
+        const { mergeMsg } = recordFinding("t9", { severity: "MEDIUM", claim: "stale comment in parseArgs", evidence: "tools/x.mjs:361" }, 3, recordPath);
+        const { findings } = onDisk(recordPath);
+        return mergeMsg !== null && findings.length === 1 && findings[0].severity === "MEDIUM";
+      })()],
+      ["record's write refuses a DIFFERENT claim on the standing evidence — never merged, its claim and lane dropped", (() => {
+        const refusal = refusalOf(() => recordFinding("t9", { severity: "HIGH", claim: "parseArgs lets a flag value forge another flag", proof: "fixture proof", evidence: "tools/x.mjs:361" }, 1, recordPath));
+        const { findings } = onDisk(recordPath);
+        return refusal?.includes("DIFFERENT claim") === true && findings.length === 1 && findings[0].severity === "MEDIUM";
+      })()],
+      ["a calibrate refused at a replay read leaves the standing epoch and its verdict untouched", (() => {
+        const refused = refuses(() => openReplay("t9", { ...replay, diffOf: () => die("fixture: the swept range is gone") }));
+        return refused && onDisk(standing).calibrationVerdict?.passed === true;
+      })()],
+      ["a calibrate refused at the checklist read leaves the standing epoch and its verdict untouched", (() => {
+        const refused = refuses(() => openReplay("t9", { ...replay, checklist: join(dir, "absent.md") }));
+        const kept = onDisk(standing);
+        return refused && kept.dispatchFrom === 0 && kept.calibrationVerdict?.passed === true;
+      })()],
+      ["a re-calibrate through the command's seam opens a new epoch on disk — dispatchFrom moves past the closed claims and the sweep re-pins", (() => {
+        openReplay("t9", replay);
+        const reopened = onDisk(standing);
+        return reopened.dispatchFrom === 3 && reopened.sweptHead === "h1" && !("calibrationVerdict" in reopened);
+      })()],
+      ["verdict refuses an UNMARKED register at its die site — empty is not a pass", refusalOf(() => loadMarkedRegister("t9", put("unmarked.findings.json", emptyFindings("t9"))))?.includes("carries no pass marker") === true],
+      ["verdict loads a marked register of this task", loadMarkedRegister("t9", registerPath).task === "t9"],
+      ["verdict refuses a corrupt register with the non-destructive repair", corrupt.includes("keeping every recorded finding") && corrupt.includes("prepare t9") && !corrupt.includes("git checkout")],
+      ["calibrate-verdict refuses at its die site a calibration pinned to a sweep the register no longer records", refusalOf(() => gradeCalibration("t9", put("moved.findings.json", { ...wave, sweptHead: "h9" }), calPath))?.includes("different sweep") === true],
+      ["calibrate-verdict grades a dispatch pinned to the register's sweep", gradeCalibration("t9", registerPath, calPath).rediscovered === 3],
+      ["a re-calibration opened ON DISK grades only its own dispatch — the closed epoch's claims and pass never carry", (() => {
+        const reopened = openCalibrationDispatch("t9", wave, calPath);
+        const graded = gradeCalibration("t9", registerPath, calPath);
+        return reopened.dispatchFrom === 3 && !("calibrationVerdict" in JSON.parse(readFileSync(calPath, "utf8"))) && graded.refuse && graded.rediscovered === 0;
+      })()],
+      ["a first calibrate mints its dispatch file at zero", openCalibrationDispatch("t9", wave, join(dir, "fresh.calibration.json")).dispatchFrom === 0 && existsSync(join(dir, "fresh.calibration.json"))],
+      ["a corrupt calibration register refuses to reopen, naming the calibrate repair", refusalOf(() => openCalibrationDispatch("t9", wave, put("bad.calibration.json", "{ bad")))?.includes("adversarial-runner.mjs calibrate t9") === true],
+    ];
+    for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner (register files): ${name}`);
+    return cases.length;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Record's dedup law: a duplicate is the same ESCAPE — same evidence AND same claim. */
+function selfTestDedup(fail) {
+  const register = appendFinding({ ...emptyFindings("t9"), passStartedAt: "2026-09-27T00:00:00.000Z" }, { id: "f1", lane: 3, severity: "LOW", claim: "stale comment in parseArgs", evidence: "tools/x.mjs:361" });
+  let sameEscape = null;
+  const sameRefused = refuses(() => { sameEscape = duplicateEscapeOf(register, { claim: "Stale comment in  parseArgs", evidence: " TOOLS/x.mjs:361" }, "t9"); });
+  const cases = [
+    ["a DIFFERENT claim citing the same evidence refuses — never folded into the standing finding, its claim and lane dropped", refuses(() => duplicateEscapeOf(register, { claim: "parseArgs lets a flag value forge another flag", evidence: "tools/x.mjs:361" }, "t9"))],
+    ["the same claim on the same evidence is still the duplicate (the strictest-wins merge)", !sameRefused && sameEscape === "f1"],
+    ["distinct evidence is no duplicate", duplicateEscapeOf(register, { claim: "stale comment in parseArgs", evidence: "tools/y.mjs:1" }, "t9") === null],
+    ["the DIFFERENT-claim refusal's printed record command carries the standing claim through a shell byte-for-byte", (() => {
+      const claim = `the "\${id}" placeholder isn't filled \\ here`;
+      const tricky = appendFinding(emptyFindings("t9"), { id: "f1", lane: 3, severity: "LOW", claim, evidence: "tools/x.mjs:10" });
+      const printed = /--claim (.+) --evidence/.exec(refusalOf(() => duplicateEscapeOf(tricky, { claim: "another escape", evidence: "tools/x.mjs:10" }, "t9")) ?? "")?.[1];
+      return printed !== undefined && shellWord(printed) === claim;
+    })()],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
+  return cases.length;
+}
+
+/** The CLI's own refusals, driven in-process: die() throws Refused, so no temp repo is needed. */
+function selfTestCliRefusals(fail) {
+  const own = JSON.stringify({ ...emptyFindings("t9"), passStartedAt: "2026-09-27T00:00:00.000Z" });
+  const marked = JSON.parse(own);
+  const cases = [
+    ["a write to an ABSENT register refuses — only prepare mints one (a failing command leaves no state that passes)", refuses(() => parseRegisterForWrite(null, "t9"))],
+    ["a write to another task's register refuses", refuses(() => parseRegisterForWrite(JSON.stringify(emptyFindings("other")), "t9"))],
+    ["a write to an unparsable register refuses", refuses(() => parseRegisterForWrite("{ bad", "t9"))],
+    ["a write to this task's own register proceeds", parseRegisterForWrite(own, "t9").task === "t9"],
+    ["a calibration write with no open dispatch refuses, naming calibrate — only calibrate opens one", refusalOf(() => parseCalibrationForWrite(null, "t9"))?.includes("fix: node tools/adversarial-runner.mjs calibrate t9") === true],
+    ["a repeated flag refuses — never last-one-wins", refuses(() => parseArgs(["--lane", "1", "--lane", "2"]))],
+    ["a flag followed by a flag refuses — never coerced to a value", refuses(() => parseArgs(["--lane", "--severity", "HIGH"]))],
+    ["flags parse in both spellings", (() => { const a = parseArgs(["t9", "--lane", "3", "--claim=a=b"]); return a._[0] === "t9" && a.lane === "3" && a.claim === "a=b"; })()],
+    ["calibrate-verdict refuses a --bar knob before any read — the bar is the law", refusalOf(() => cmdCalibrateVerdict({ _: ["t9"], bar: "1" }))?.startsWith("--bar is refused") === true],
+    ["verdict refuses an absent register, naming the prepare fix", markerRefusal(null, "t9")?.includes("fix: node tools/adversarial-runner.mjs prepare t9") === true],
+    ["verdict refuses another task's register", markerRefusal({ ...marked, task: "other" }, "t9") !== null],
+    ["verdict refuses an UNMARKED register — empty is not a pass", markerRefusal(emptyFindings("t9"), "t9")?.includes("fix: node tools/adversarial-runner.mjs prepare t9") === true],
+    ["verdict scores a marked register of this task", markerRefusal(marked, "t9") === null],
+    ["a broken register's repair never prints a git checkout — it fails on the untracked register of a pass in flight, and on a tracked one drops every finding since the last commit", [refusalOf(() => parseRegisterForWrite("{ bad", "t9")), markerRefusal({ ...marked, task: "other" }, "t9")].every((m) => m?.includes("rm tasks/t9.findings.json && node tools/adversarial-runner.mjs prepare t9") && !m.includes("git checkout"))
+      && refusalOf(() => parseCalibrationForWrite("{ bad", "t9"))?.includes("rm tasks/t9.calibration.json && node tools/adversarial-runner.mjs calibrate t9") === true],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
+  return cases.length;
 }
 
 /**
@@ -532,8 +755,8 @@ function calibrationPath(id) {
 }
 
 /** Load a wave's register and its known-defect set, or die with the law that stops a bad calibration. */
-function replayFactsOf(id) {
-  const { ok, register, error } = loadFindings(findingsPath(id));
+function replayFactsOf(id, path = findingsPath(id)) {
+  const { ok, register, error } = loadFindings(path);
   if (!ok || register === null) die(`no parsable findings register for '${id}'${error ? ` — ${error}` : ""}\n  rule: calibration replays a RECORDED wave — the known defects are the register's own CRITICAL/HIGH findings\n  fix: calibrate a task whose adversarial pass completed`);
   const known = knownDefectsOf(register);
   if (known.length < 3) die(`only ${known.length} CRITICAL/HIGH finding(s) on '${id}'s register — fewer than three known defects pins nothing\n  fix: calibrate a wave whose lanes found at least three CRITICAL/HIGH escapes`);
@@ -545,10 +768,7 @@ function cmdCalibrate(args) {
   const id = args._[0];
   if (!id) die("usage: calibrate <past-task-id>");
   requireKebabId(id);
-  const { register, known } = replayFactsOf(id);
-  const { diffStat, fileList } = diffUnderAudit({ base: register.sweptBase, head: register.sweptHead });
-  const lanes = lanesFromChecklist(readFileSync(CHECKLIST, "utf8"));
-  if (lanes.length !== 8) die(`checklist yielded ${lanes.length} lanes (expected exactly the EIGHT escape classes — the same pin prepare and record enforce)\n  fix: keep exactly eight '### N. Title' headings in docs/ADVERSARIAL-CHECKLIST.md`);
+  const { register, known, diff, lanes } = openReplay(id);
   const dir = `${BUNDLE_DIR}/${id}-calibration`;
   mkdirSync(dir, { recursive: true });
   // Production-shaped (the f8 finding): the bundles carry the standing lessons like every
@@ -567,16 +787,16 @@ function cmdCalibrate(args) {
   ].join("\n");
   for (const lane of lanes) {
     const slug = `lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`;
-    writeFileSync(`${dir}/${slug}`, `${renderBundle(lane, id, diffStat, fileList, lessons)}\n${treeNote}`);
+    writeFileSync(`${dir}/${slug}`, `${renderBundle(lane, id, diff, lessons)}\n${treeNote}`);
   }
   console.log(`${lanes.length} calibration bundles written to adversarial/${id}-calibration/ — replaying ${register.sweptBase.slice(0, 8)}..${register.sweptHead.slice(0, 8)}, ${known.length} known defect(s), bar ${barOf(known.length)}`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, record with 'calibrate-record ${id} --lane <n> --severity <S> --claim <text>', then 'calibrate-verdict ${id}'`);
 }
 
 /** Validate the calibrate-record argv, or die. The lane law is DERIVED from the checklist (the f9 finding). */
-function calibrationRecordArgs(args, known) {
+function calibrationRecordArgs(args, known, checklist = CHECKLIST) {
   const lane = Number(args.lane);
-  const laneCount = lanesFromChecklist(readFileSync(CHECKLIST, "utf8")).length;
+  const laneCount = checklistLanes(checklist).length;
   const laneLaw = laneRefusal(lane, laneCount);
   if (laneLaw) die(`${laneLaw}\n  fix: record with --lane between 1 and ${laneCount} (the lane whose sweep produced the finding)`);
   if (!SEVERITIES.includes(args.severity)) die(`calibrate-record requires --severity in ${SEVERITIES.join(", ")}`);
@@ -598,9 +818,7 @@ function cmdCalibrateRecord(args) {
   const { register } = replayFactsOf(id);
   const { lane, severity, claim, rediscoverOf } = calibrationRecordArgs(args, knownDefectsOf(register));
   const registered = mutateJson(calibrationPath(id), (text) => {
-    const base = text === null
-      ? { ...emptyFindings(id), passStartedAt: new Date().toISOString(), sweptBase: register.sweptBase, sweptHead: register.sweptHead, calibration: true }
-      : JSON.parse(text);
+    const base = parseCalibrationForWrite(text, id);
     const appended = appendFinding(base, { id: `f${base.findings.length + 1}`, lane, severity, claim, proof: args.proof, evidence: args.evidence, rediscoverOf });
     if (typeof appended === "string") die(appended);
     return appended;
@@ -608,18 +826,70 @@ function cmdCalibrateRecord(args) {
   console.log(`calibration finding recorded for ${id} — ${registered.findings[registered.findings.length - 1].id} (lane ${lane}, ${severity})`);
 }
 
-/** Load both registers for a calibration verdict, or die on every precondition the verdict owes. */
-function calibrationInputsOf(id) {
-  const { ok, register } = loadFindings(findingsPath(id));
+/**
+ * Pure: the calibration register a `calibrate` run leaves — a NEW dispatch epoch re-pinned to the
+ * register's current sweep. Earlier dispatches' claims stay (append-only) but are never graded
+ * again (found in review: calibrate never touched the file, so a failed dispatch's claims
+ * piled into the next one's verdict until the union cleared the bar, and a re-prepared wave's
+ * sweep mismatch could not be cleared by the refusal's own fix).
+ */
+function openDispatch(calibration, register, id, at) {
+  // The closed epoch's verdict goes with it: kept, it paired the new sweep with a pass graded on another.
+  const { calibrationVerdict: _closed, ...base } = calibration ?? { ...emptyFindings(id), calibration: true };
+  return { ...base, passStartedAt: at, sweptBase: register.sweptBase, sweptHead: register.sweptHead, dispatchFrom: base.findings.length };
+}
+
+/** The one write `calibrate` makes: open a dispatch epoch on disk (`path` lets the self-test drive it). */
+function openCalibrationDispatch(id, register, path = calibrationPath(id)) {
+  return mutateJson(path, (text) => openDispatch(text === null ? null : parseRegisterForWrite(text, id, path), register, id, new Date().toISOString()));
+}
+
+/**
+ * What `calibrate` runs before its bundles: every read that can refuse (the recorded wave, its
+ * diff, the checklist), THEN the dispatch write — a refused calibrate never closes the standing
+ * epoch. The paths and the diff reader are parameters so the self-test drives the write through
+ * this seam; the helper alone let a call site that dropped the write stay green.
+ */
+function openReplay(id, { registerPath = findingsPath(id), path = calibrationPath(id), checklist = CHECKLIST, diffOf = diffUnderAudit } = {}) {
+  const { register, known } = replayFactsOf(id, registerPath);
+  const diff = diffOf({ base: register.sweptBase, head: register.sweptHead });
+  const lanes = checklistLanes(checklist);
+  openCalibrationDispatch(id, register, path);
+  return { register, known, diff, lanes };
+}
+
+/** Pure: the claims a verdict grades — the current dispatch's only (a legacy register is one dispatch). */
+function dispatchClaimsOf(calibration) {
+  return calibration.findings.slice(calibration.dispatchFrom ?? 0);
+}
+
+/** Pure: did the calibration grade a different sweep than the register now records? */
+function sweepMismatch(register, calibration) {
+  return calibration.sweptBase !== register.sweptBase || calibration.sweptHead !== register.sweptHead;
+}
+
+/** A calibration write needs an OPEN dispatch — only `calibrate` opens one, pinned to the sweep. */
+function parseCalibrationForWrite(text, id) {
+  if (text === null) die(`no calibration dispatch open for '${id}' — a dispatch begins with 'calibrate ${id}', not with a write\n  fix: node tools/adversarial-runner.mjs calibrate ${id}`);
+  return parseRegisterForWrite(text, id, calibrationPath(id));
+}
+
+/**
+ * Grade the OPEN dispatch at the law's bar, or die on every precondition the verdict owes. The
+ * load, the sweep check and the dispatch slice are one seam, so the self-test drives the wiring
+ * against real files — not only the pure helpers, whose call sites a revert could silently drop.
+ */
+function gradeCalibration(id, registerPath = findingsPath(id), path = calibrationPath(id)) {
+  const { ok, register } = loadFindings(registerPath);
   if (!ok || register === null) die(`no findings register for '${id}' — calibrate it first`);
   const known = knownDefectsOf(register);
-  const { ok: calibrationOk, register: calibration, error } = loadFindings(calibrationPath(id));
-  if (!calibrationOk) die(`the calibration register does not parse: ${error}`);
+  const { ok: calibrationOk, register: calibration, error } = loadFindings(path);
+  if (!calibrationOk) die(`the calibration register does not parse: ${error}${registerRepair(path, id)}`);
   if (calibration === null) die(`no calibration register for '${id}' — run calibrate, dispatch, and calibrate-record first`);
-  if (calibration.sweptBase !== register.sweptBase || calibration.sweptHead !== register.sweptHead) {
-    die(`the calibration graded a different sweep than the register now records — the wave was re-prepared between record and verdict (the f12 finding)\n  rule: a verdict about a correspondence that no longer exists certifies nothing\n  fix: re-run calibrate ${id} against the current register and re-dispatch`);
+  if (sweepMismatch(register, calibration)) {
+    die(`the calibration graded a different sweep than the register now records — the wave was re-prepared between record and verdict (the f12 finding)\n  rule: a verdict about a correspondence that no longer exists certifies nothing\n  fix: node tools/adversarial-runner.mjs calibrate ${id}   (opens a fresh dispatch pinned to the current sweep), then re-dispatch and calibrate-record`);
   }
-  return { register, known, calibration };
+  return calibrationVerdict(known, dispatchClaimsOf(calibration), barOf(known.length));
 }
 
 function cmdCalibrateVerdict(args) {
@@ -627,14 +897,12 @@ function cmdCalibrateVerdict(args) {
   if (!id) die("usage: calibrate-verdict <past-task-id>");
   requireKebabId(id);
   if (args.bar !== undefined) die(`--bar is refused: the bar is the law — two-thirds of the known defects, rounded up — and a knob that lowers it would make the grader's failure optional (the f1 finding, demonstrated live at --bar 1)\n  fix: calibrate against a wave whose lanes can genuinely clear barOf(known), or strengthen the checklist`);
-  const { known, calibration } = calibrationInputsOf(id);
-  const bar = barOf(known.length);
-  const verdict = calibrationVerdict(known, calibration.findings, bar);
+  const verdict = gradeCalibration(id);
   // The verdict is DURABLE (the f1 finding: a pass with no trace is indistinguishable from a
   // lawful one): the register records what was judged, at which bar, and when.
   mutateJson(calibrationPath(id), (text) => {
-    const base = JSON.parse(text);
-    return { ...base, calibrationVerdict: { rediscovered: verdict.rediscovered, known: verdict.known, bar, passed: !verdict.refuse, at: new Date().toISOString() } };
+    const base = parseCalibrationForWrite(text, id);
+    return { ...base, calibrationVerdict: { rediscovered: verdict.rediscovered, known: verdict.known, bar: verdict.bar, passed: !verdict.refuse, at: new Date().toISOString() } };
   });
   if (verdict.refuse) {
     die(`CALIBRATION FAILED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s), bar ${verdict.bar}\n  rule: the lanes are the grader, and a grader that cannot fail is not a grader — a wave dispatched by lanes that miss two-thirds of past escapes certifies nothing\n  fix: strengthen the checklist's escape classes (docs/ADVERSARIAL-CHECKLIST.md) or the bundle's audit law, then re-calibrate`);
@@ -683,6 +951,20 @@ function selfTestCalibration(fail) {
     })()],
     ["fewer than three known defects refuses — insufficient signal pins nothing", calibrationVerdict([{ severity: "HIGH", claim: "a" }], ["a"], 1).refuse],
     ["an empty claim never matches", !rediscovers(walk, "")],
+    ["a re-calibration grades ONLY the new dispatch and re-pins the sweep — retries never pile up into a pass", (() => {
+      const earlier = [1, 2, 3, 4, 5].reduce((c, n) => appendFinding(c, { id: `f${n}`, lane: 1, severity: "LOW", claim: `first dispatch claim ${n}` }), { ...emptyFindings("t9"), calibration: true, sweptBase: "b1", sweptHead: "h1" });
+      const reopened = openDispatch(earlier, { sweptBase: "b2", sweptHead: "h2" }, "t9", "2026-09-27T00:00:00.000Z");
+      const second = appendFinding(reopened, { id: "f6", lane: 2, severity: "LOW", claim: "second dispatch claim" });
+      const graded = dispatchClaimsOf(second);
+      return second.findings.length === 6 && graded.length === 1 && graded[0].id === "f6" && !sweepMismatch({ sweptBase: "b2", sweptHead: "h2" }, second);
+    })()],
+    ["a first calibration opens its dispatch at zero, pinned to the register's sweep", (() => {
+      const first = openDispatch(null, { sweptBase: "b1", sweptHead: "h1" }, "t9", "2026-09-27T00:00:00.000Z");
+      return first.task === "t9" && first.calibration === true && first.dispatchFrom === 0 && validateFindings(first) === null && !sweepMismatch({ sweptBase: "b1", sweptHead: "h1" }, first);
+    })()],
+    ["a reopened dispatch carries no closed epoch's calibrationVerdict — a pass graded on another dispatch never sits beside the new sweep", !("calibrationVerdict" in openDispatch({ ...emptyFindings("t9"), calibration: true, calibrationVerdict: { passed: true } }, { sweptBase: "b2", sweptHead: "h2" }, "t9", "2026-09-27T00:00:00.000Z"))],
+    ["a legacy register with no dispatch mark is graded whole", dispatchClaimsOf({ findings: [{ id: "f1" }, { id: "f2" }] }).length === 2],
+    ["a re-prepared wave's sweep mismatches the calibration it had", sweepMismatch({ sweptBase: "b1", sweptHead: "h9" }, { sweptBase: "b1", sweptHead: "h1" })],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner (calibration): ${name}`);
   return cases.length;
@@ -691,7 +973,7 @@ function selfTestCalibration(fail) {
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
-  const unitCases = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail) + selfTestCalibration(fail);
+  const unitCases = selfTestLanes(fail) + selfTestBundle(fail) + selfTestAggregation(fail) + selfTestCalibration(fail) + selfTestChecklist(fail) + selfTestDedup(fail) + selfTestCliRefusals(fail) + selfTestRegisterFiles(fail);
   const laneCases = [
     ["lane beyond the checklist refused", laneRefusal(99, 8) !== null],
     ["lane within the checklist allowed", laneRefusal(3, 8) === null],

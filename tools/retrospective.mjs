@@ -20,7 +20,8 @@
  * Nothing is written to the repo: the index is a derivation over committed registers, so it can
  * never drift from them.
  */
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -99,13 +100,15 @@ export function lessonsIndex(registers) {
   };
 }
 
-/** Read every findings register under `dir`; a malformed one is skipped and counted, never fatal. */
+/** Read every findings register under `dir`; a malformed one is skipped and counted, never fatal.
+ *  Anchored on the suffix: the writer's .lock/.tmp sidecars are not registers, and a killed
+ *  writer's orphan must not turn the battery red as a "malformed register" git status never shows. */
 export function loadRegisters(dir = STATE_DIR) {
   const registers = [];
   let skipped = 0;
   let entries = [];
   try {
-    entries = readdirSync(dir).filter((f) => f.includes(".findings."));
+    entries = readdirSync(dir).filter((f) => f.endsWith(".findings.json"));
   } catch {
     return { registers, skipped };
   }
@@ -215,10 +218,33 @@ function selfTestLoader() {
       failures += 1;
       console.error(`retrospective SELF-TEST FAIL (loader): the malformed register must be counted, got skipped=${skipped}`);
     }
+    // task-findings' lock and write-then-rename sidecars: gitignored, orphaned by a killed writer.
+    writeFileSync(join(dir, "t-real.findings.json.lock"), "");
+    writeFileSync(join(dir, "t-real.findings.json.tmp"), JSON.stringify(valid));
+    const sidecars = loadRegisters(dir);
+    if (sidecars.registers.length !== 1 || sidecars.skipped !== 1) {
+      failures += 1;
+      console.error(`retrospective SELF-TEST FAIL (loader): a .lock/.tmp sidecar is not a register (got ${sidecars.registers.length} loaded, ${sidecars.skipped} skipped)`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  return { failures, count: 2 };
+  return { failures, count: 3 };
+}
+
+/** The entry guard's law: a run through a symlinked path still RUNS — never a silent exit-0 no-op. */
+function selfTestSymlinkedEntry() {
+  const dir = mkdtempSync(join(tmpdir(), "retrospective-link-"));
+  try {
+    const link = join(dir, "retro-link.mjs");
+    symlinkSync(fileURLToPath(import.meta.url), link);
+    const run = spawnSync(process.execPath, [link, "--json"], { encoding: "utf8" });
+    if ((run.stdout ?? "").startsWith("{")) return 0;
+    console.error("retrospective SELF-TEST FAIL (entry): a symlinked invocation ran nothing and exited silently");
+    return 1;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** Pure cases first; the loader gets real temp files (one malformed) — a vacuous sweep is visible here. */
@@ -240,14 +266,16 @@ export function selfTest() {
       console.error(`retrospective SELF-TEST FAIL: ${name}`);
     }
   }
-  failures += loader.failures;
+  failures += loader.failures + selfTestSymlinkedEntry();
   console.log(
-    failures === 0 ? `retrospective self-test: OK (${cases.length} cases + ${loader.count} loader cases)` : `retrospective self-test: FAILED (${failures} failure(s))`,
+    failures === 0 ? `retrospective self-test: OK (${cases.length} cases + ${loader.count} loader cases + 1 entry case)` : `retrospective self-test: FAILED (${failures} failure(s))`,
   );
   return failures === 0;
 }
 
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+// realpath: Node resolves the main module through symlinks, so an unresolved argv never matches
+// and a symlinked run would exit 0 having run nothing (the caf5c64 law its siblings carry).
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
   const topFlag = process.argv.indexOf("--top");

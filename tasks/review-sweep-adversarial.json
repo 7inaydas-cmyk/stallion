@@ -1,0 +1,165 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-adversarial",
+  "title": "2026-09-27 code-review sweep: the adversarial group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:08.955Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "db4ab734c145402ed5deb20b6d0bdb8573086943f9af13c66e6cb52202291aba"
+    },
+    {
+      "at": "2026-09-27T05:54:08.990Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "db4ab734c145402ed5deb20b6d0bdb8573086943f9af13c66e6cb52202291aba",
+      "entry_hash": "3197f88b157e1fc292d2479966a834fb3db745a804c29effa707f8741d2f74f2"
+    },
+    {
+      "at": "2026-09-27T05:54:09.022Z",
+      "type": "scope",
+      "patterns": [
+        "tools/adversarial-runner.mjs",
+        "tools/retrospective.mjs",
+        "tools/task-workspace.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "3197f88b157e1fc292d2479966a834fb3db745a804c29effa707f8741d2f74f2",
+      "entry_hash": "fe398b6b74afbf6dc8faff6f8d63808b3c48dcf9b524623aaa67c285118ecfc5"
+    },
+    {
+      "at": "2026-09-27T05:54:09.050Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "fe398b6b74afbf6dc8faff6f8d63808b3c48dcf9b524623aaa67c285118ecfc5",
+      "entry_hash": "10cb7361d70d201ee8e238862ec20c3d223b2debeb5f7518c1061a30ad8262e7"
+    },
+    {
+      "at": "2026-09-27T06:10:52.219Z",
+      "type": "red-check",
+      "expect": "a \\.lock/\\.tmp sidecar is not a register",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e36000e1687a",
+      "seq": 4,
+      "parent_hash": "10cb7361d70d201ee8e238862ec20c3d223b2debeb5f7518c1061a30ad8262e7",
+      "entry_hash": "7ea09669949f6bb0ef5b540653d3b2dbb4934460ef5522b3ae0c215def1c5379"
+    },
+    {
+      "at": "2026-09-27T06:10:52.305Z",
+      "type": "red-check",
+      "expect": "a symlinked invocation ran nothing and exited silently",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e36000e1687a",
+      "seq": 5,
+      "parent_hash": "7ea09669949f6bb0ef5b540653d3b2dbb4934460ef5522b3ae0c215def1c5379",
+      "entry_hash": "fde0ef8bcf54e611110a5a1b2c5d88aec349d275cea47845a15fa776644429ad"
+    },
+    {
+      "at": "2026-09-27T06:11:15.455Z",
+      "type": "red-check",
+      "expect": "the forget refusal's verify command names the real workspace revision",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6e485d747274",
+      "seq": 6,
+      "parent_hash": "fde0ef8bcf54e611110a5a1b2c5d88aec349d275cea47845a15fa776644429ad",
+      "entry_hash": "0ea8f7da87b9130dc0aa397a3eba9c4dd752c1247f199815f66808ae1fb4f5c2"
+    },
+    {
+      "at": "2026-09-27T06:11:15.518Z",
+      "type": "red-check",
+      "expect": "the landing law exports a patch git apply accepts",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6e485d747274",
+      "seq": 7,
+      "parent_hash": "0ea8f7da87b9130dc0aa397a3eba9c4dd752c1247f199815f66808ae1fb4f5c2",
+      "entry_hash": "19d5ff9bf6eedcb9dc11a08bbcd9a265373f5c23b9fe29d2600e060d06cebc7b"
+    },
+    {
+      "at": "2026-09-27T06:16:21.806Z",
+      "type": "red-check",
+      "expect": "a prepared bundle names the pinned base\\.\\.head its register certifies as swept",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "63a326b219f9",
+      "seq": 8,
+      "parent_hash": "19d5ff9bf6eedcb9dc11a08bbcd9a265373f5c23b9fe29d2600e060d06cebc7b",
+      "entry_hash": "ada323e243bd8b93276c96f792824ff10839c41ff5ce93e1094943ed1cbb7019"
+    },
+    {
+      "at": "2026-09-27T06:16:21.872Z",
+      "type": "red-check",
+      "expect": "a re-calibration grades ONLY the new dispatch and re-pins the sweep",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "63a326b219f9",
+      "seq": 9,
+      "parent_hash": "ada323e243bd8b93276c96f792824ff10839c41ff5ce93e1094943ed1cbb7019",
+      "entry_hash": "9af17b6c785c72cfab8eece6f5a8c0978da826596df98e194a5d6be7ee910224"
+    },
+    {
+      "at": "2026-09-27T06:16:21.941Z",
+      "type": "red-check",
+      "expect": "a missing checklist REFUSES with a fix line",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "63a326b219f9",
+      "seq": 10,
+      "parent_hash": "9af17b6c785c72cfab8eece6f5a8c0978da826596df98e194a5d6be7ee910224",
+      "entry_hash": "544a307c1626d36c9d4e66a141a8438cc058a01b2cd7f6b60e156d759ff999b1"
+    },
+    {
+      "at": "2026-09-27T06:16:22.012Z",
+      "type": "red-check",
+      "expect": "a DIFFERENT claim citing the same evidence refuses",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "63a326b219f9",
+      "seq": 11,
+      "parent_hash": "544a307c1626d36c9d4e66a141a8438cc058a01b2cd7f6b60e156d759ff999b1",
+      "entry_hash": "1aea2db83df27a9f6d8ebb9fa9e7d44a9aaff1b1a882496f817494e065e1d8e3"
+    },
+    {
+      "at": "2026-09-27T06:30:57.957Z",
+      "type": "red-check",
+      "expect": "a broken register's repair never prints a git checkout",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "43ec2928f420",
+      "seq": 12,
+      "parent_hash": "1aea2db83df27a9f6d8ebb9fa9e7d44a9aaff1b1a882496f817494e065e1d8e3",
+      "entry_hash": "348f0f24c7f5db2c10a24a1756407a616ea02e394f38b7734ee22e246b1b14b1"
+    },
+    {
+      "at": "2026-09-27T06:30:58.433Z",
+      "type": "red-check",
+      "expect": "the DIFFERENT-claim refusal's printed record command carries the standing claim through a shell",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "43ec2928f420",
+      "seq": 13,
+      "parent_hash": "348f0f24c7f5db2c10a24a1756407a616ea02e394f38b7734ee22e246b1b14b1",
+      "entry_hash": "d9988d65b1de08544c49788225afaee2aea2dd324d15562a91e9a24fed91cd87"
+    },
+    {
+      "at": "2026-09-27T06:30:58.502Z",
+      "type": "red-check",
+      "expect": "a reopened dispatch carries no closed epoch's calibrationVerdict",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "43ec2928f420",
+      "seq": 14,
+      "parent_hash": "d9988d65b1de08544c49788225afaee2aea2dd324d15562a91e9a24fed91cd87",
+      "entry_hash": "41c7854baa09b0b4395c02616f3e2b524cbac0f923d769859055615e49746303"
+    }
+  ]
+}
