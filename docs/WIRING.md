@@ -358,7 +358,13 @@ caught — which is why this paragraph carries no count to go stale.
   (`docs/gates/complexity.json` + baseline). The test-names hatch ships CLOSED here (stallion's
   tests are embedded self-tests); vendors with test files open it via `testGlobs`.
 - `guard-reach` — each registered guard is PROVEN to reach a newly-added file in its corpus
-  (genuine violations planted into an index copy; `docs/gates/guard-reach.json`).
+  (genuine violations planted into an index copy; `docs/gates/guard-reach.json`). The baseline
+  and probe runs use a copy of HEAD's index, so a registered guard must reach a verdict when HEAD
+  lists a path the disk lacks — the state of every uncommitted `git rm` or `git mv`. A guard that
+  lists the index and reads the disk crashes there, and guard-reach reports it INCONCLUSIVE:
+  test-lint and complexity-gate skip such a path (their `listedOnDisk`). doc-reconcile refuses a
+  vanished tracked file on purpose (`readCorpus`), which is a second reason it stays under
+  `notRegistered`.
 - `gate-registry` — every gate invocation declared once in `docs/gates/gate-registry.json` and
   drift-checked across the transports that carry it, both directions: missing from a declared
   transport, or shadowing in an undeclared one.
@@ -415,5 +421,11 @@ not rewrite them in the push they fence — the same precedent as the hooks and 
 Nothing stops a hand-edited record; the git history of the record file is the evidence trail.
 Per-commit battery greenness is not enforced: `npm run selftest` runs at `advance verified` and
 in CI on the pushed tip, and no local hook runs it, so an intermediate commit of a multi-commit
-landing can be red while the tip is green. These are boundaries, not gaps, and they are stated so nobody has to
+landing can be red while the tip is green. test-lint and complexity-gate judge the working tree:
+a tracked path missing from disk whose content equals HEAD is skipped and named on stderr (the
+exit code is unchanged), and one whose index content differs from HEAD (staged, then deleted)
+refuses, since the next commit would carry content neither tool can read. Deleting or moving a
+file that has complexity-baseline rows still needs a baseline refresh in the same task — that
+refresh is fence surface, so the task is protected, and guard-reach reads INCONCLUSIVE until it
+lands. These are boundaries, not gaps, and they are stated so nobody has to
 discover them.

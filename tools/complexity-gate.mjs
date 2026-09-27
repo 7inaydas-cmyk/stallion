@@ -54,7 +54,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -164,13 +164,55 @@ function die(message) {
  * perform, found only by a falsification sweep because the output was green and correct-looking.
  *
  * `-z`, split on NUL: without it git C-quotes a non-ASCII path and the quoted name matches no glob.
+ *
+ * The LIST is the index and the scan reads the WORKING TREE, so this one site guards both readers
+ * (scan and testMentions). A listed path missing from disk whose content equals HEAD (an unstaged
+ * rm, or any `git rm`/`git mv` under guard-reach's HEAD-index baseline) is skipped and NAMED via
+ * `note` — named, so an accidental rm is not "fixed" with --update-baseline. One missing while the
+ * index holds content HEAD does not (staged, then deleted) refuses: the next commit carries it and
+ * nothing here can read it. Exported for the self-test's child probe, since the refusal exits.
+ * ponytail: working tree only — reading the index blob (`git show :path`) was rejected: under the
+ * HEAD index it re-scans a `git rm`'d file whose baseline rows the author removed and reports it
+ * born convoluted, the same false red again.
  */
-function trackedFiles(globs, excludes, cwd = ROOT, env = process.env) {
-  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd, env })
+export function trackedFiles(globs, excludes, cwd = ROOT, env = process.env, note = console.error) {
+  const listed = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd, env })
     .split("\0")
     .filter(Boolean)
     .filter((f) => globs.some((g) => matches(f, g)) && !excludes.some((g) => matches(f, g)));
+  const { present, stagedMissing, skipped } = listedOnDisk(cwd, env, listed);
+  for (const p of stagedMissing) console.error(`complexity-gate: ${stagedMissingRefusal(p)}`);
+  if (stagedMissing.length > 0) process.exit(1);
+  if (skipped.length > 0) note(`complexity-gate: skipped ${skipped.length} tracked path(s) missing from disk (content equals HEAD): ${skipped.map(shq).join(" ")}`);
+  return present;
 }
+
+/**
+ * Index-listed paths, split by what the disk holds: `present` is read; `stagedMissing` is missing
+ * from disk while its index entry differs from HEAD — refused; `skipped` is missing with content
+ * equal to HEAD, judged when it landed. Under guard-reach's HEAD-index copy `diff --cached` is
+ * empty, so a correct `git rm`/`git mv` is skipped rather than refused. `--relative` keeps diff's
+ * names in ls-files' cwd-relative form. Duplicated in test-lint on purpose: each guard stays
+ * standalone for vendoring.
+ */
+function listedOnDisk(cwd, env, files) {
+  const split = { present: [], stagedMissing: [], skipped: [] };
+  let staged = null;
+  for (const f of files) {
+    if (statSync(join(cwd, f), { throwIfNoEntry: false })?.isFile()) {
+      split.present.push(f);
+      continue;
+    }
+    staged ??= new Set(execFileSync("git", ["diff", "--cached", "--name-only", "-z", "--relative"], { cwd, env, encoding: "utf8" }).split("\0"));
+    (staged.has(f) ? split.stagedMissing : split.skipped).push(f);
+  }
+  return split;
+}
+
+const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
+
+const stagedMissingRefusal = (p) =>
+  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion (git rm -- ${shq(p)})`;
 
 const FUNCTION_KINDS = new Set([
   ts.SyntaxKind.FunctionDeclaration,
@@ -559,7 +601,11 @@ function selfTestOptOut(fail) {
  *  output (`"tools/caf\303\251.mjs"`), which no include glob matches — the file fell out of the
  *  scan with nothing printed. Driven in a scratch repo with the inherited GIT_* env removed: inside
  *  a hook GIT_DIR / GIT_INDEX_FILE name the HOST repo. core.quotePath is forced back on: under a
- *  user's `quotepath = false` git prints the name raw and a listing without -z passed this case. */
+ *  user's `quotepath = false` git prints the name raw and a listing without -z passed this case.
+ *  The same listing is the INDEX while the scan reads the DISK: a committed source deleted but not
+ *  staged (or any `git rm` judged under guard-reach's HEAD-index baseline) died on ENOENT in scan().
+ *  It must be skipped AND named, while a tracked source still on disk (kept) and an untracked one
+ *  (café) both still reach the scan — a filter that dropped every index path would pass the rest. */
 function selfTestTrackedNames(fail) {
   const dir = mkdtempSync(join(tmpdir(), "complexity-gate-ls-"));
   const env = {
@@ -568,15 +614,38 @@ function selfTestTrackedNames(fail) {
     GIT_CONFIG_KEY_0: "core.quotePath",
     GIT_CONFIG_VALUE_0: "true",
   };
+  const git = (...args) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, env, stdio: "ignore" });
   try {
     mkdirSync(join(dir, "tools"));
-    writeFileSync(join(dir, "tools", "café.mjs"), "x\n");
-    execFileSync("git", ["init", "-q"], { cwd: dir, env, stdio: "ignore" });
-    const seen = trackedFiles(["tools/**/*.mjs"], [], dir, env);
+    for (const name of ["café.mjs", "kept.mjs", "gone.mjs"]) writeFileSync(join(dir, "tools", name), "x\n");
+    git("init", "-q");
+    git("add", "tools/kept.mjs", "tools/gone.mjs");
+    git("commit", "-q", "-m", "seed");
+    rmSync(join(dir, "tools", "gone.mjs"));
+    const notes = [];
+    const seen = trackedFiles(["tools/**/*.mjs"], [], dir, env, (line) => notes.push(line));
     if (!seen.includes("tools/café.mjs")) fail(`quoted-path-invisible: a non-ASCII source path never reaches the scan (saw: ${seen.join(", ")})`);
+    if (!seen.includes("tools/kept.mjs")) fail(`present-source-dropped: a tracked source present on disk never reaches the scan (saw: ${seen.join(", ")})`);
+    if (seen.includes("tools/gone.mjs")) fail(`vanished-source-read: a tracked source missing from disk is still handed to the reader (saw: ${seen.join(", ")})`);
+    if (!notes.join("\n").includes("tools/gone.mjs")) fail(`vanished-source-silent: a skipped tracked source is not named, so an accidental rm reads as a stale baseline to refresh (notes: ${notes.join(" | ")})`);
+    selfTestStagedMissing(fail, dir, env, git);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** Content staged and then deleted from disk exists only in the index: skipping it would pass the
+ *  commit that carries it, so the listing REFUSES with the two remedies. Run in a child, because
+ *  the refusal exits the process. */
+function selfTestStagedMissing(fail, dir, env, git) {
+  writeFileSync(join(dir, "tools", "new.mjs"), "x\n");
+  git("add", "tools/new.mjs");
+  rmSync(join(dir, "tools", "new.mjs"));
+  const probe = `(await import(${JSON.stringify(import.meta.url)})).trackedFiles(["tools/**/*.mjs"], [], ${JSON.stringify(dir)});`;
+  const run = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { encoding: "utf8", env });
+  const refusal = "complexity-gate: tools/new.mjs is staged but missing from disk";
+  const fix = "fix: restore it (git checkout -- tools/new.mjs) or stage the deletion (git rm -- tools/new.mjs)";
+  if (run.status !== 1 || !run.stderr.includes(refusal) || !run.stderr.includes(fix)) fail(`staged-missing-unjudged: staged content missing from disk must refuse with its remedy (exit ${run.status}: ${run.stderr.trim()})`);
 }
 
 function selfTestJudgeCollisions(fail) {

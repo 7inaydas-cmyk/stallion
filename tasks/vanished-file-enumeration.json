@@ -1,0 +1,65 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "vanished-file-enumeration",
+  "title": "S4 (antitube-v2 audit Phase 0): test-lint and complexity-gate stop handing index-listed paths missing from disk to the reader",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T18:31:33.029Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "c22caa7f43d1d2cda82b20f7213090a1bde5748ca409ef4ccb01d0e6699c5eca"
+    },
+    {
+      "at": "2026-09-27T18:31:33.064Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "c22caa7f43d1d2cda82b20f7213090a1bde5748ca409ef4ccb01d0e6699c5eca",
+      "entry_hash": "78749f5cbcee3f7b9cc94eeae9e56b5b5f2a85253534aae9250a04bb4a8129a6"
+    },
+    {
+      "at": "2026-09-27T18:31:33.102Z",
+      "type": "scope",
+      "patterns": [
+        "tools/test-lint.mjs",
+        "tools/complexity-gate.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "78749f5cbcee3f7b9cc94eeae9e56b5b5f2a85253534aae9250a04bb4a8129a6",
+      "entry_hash": "f55da1d15ad44b4b274aab795e6469a7f3ce0e6f3a368ca478629e2a65a59107"
+    },
+    {
+      "at": "2026-09-27T18:31:33.135Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "f55da1d15ad44b4b274aab795e6469a7f3ce0e6f3a368ca478629e2a65a59107",
+      "entry_hash": "d4434f8364468ef75fff456c7a74f9cd430724b27e248f42a7e2fce6cd52e655"
+    },
+    {
+      "at": "2026-09-27T18:36:15.842Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: vanished-test-file-read",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6070718a8bd4",
+      "seq": 4,
+      "parent_hash": "d4434f8364468ef75fff456c7a74f9cd430724b27e248f42a7e2fce6cd52e655",
+      "entry_hash": "7daeff2f5bc8d558b558a9c84f07a695f45af3c95516fc932f87b64c7f92a445"
+    },
+    {
+      "at": "2026-09-27T18:36:15.992Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: vanished-source-read",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "cdef1fe37eef",
+      "seq": 5,
+      "parent_hash": "7daeff2f5bc8d558b558a9c84f07a695f45af3c95516fc932f87b64c7f92a445",
+      "entry_hash": "91ab816302bdbfda02b1147f0026c2f92fc892356df1f4560bd761ccf14fa578"
+    }
+  ]
+}

@@ -32,12 +32,15 @@
  *   legitimately appears in both the seed and the assertion), so it prints and never blocks.
  *
  * PORT NOTES. Discovery here is shape-based, not path-based: no hardcoded package roots. With no
- * arguments the tool discovers `*.test.*` / `*.spec.*` files via `git ls-files`; explicit paths
- * are linted as given, because in this repo the tests are embedded self-tests inside plain `.mjs`
- * tools rather than separately named test files. If this gate joins the selftest battery, its
- * `--self-test` must run before it is trusted to block anything, and a defective version is
- * validated by running it directly — the file on disk is what executes, so a corrected version
- * takes effect without being committed first.
+ * arguments the tool discovers `*.test.*` / `*.spec.*` files via `git ls-files` (the INDEX); a
+ * listed path missing from disk is skipped and named when its content equals HEAD, and refused when
+ * the index holds content HEAD does not (staged, then deleted). The lint judges the working tree:
+ * staged content that differs from a file still on disk (staged, then edited) is outside its view.
+ * Explicit paths are linted as given, because in this repo the tests are embedded self-tests inside
+ * plain `.mjs` tools rather than separately named test files. If this gate joins the selftest
+ * battery, its `--self-test` must run before it is trusted to block anything, and a defective
+ * version is validated by running it directly — the file on disk is what executes, so a corrected
+ * version takes effect without being committed first.
  *
  * USAGE
  *   node tools/test-lint.mjs              lint discovered test files; non-zero on a blocking finding
@@ -46,8 +49,8 @@
  *   node tools/test-lint.mjs --self-test  prove each check discriminates
  */
 
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,17 +58,58 @@ import { fileURLToPath } from "node:url";
 const TEST_RE = /\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/;
 const LINTABLE_RE = /\.(ts|tsx|mjs|js|cjs)$/;
 
-/** Tracked `*.test.*` / `*.spec.*` files. `-z`, split on NUL: without it git C-quotes a non-ASCII
- *  path and the quoted name never matches TEST_RE. */
+/** Tracked `*.test.*` / `*.spec.*` files, split by what the disk holds (see listedOnDisk). `-z`,
+ *  split on NUL: without it git C-quotes a non-ASCII path and the quoted name never matches TEST_RE.
+ *  The list is the index and the read is the disk, so a listed path missing from disk (an unstaged
+ *  rm, or any `git rm`/`git mv` judged under guard-reach's HEAD-index baseline) is never read. */
 function discoverTestFiles(cwd = process.cwd(), env = process.env) {
-  return execFileSync("git", ["ls-files", "-z"], { cwd, env, encoding: "utf8" })
+  const listed = execFileSync("git", ["ls-files", "-z"], { cwd, env, encoding: "utf8" })
     .split("\0")
     .filter((f) => TEST_RE.test(f));
+  return listedOnDisk(cwd, env, listed);
+}
+
+/**
+ * Index-listed paths, split by what the disk holds: `present` is read; `stagedMissing` is missing
+ * from disk while its index entry differs from HEAD, so the next commit carries content this tool
+ * cannot read — refused; `skipped` is missing with content equal to HEAD, judged when it landed.
+ * Under guard-reach's HEAD-index copy `diff --cached` is empty, so a correct `git rm`/`git mv` is
+ * skipped rather than refused. `--relative` keeps diff's names in ls-files' cwd-relative form.
+ * Duplicated in complexity-gate on purpose: each guard stays standalone for vendoring.
+ */
+function listedOnDisk(cwd, env, files) {
+  const split = { present: [], stagedMissing: [], skipped: [] };
+  let staged = null;
+  for (const f of files) {
+    if (statSync(join(cwd, f), { throwIfNoEntry: false })?.isFile()) {
+      split.present.push(f);
+      continue;
+    }
+    staged ??= new Set(execFileSync("git", ["diff", "--cached", "--name-only", "-z", "--relative"], { cwd, env, encoding: "utf8" }).split("\0"));
+    (staged.has(f) ? split.stagedMissing : split.skipped).push(f);
+  }
+  return split;
+}
+
+const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
+
+const stagedMissingRefusal = (p) =>
+  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion (git rm -- ${shq(p)})`;
+
+/** Discovery as main uses it: staged-but-missing content refuses (exit 1, the rest still linted, as
+ *  for a missing positional path); skipped paths are NAMED, so an accidental rm is seen. */
+function discovered() {
+  const { present, stagedMissing, skipped } = discoverTestFiles();
+  for (const p of stagedMissing) console.error(`test-lint: ${stagedMissingRefusal(p)}`);
+  if (stagedMissing.length > 0) process.exitCode = 1;
+  if (skipped.length > 0) console.error(`test-lint: skipped ${skipped.length} tracked path(s) missing from disk (content equals HEAD): ${skipped.map(shq).join(" ")}`);
+  return present;
 }
 
 /**
  * Explicit paths are walked as given: a file is linted as-is, a directory recursively for
- * lintable code files. `node_modules` and `.git` are never descended into.
+ * lintable REGULAR files — a dangling symlink died on ENOENT and a FIFO would hang the read.
+ * `node_modules` and `.git` are never descended into.
  */
 function expandPaths(args) {
   const out = [];
@@ -88,7 +132,7 @@ function walk(dir, prefix = dir) {
     const full = `${dir}/${entry}`;
     const stat = statSync(full, { throwIfNoEntry: false });
     if (stat?.isDirectory()) out.push(...walk(full, prefix));
-    else if (LINTABLE_RE.test(entry)) out.push(full);
+    else if (stat?.isFile() && LINTABLE_RE.test(entry)) out.push(full);
   }
   return out;
 }
@@ -269,7 +313,67 @@ function discoversNonAsciiTest() {
     writeFileSync(join(dir, "café.test.mjs"), "x\n");
     execFileSync("git", ["init", "-q"], { cwd: dir, env, stdio: "ignore" });
     execFileSync("git", ["add", "café.test.mjs"], { cwd: dir, env, stdio: "ignore" });
-    return discoverTestFiles(dir, env).includes("café.test.mjs");
+    return discoverTestFiles(dir, env).present.includes("café.test.mjs");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** A scratch-repo git with an identity and none of the user's hooks or signing. */
+const scratchGit = (dir, env) => (...args) =>
+  execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, env, stdio: "ignore" });
+
+/** This lint in discovery mode, run as a child in `dir`: its exit status and both streams. */
+function lintIn(dir, env) {
+  const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { cwd: dir, env, encoding: "utf8" });
+  return { status: run.status, out: `${run.stdout}\n${run.stderr}` };
+}
+
+/** The index is the LIST and the disk is the TEXT. A committed test file deleted but not staged is
+ *  in one and not the other: it was handed to readFileSync and the lint died on ENOENT — and under
+ *  guard-reach's HEAD-index baseline every correct `git rm` / `git mv` did the same. Its content
+ *  equals HEAD, so it is skipped and NAMED; a violation beside it must still be caught. Content
+ *  staged and then deleted exists only in the index, so skipping it would pass a commit carrying
+ *  it: that one refuses with the two remedies. Driven for real, in a scratch repo. */
+function vanishedTestCases(t) {
+  const dir = mkdtempSync(join(tmpdir(), "test-lint-gone-"));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+  const git = scratchGit(dir, env);
+  try {
+    writeFileSync(join(dir, "kept.test.mjs"), "expect(true).toBe(true);\n");
+    writeFileSync(join(dir, "gone.test.mjs"), "x\n");
+    git("init", "-q");
+    git("add", "kept.test.mjs", "gone.test.mjs");
+    git("commit", "-q", "-m", "seed");
+    rmSync(join(dir, "gone.test.mjs"));
+    const gone = lintIn(dir, env);
+    t(
+      "vanished-test-file-read: a tracked test file missing from disk is not handed to the reader",
+      gone.status === 1 && gone.out.includes("kept.test.mjs:1 TAUTOLOGY") && gone.out.includes("skipped 1 tracked path(s) missing from disk (content equals HEAD): gone.test.mjs") && !gone.out.includes("ENOENT"),
+    );
+    writeFileSync(join(dir, "kept.test.mjs"), "expect(a).toBe(b);\n");
+    writeFileSync(join(dir, "new.test.mjs"), "x\n");
+    git("add", "new.test.mjs");
+    rmSync(join(dir, "new.test.mjs"));
+    const staged = lintIn(dir, env);
+    t(
+      "staged-missing-test-unjudged: a staged test file missing from disk refuses with its remedy",
+      staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git checkout -- new.test.mjs) or stage the deletion (git rm -- new.test.mjs)"),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** walk() handed any LINTABLE_RE name to the reader, so a dangling symlink under a walked
+ *  directory died on ENOENT (and a FIFO would hang the read): only a regular file is lintable. */
+function walksPastDanglingLink() {
+  const dir = mkdtempSync(join(tmpdir(), "test-lint-walk-"));
+  try {
+    writeFileSync(join(dir, "real.mjs"), "x\n");
+    symlinkSync("nowhere.mjs", join(dir, "dangle.mjs"));
+    const seen = walk(dir);
+    return seen.length === 1 && seen[0] === `${dir}/real.mjs`;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -367,6 +471,8 @@ function selfTest() {
   t("advisory ignores an unseeded expectation", findEchoedExpectations('expect(row.caption).toBe("hello world");').length === 0);
   // Discovery must see every tracked test file byte for byte, not git's C-quoted rendering of it.
   t("quoted-test-path-invisible: a non-ASCII test file is discovered", discoversNonAsciiTest());
+  vanishedTestCases(t);
+  t("dangling-link-read: walk() hands only regular files to the reader", walksPastDanglingLink());
 
   let ok = true;
   for (const [name, pass] of cases) {
@@ -383,7 +489,7 @@ function main() {
   if (process.argv.includes("--self-test")) return selfTest() ? 0 : 1;
   const showAdvisory = process.argv.includes("--advisory");
   const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-  const files = positional.length > 0 ? expandPaths(positional) : discoverTestFiles();
+  const files = positional.length > 0 ? expandPaths(positional) : discovered();
 
   const blocking = [];
   const advisory = [];
