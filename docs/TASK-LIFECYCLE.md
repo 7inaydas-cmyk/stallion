@@ -31,7 +31,8 @@ remembered.
 
 - Phases advance one at a time, in order. No skips, no backwards moves, nothing leaves `done` —
   and no command appends to a `done` or `retired` record (a pin or exemption recorded after the
-  done gate never faced it; `red-check` refuses before it runs its command).
+  done gate never faced it; `red-check` and `advance` judge that append law, terminal and chain,
+  before they run a pin or the battery).
 - **A task that will never execute retires**: `retire <id> --because "<why — name the successor
   or the fulfilled-by work>"` appends a terminal `retired` event. Lawful only from `intake` or
   `planned` — a task that has begun landing code must finish its lifecycle honestly (its commits
@@ -65,13 +66,18 @@ remembered.
 - `done` requires a findings register that a prepared adversarial pass minted (empty is not a
   pass), that aggregates clean: zero UNRESOLVED findings, whose resolve evidence still exists —
   and every command pin re-runs GREEN (a code task whose every pin was retired needs a recorded
-  `pin-exempt`). The full RED→GREEN arc is machine-verified at the gate.
+  `pin-exempt`). The full RED→GREEN arc is machine-verified at the gate. `pin-retire` retires the
+  matching pins recorded BEFORE it (a later re-pin is a new, live pin); `--expect` narrows it to
+  the one pin carrying that signature. The done gate re-runs the pins of ONE snapshot of the
+  record and refuses a record that changed while they ran — re-run advance.
 - The prepared register records the swept range (base, head, diff digest); `verdict` reports it,
   so a pass can never silently claim to have swept more than it did.
 - Records are event logs under `tasks/`. Phase is derived from the last transition, never
   stored. The tool refuses illegal transitions; it cannot cryptographically stop a hand edit,
   and the git history of the record file is the tamper evidence. Records completed before the
   command-pin law carry path-only evidence; the law binds transitions from its introduction.
+  task-state refuses a record whose `id` is not the task its file names at every command that
+  names the task; its `status` listing and `metrics` skip it by name.
 - **Records are hash-chained** (in force since 2026-09-19T02:45Z, from the ECC capsule-envelope
   study): every event carries `seq` (its index), `parent_hash` (the previous event's
   `entry_hash`; 64 zeros at genesis), and `entry_hash` (sha256 of the canonical JSON — sorted

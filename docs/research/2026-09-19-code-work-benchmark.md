@@ -114,8 +114,14 @@ The tables above stand as measured; four statements about them do not.
 - The kit is repaired: `tools/bench/tasks.mjs` now aligns spec, suite and reference (a string
   yields code-unit strings, and a non-BMP hidden case grades it), and `tools/bench/setup.mjs`
   vendors the checklist. A re-run is needed before any acceptance or defect delta is quoted.
+- The grader freezes node:assert and node:assert/strict before the graded module loads, so a
+  module can no longer disarm the hidden suite's assertions (it forged 8/8 on a failing seed).
+  BOUNDARY: the module still shares the test runner's realm; full isolation (the module run out
+  of process, outputs compared as data) is not built, and the fresh-context review stays the
+  compensating control.
 
 Reproduce: `node tools/bench/setup.mjs <treatment|control> <taskId> <dir>`, dispatch a fresh
-agent per sandbox, `node tools/bench/grade.mjs <dir> <taskId>` grades (refuses ungradable
+agent per sandbox with the sandbox's TASK.md as its brief (setup writes the spec there, word
+for word, in both arms), `node tools/bench/grade.mjs <dir> <taskId>` grades (refuses ungradable
 runs). The grader self-test proves discrimination (reference passes all, seed fails at least
 one) and is wired into the battery.

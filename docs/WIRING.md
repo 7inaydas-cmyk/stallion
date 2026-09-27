@@ -35,12 +35,13 @@ patching; every re-vendor regenerates the manifest in the same commit.
     "adversarial": "node tools/adversarial-runner.mjs",
     "workspace": "node tools/task-workspace.mjs",
     "task-coverage": "node tools/task-coverage.mjs",
-    "selftest": "node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test"
+    "selftest": "node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test && node tools/pathspec.mjs --self-test && node tools/retrospective.mjs --self-test && node tools/test-lint.mjs --self-test"
   }
 }
 ```
 
-(The example shows the six core members a basic vendoring carries; this repo's own battery also
+(The example shows the six core members a basic vendoring carries, closed over their imports
+(pathspec, retrospective, test-lint); this repo's own battery also
 runs `tools/bench/grade.mjs` and the plugin's law checks — every `tools/**/*.mjs` that dispatches
 on `--self-test` belongs in the script.) The doctor derives the tool list from the tree and
 refuses a battery that omits a member — a self-test the battery never runs is a silent skip, the
@@ -92,6 +93,9 @@ node tools/task-coverage.mjs --staged || exit 1
 node tools/detached-head-guard.mjs || exit 1
 ```
 
+The doctor checks that the pre-commit hook, committed and live, runs the detached-head guard;
+this hook is the guard's only live run.
+
 Activate per clone: `git config core.hooksPath .githooks`. Agents that skip hooks (aider does,
 by default) are still fenced at push (next section) — the inner gate exists so the refusal
 lands within one action of the mistake, not as the last line of defense.
@@ -131,7 +135,12 @@ the same law (one shared citation law, both transports), so a clone without hook
 `--no-verify`, and partial `git commit <paths>` commits that skip hooks — is still fenced at
 push; for those transports the refusal lands at the fence, not at the commit. The doctor
 certifies a commit-msg hook only when it passes `"$1"` through and does not swallow the verdict
-(`|| exit 0`, `|| true` certify nothing; `|| exit 2` — the Claude Code translation — does).
+(a hook line certifies only when its verdict reaches git: `|| exit N` where N is not a multiple
+of 256 (`|| exit 2` is the Claude Code translation), or the hook's last command, or a line run
+while `set -e` is in force (a later `set +e` undoes it). An `sh -c '…'` wrapper's inner exit sets
+only the wrapper's status, so in a hook file that line too must be last or run under `set -e`.
+Anything else after the arguments (`; exit 0`, `|| echo`, `&`, `|| true`, `|| exit 256`)
+certifies nothing).
 
 Declare the scope when the task is planned and amend append-only while it is in flight:
 
@@ -298,7 +307,10 @@ not committed — and, in local runs, not activated (a CI clone cannot observe c
 config, so there the activation check skips visibly instead);
 no CI coverage step, `CODE_TREES`/`CODE_EXTS` classifying nothing (a gate matching nothing
 covers nothing — the vacuous-gate trap), no resolvable push base, no decisions-register
-headings, checklist not parsing to eight lanes. Each failure prints its fix. Run it locally
+headings, checklist not parsing to eight lanes; the pre-push hook must pass `--pre-push` (the
+pushed-refs law runs only under it) and the pre-commit hook must also run
+`node tools/detached-head-guard.mjs` — both checked in the committed hooks and in the live
+`core.hooksPath` hooks. Each failure prints its fix. Run it locally
 too: fresh clones must re-run `git config core.hooksPath .githooks`, and the doctor says so.
 
 ## 10. Knobs
@@ -325,7 +337,9 @@ caught — which is why this paragraph carries no count to go stale.
 - `pathspec` — the ONE path-matching dialect every guard shares (`matches`/`explain`/`firstMatch`;
   `**` spans zero segments). A guard needing a new matching capability adds it here, once.
 - `detached-head-guard` — a bare `git commit` on a detached HEAD refuses loudly (colocated-jj
-  shape: push succeeds having shipped none of the work).
+  shape: push succeeds having shipped none of the work) — only a rebase of a branch is exempt
+  (git moves that branch when the rebase finishes); a detached HEAD during a merge, cherry-pick,
+  revert, bisect, or a rebase/am started detached still refuses; escape `ALLOW_DETACHED_HEAD=1`.
 - `debt-gate` — an OPEN row of `docs/gates/debt-register.md` past its commits-since-baseline
   budget fails the build; process debt leaves the register only by SHIPPED or DROPPED, never by
   being forgotten.
@@ -356,14 +370,19 @@ caught — which is why this paragraph carries no count to go stale.
   re-vendoring, not by patching" — that sentence was prose until this gate shipped.
   `--freshness <path-to-upstream-clone>` is the WAVE-INTAKE half: it answers "has upstream
   moved past our pin, and did anything vendored move with it" against a local clone (fetch and
-  fast-forward it first — the verdict is as current as the clone, and a clone behind the pin refuses), and a moved vendored source refuses with the
+  fast-forward it first — the verdict is as current as the clone; a clone behind the pin, or
+  behind its own fetched upstream (its tracking branch, else origin/HEAD for a detached clone),
+  refuses, and so does a manifest source or docs key that names no file in the upstream tree at
+  the pin), and a moved vendored source refuses with the
   re-vendor remedy before the wave's own work lands on the stale pin. Run it at every wave's
   intake; the two batteries' wires carry only the `--self-test`/`--upstream` halves.
 - `path-obligations` — the incident list as an executable checklist, graduated from the vendor
   repo's PD-17: advisory, path-keyed, never blocking. `node tools/path-obligations.mjs
   --staged` (or bare for the working change set, untracked included) prints the obligations
   armed by the paths touched plus the minimum context set for them. Wire the `--staged` run
-  into `.githooks/pre-commit` beside the staged gate — that hook edit is fence surface and
+  into `.githooks/pre-commit` beside the staged gate, and declare it in
+  `docs/gates/gate-registry.json` with `"advisory": true` (it prints, never blocks; gate-registry
+  otherwise refuses a swallowed or non-final bare line as not carried) — that hook edit is fence surface and
   rides a protected task; until wired, run it by hand at commit time and wave intake.
 - `retrospective` — the cross-task lessons index (the same evaluation, gap 1): DERIVED from
   every committed findings register, never stored — every live WONT-FIX boundary with its
@@ -392,6 +411,9 @@ older vendored copy is superseded by re-vendoring, not by patching.
 Working-tree edits are free; the fence is the stage gate and the push. Docs and config commits
 need no task record — with one boundary earned the hard way: `docs/gates/**` IS code to the
 fence (a gate's threshold, exemptions, and baselines are its decision law; the gated party must
-not rewrite them in the push they fence — the same precedent as the hooks and CI workflows). Nothing stops a hand-edited record; the git history of the record file is
-the evidence trail. These are boundaries, not gaps, and they are stated so nobody has to
+not rewrite them in the push they fence — the same precedent as the hooks and CI workflows).
+Nothing stops a hand-edited record; the git history of the record file is the evidence trail.
+Per-commit battery greenness is not enforced: `npm run selftest` runs at `advance verified` and
+in CI on the pushed tip, and no local hook runs it, so an intermediate commit of a multi-commit
+landing can be red while the tip is green. These are boundaries, not gaps, and they are stated so nobody has to
 discover them.
