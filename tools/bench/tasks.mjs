@@ -16,9 +16,10 @@ export const TASKS = [
 milliseconds for strings like "1h30m", "500ms", "2d", "1.5h", "90s", and combinations in any
 unit order ("30m1h" is 5400000). Supported units: ms, s, m, h, d. Whitespace between terms is
 allowed ("1h 30m"). Numbers may be fractional ("1.5h"). An empty or whitespace-only string
-returns 0. An unsupported unit ("1x") throws RangeError with a message containing the offending
-unit. A term with no number ("h") throws RangeError too. The visible tests in
-apps/lib/parse-duration.test.mjs currently fail — they are the minimum bar, not the whole bar.`,
+returns 0. An unsupported unit throws RangeError with a message containing the whole offending
+term (for "1x", the message contains "1x"). A term with no number ("h") throws RangeError
+too. The visible tests in apps/lib/parse-duration.test.mjs currently fail — they are the
+minimum bar, not the whole bar.`,
     seed: `export function parseDuration(text) {
   const UNITS = { ms: 1, s: 1000, m: 60, h: 3600, d: 86400 };
   let total = 0;
@@ -216,11 +217,12 @@ test("constructor rejects bad capacity", () => {
     id: "chunk-generator",
     module: "chunk",
     kind: "feature",
-    spec: `Implement the chunk generator in apps/lib/chunk.mjs: chunk(iterable, n) yields arrays of
-exactly n items, in order, with a final partial array holding the remainder (or nothing if the
+    spec: `Implement the chunk generator in apps/lib/chunk.mjs: chunk(iterable, n) yields chunks of
+exactly n items, in order, with a final partial chunk holding the remainder (or nothing if the
 length divides evenly). n must be a positive integer — otherwise throw RangeError with a
-message containing "n". Works over any iterable (arrays, generators, strings — strings chunk
-by code unit). The visible tests are the starting bar.`,
+message containing "n". Works over any iterable (arrays, generators, Sets), each chunk an
+array — except a string, which chunks by UTF-16 code unit into strings (chunk("abcde", 2)
+yields "ab", "cd", "e"). The visible tests are the starting bar.`,
     seed: `export function chunk(iterable, n) {
   // TODO: implement
   throw new Error("not implemented");
@@ -255,6 +257,7 @@ test("works over generators end to end", () => {
 });
 test("strings chunk by code unit", () => {
   assert.deepEqual([...chunk("abcde", 2)], ["ab", "cd", "e"]);
+  assert.deepEqual([...chunk("\\u{1F600}a", 1)], ["\\uD83D", "\\uDE00", "a"]);
 });
 test("empty iterable yields nothing", () => {
   assert.deepEqual([...chunk([], 3)], []);
@@ -276,16 +279,19 @@ test("Sets are iterable too", () => {
     throw new RangeError(\`n must be a positive integer (got \${n})\`);
   }
   return (function* generate() {
-    const isString = typeof iterable === "string";
+    if (typeof iterable === "string") {
+      for (let i = 0; i < iterable.length; i += n) yield iterable.slice(i, i + n);
+      return;
+    }
     let buf = [];
     for (const item of iterable) {
       buf.push(item);
       if (buf.length === n) {
-        yield isString ? buf.join("") : buf;
+        yield buf;
         buf = [];
       }
     }
-    if (buf.length > 0) yield isString ? buf.join("") : buf;
+    if (buf.length > 0) yield buf;
   })();
 }
 `,

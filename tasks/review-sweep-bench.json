@@ -1,0 +1,141 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-bench",
+  "title": "2026-09-27 code-review sweep: the bench group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:09.703Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "8e7c346a948769a1235fba9aba5609521876f9a1a835212027587381c933e12d"
+    },
+    {
+      "at": "2026-09-27T05:54:09.741Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "8e7c346a948769a1235fba9aba5609521876f9a1a835212027587381c933e12d",
+      "entry_hash": "b86f9a5d1c5762e4af1b2f122a03d2964134e4dd5b174c8f316bfd891e8d45c8"
+    },
+    {
+      "at": "2026-09-27T05:54:09.775Z",
+      "type": "scope",
+      "patterns": [
+        "tools/bench/**"
+      ],
+      "seq": 2,
+      "parent_hash": "b86f9a5d1c5762e4af1b2f122a03d2964134e4dd5b174c8f316bfd891e8d45c8",
+      "entry_hash": "21ba1f5f38489a37805dcb8c83ccb39f995e9800dcd9dc35097a06a8439e3f41"
+    },
+    {
+      "at": "2026-09-27T05:54:09.806Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "21ba1f5f38489a37805dcb8c83ccb39f995e9800dcd9dc35097a06a8439e3f41",
+      "entry_hash": "57701429bfebde45a00b81baddcb2b10683754fca935091489afa87e176ebf67"
+    },
+    {
+      "at": "2026-09-27T06:16:27.223Z",
+      "type": "red-check",
+      "expect": "bench: chunk-generator: the reference passes every hidden test",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 4,
+      "parent_hash": "57701429bfebde45a00b81baddcb2b10683754fca935091489afa87e176ebf67",
+      "entry_hash": "ce7940ab7c5abec4c4f8e8c58f926ad8ca8983df2448ab6070b41b012bb06eb4"
+    },
+    {
+      "at": "2026-09-27T06:16:34.371Z",
+      "type": "red-check",
+      "expect": "bench: a relative sandbox dir grades like an absolute one \\(the reference passes\\)",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 5,
+      "parent_hash": "ce7940ab7c5abec4c4f8e8c58f926ad8ca8983df2448ab6070b41b012bb06eb4",
+      "entry_hash": "6536a0088941a50a5ae88dd251a0cb865a3e82002fe1d0f19f67f35518370f95"
+    },
+    {
+      "at": "2026-09-27T06:16:41.479Z",
+      "type": "red-check",
+      "expect": "bench: a run that cannot spawn node is ungradable with its real empty tally and cause",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 6,
+      "parent_hash": "6536a0088941a50a5ae88dd251a0cb865a3e82002fe1d0f19f67f35518370f95",
+      "entry_hash": "2d996f4c14d121ebec1b4d824ca99d1cb62edba626dcade8da189adc93adbaa3"
+    },
+    {
+      "at": "2026-09-27T06:16:42.917Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the sandbox battery runs every vendored self-testing tool \\(the doctor's membership law\\)",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 7,
+      "parent_hash": "2d996f4c14d121ebec1b4d824ca99d1cb62edba626dcade8da189adc93adbaa3",
+      "entry_hash": "20d6efe5cade7f10b11119a83e83a0d133cb1a0f8c3423e78cb2e5bad669bb19"
+    },
+    {
+      "at": "2026-09-27T06:16:44.221Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the adversarial checklist is vendored \\(the doctor parses its lanes\\)",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 8,
+      "parent_hash": "20d6efe5cade7f10b11119a83e83a0d133cb1a0f8c3423e78cb2e5bad669bb19",
+      "entry_hash": "14e6628dcad40a2648a461a691a6a8ea26c649d28ba1a3ae6fe33383a653e5bf"
+    },
+    {
+      "at": "2026-09-27T06:16:45.653Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the AGENTS stanza's red-check line records a RED pin as written",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 9,
+      "parent_hash": "14e6628dcad40a2648a461a691a6a8ea26c649d28ba1a3ae6fe33383a653e5bf",
+      "entry_hash": "7a88bca87d23562343a07c3e5b1a17445c44cce40a9688af085940fc5fd21073"
+    },
+    {
+      "at": "2026-09-27T06:16:46.958Z",
+      "type": "red-check",
+      "expect": "bench: control: the sandbox carries no harness selftest script",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50d7eea1f706",
+      "seq": 10,
+      "parent_hash": "7a88bca87d23562343a07c3e5b1a17445c44cce40a9688af085940fc5fd21073",
+      "entry_hash": "33037062479117af545593a708c537755aa4f0a22cad112dea715364966c0ca5"
+    },
+    {
+      "at": "2026-09-27T06:35:19.627Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the AGENTS stanza's red-check line records a RED pin under Node 23\\+'s spec default reporter",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "77496cb52368",
+      "seq": 11,
+      "parent_hash": "33037062479117af545593a708c537755aa4f0a22cad112dea715364966c0ca5",
+      "entry_hash": "ac62ba6c9770aba6ffd451ea966a9644c9c4e6c5b923d025418b3fad15936b87"
+    },
+    {
+      "at": "2026-09-27T06:35:43.150Z",
+      "type": "red-check",
+      "expect": "bench: a run the grader times out is refused as killed, not as printing no TAP results",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "95ac0023f7c7",
+      "seq": 12,
+      "parent_hash": "ac62ba6c9770aba6ffd451ea966a9644c9c4e6c5b923d025418b3fad15936b87",
+      "entry_hash": "144a9831f6a0e0365b9c3dd275dbd85b63c2db4890b2043a499120c00e730dbe"
+    }
+  ]
+}

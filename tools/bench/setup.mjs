@@ -4,18 +4,33 @@
  *  setup.mjs <arm> <taskId> <dir>
  *    arm = treatment | control
  *
- *  Both arms get the same seed: apps/lib/<task>.mjs + the visible test, git-initialized, one
- *  seed commit. TREATMENT additionally gets stallion vendored (tools/, .githooks/ with the
- *  staged + commit-msg gates wired via core.hooksPath, the tasks/ state dir) and the AGENTS.md
- *  law stanza — exactly the adoption path docs/WIRING.md prescribes. CONTROL gets none of it:
- *  a plain repo. The only difference between arms is the harness. */
-import { cpSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+ *  Both arms get the same seed: apps/lib/<module>.mjs + the visible test, git-initialized, one
+ *  seed commit. TREATMENT additionally gets the COMMIT-TIME subset of docs/WIRING.md: the
+ *  lifecycle tools (§2's six core members closed over their imports, plus the §7 ZCode
+ *  plugin), a selftest battery DERIVED from what was vendored (the doctor's own membership
+ *  law — THE BATTERY LAW forbids a hand-kept list), .githooks/ with the staged + commit-msg
+ *  gates wired via core.hooksPath, the empty tasks/ state dir, the decisions register, the
+ *  adversarial checklist, and the AGENTS.md law stanza. Deliberately OMITTED, so the doctor
+ *  still reports them: the push side (pre-push, CI, .stallion-base — the benchmark measures
+ *  commit-time behavior) and the §11 gates family with docs/gates/ (repo-specific config, and
+ *  complexity-gate's TypeScript peer, that would hand the arm a battery red on day one).
+ *  CONTROL gets none of it: a plain repo. The only difference between arms is the harness. */
+import { cpSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { dispatchesSelfTest } from "../task-coverage.mjs";
+import { stripComments } from "../test-lint.mjs";
 import { taskById } from "./tasks.mjs";
 
 const STALLION_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
+/** WIRING §2's basic vendoring — the six core members. The treatment arm carries these, what
+ *  they import, and the plugin; tools/bench/ never rides along (it holds every hidden suite and
+ *  reference — a sweep caught the answer key shipping with the arm). */
+const CORE = ["task-findings.mjs", "task-state.mjs", "adversarial-runner.mjs", "task-workspace.mjs", "task-coverage.mjs", "task-gate.mjs"];
+
+/** The stanza's red-check line pins the TAP reporter, as the grader does: Node 23+ defaults
+ *  `node --test` to spec even when piped, and spec never prints the "not ok" the pin expects. */
 const AGENTS_STANZA = `# AGENTS.md
 
 Code in this repo is written under the stallion task lifecycle.
@@ -26,7 +41,7 @@ Code in this repo is written under the stallion task lifecycle.
 - Declare the blast radius when planning: \`node tools/task-state.mjs scope <id> --add "apps/lib/**"\`.
 - Commits that touch code carry a \`task: <id>\` footer on its own line, in the final trailer
   block of the message.
-- \`verified\` needs a command pin: run \`node tools/task-state.mjs red-check <id> --command "node --test apps/lib/<task>.test.mjs"\`
+- \`verified\` needs a command pin: run \`node tools/task-state.mjs red-check <id> --command "node --test --test-reporter=tap apps/lib/<module>.test.mjs" --expect "not ok"\`
   while the tests still FAIL, before you fix the code.
 - \`done\` needs a clean adversarial pass (the operator dispatches it) and every pin re-run GREEN.
 - Refusals print the rule, the evidence, and an exact fix command. Run the fix. Do not work
@@ -36,6 +51,64 @@ Code in this repo is written under the stallion task lifecycle.
 
 function git(dir, ...args) {
   execFileSync("git", args, { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+}
+
+const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+
+/** CORE closed over its static relative imports, read comment-stripped (a commented-out import
+ *  is not a dependency) — derived, so a core member that grows an import vendors it too. */
+function lifecycleClosure() {
+  const seen = new Set();
+  const visit = (name) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    const source = stripComments(readFileSync(`${STALLION_ROOT}tools/${name}`, "utf8"));
+    for (const [, dep] of source.matchAll(/^import [^;]*? from "\.\/([\w-]+\.mjs)";$/gm)) visit(dep);
+  };
+  CORE.forEach(visit);
+  return [...seen];
+}
+
+/** The sandbox battery, DERIVED from the vendored tree with the doctor's own membership test:
+ *  every vendored .mjs, at any depth, that dispatches on --self-test. A hand-kept list drifted
+ *  to six of twenty-two vendored members while the doctor inside the sandbox refused it. */
+function derivedBattery(dir) {
+  return readdirSync(`${dir}/tools`, { recursive: true })
+    .filter((f) => f.endsWith(".mjs") && dispatchesSelfTest(stripComments(readFileSync(`${dir}/tools/${f}`, "utf8"))))
+    .sort()
+    .map((f) => `node tools/${f} --self-test`)
+    .join(" && ");
+}
+
+function vendorHarness(dir, task, pkg) {
+  mkdirSync(`${dir}/tools`, { recursive: true });
+  for (const name of lifecycleClosure()) cpSync(`${STALLION_ROOT}tools/${name}`, `${dir}/tools/${name}`);
+  cpSync(`${STALLION_ROOT}tools/zcode-plugin`, `${dir}/tools/zcode-plugin`, { recursive: true });
+  // The selftest script the AGENTS law mandates exists on day one (a sweep caught the stanza
+  // pointing at a missing script — a remediation tax billed to the wrong arm), and in THIS arm
+  // only: control has no tools/ for it to run.
+  writeJson(`${dir}/package.json`, { ...pkg, scripts: { ...pkg.scripts, selftest: derivedBattery(dir) } });
+  mkdirSync(`${dir}/.githooks`, { recursive: true });
+  writeFileSync(`${dir}/.githooks/pre-commit`, "#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n");
+  writeFileSync(`${dir}/.githooks/commit-msg`, "#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 1\n");
+  execFileSync("chmod", ["+x", `${dir}/.githooks/pre-commit`, `${dir}/.githooks/commit-msg`]);
+  // EMPTY task state: the gates judge only this sandbox's own records. (A sweep caught the
+  // live records riding along — including an in-flight vendor task that held the staged gate
+  // permanently open, an uncontrolled variable in a benchmark claiming arms differ only in
+  // the harness.)
+  mkdirSync(`${dir}/tasks`, { recursive: true });
+  writeFileSync(`${dir}/AGENTS.md`, AGENTS_STANZA.replaceAll("<module>", task.module));
+  writeFileSync(`${dir}/.gitignore`, ".stallion/\n");
+  // task-coverage's own self-test cross-reads the decisions register, and the adversarial
+  // runner reads the checklist — without it `prepare` crashes and `done` is unreachable.
+  mkdirSync(`${dir}/docs/decisions`, { recursive: true });
+  cpSync(`${STALLION_ROOT}docs/decisions/DECISIONS.md`, `${dir}/docs/decisions/DECISIONS.md`);
+  cpSync(`${STALLION_ROOT}docs/ADVERSARIAL-CHECKLIST.md`, `${dir}/docs/ADVERSARIAL-CHECKLIST.md`);
+  // The harness commit lands BEFORE the hooks activate — the gates bind the task work that
+  // follows, not their own vendoring (the same bootstrap every adoption has).
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "chore: vendor the stallion harness");
+  git(dir, "config", "core.hooksPath", ".githooks");
 }
 
 function setup(arm, taskId, dir) {
@@ -49,42 +122,14 @@ function setup(arm, taskId, dir) {
   // leaving `npm test` pointing at nothing for chunk-generator and csv-fields).
   writeFileSync(`${dir}/apps/lib/${task.module}.mjs`, task.seed);
   writeFileSync(`${dir}/apps/lib/${task.module}.test.mjs`, task.visibleTest);
-  // The selftest script the AGENTS law mandates must exist on day one (a sweep caught the
-  // stanza pointing at a missing script — a remediation tax billed to the wrong arm).
-  writeFileSync(`${dir}/package.json`, `${JSON.stringify({ name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${task.module}.test.mjs`, selftest: `node tools/task-findings.mjs --self-test && node tools/task-state.mjs --self-test && node tools/adversarial-runner.mjs --self-test && node tools/task-workspace.mjs --self-test && node tools/task-coverage.mjs --self-test && node tools/task-gate.mjs --self-test` } }, null, 2)}\n`);
+  const pkg = { name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${task.module}.test.mjs` } };
+  writeJson(`${dir}/package.json`, pkg);
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "bench@localhost");
   git(dir, "config", "user.name", `bench-${arm}`);
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "chore: seed the task");
-  if (arm === "treatment") {
-    // Vendor the harness WITHOUT the benchmark's own answer key: tools/bench/ holds every
-    // hidden suite and reference implementation, and a graded treatment agent walks tools/
-    // from its first lifecycle command (a sweep finding: the key shipped with the arm).
-    cpSync(`${STALLION_ROOT}tools`, `${dir}/tools`, { recursive: true, filter: (src) => !src.includes(`${STALLION_ROOT}tools/bench`) });
-    mkdirSync(`${dir}/.githooks`, { recursive: true });
-    writeFileSync(`${dir}/.githooks/pre-commit`, "#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n");
-    writeFileSync(`${dir}/.githooks/commit-msg`, "#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg \"$1\" || exit 1\n");
-    execFileSync("chmod", ["+x", `${dir}/.githooks/pre-commit`, `${dir}/.githooks/commit-msg`]);
-    // EMPTY task state: the gates judge only this sandbox's own records. (A sweep caught the
-    // live records riding along — including an in-flight vendor task that held the staged gate
-    // permanently open, an uncontrolled variable in a benchmark claiming arms differ only in
-    // the harness.)
-    mkdirSync(`${dir}/tasks`, { recursive: true });
-    writeFileSync(`${dir}/AGENTS.md`, AGENTS_STANZA);
-    writeFileSync(`${dir}/.gitignore`, ".stallion/\n");
-    // task-coverage's own self-test cross-reads the decisions register; a verified battery
-    // that includes it needs the register present (the second friction the run surfaced).
-    mkdirSync(`${dir}/docs/decisions`, { recursive: true });
-    cpSync(`${STALLION_ROOT}docs/decisions/DECISIONS.md`, `${dir}/docs/decisions/DECISIONS.md`);
-    // .stallion-base is not needed: the commit-msg gate does not resolve a push base, and the
-    // benchmark measures commit-time behavior, not push behavior.
-    // The harness commit lands BEFORE the hooks activate — the gates bind the task work that
-    // follows, not their own vendoring (the same bootstrap every adoption has).
-    git(dir, "add", "-A");
-    git(dir, "commit", "-q", "-m", "chore: vendor the stallion harness");
-    git(dir, "config", "core.hooksPath", ".githooks");
-  }
+  if (arm === "treatment") vendorHarness(dir, task, pkg);
   console.log(`${arm}/${taskId}: sandbox ready at ${dir}`);
 }
 
