@@ -198,6 +198,28 @@
       "seq": 18,
       "parent_hash": "06201ba6a74b0d2595ddc880dee984cf112a03d1cb6701e7f22123cdb6b41d02",
       "entry_hash": "abdf5537fe41940487fdd33c4843073b79302707e7a4d4017922522128ae5817"
+    },
+    {
+      "at": "2026-09-27T20:33:10.721Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: sparse-entry-carried: the gate on a skip-worktree baselined source must refuse and name the widen exit \\(exit 1",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ce7db5000057",
+      "seq": 19,
+      "parent_hash": "abdf5537fe41940487fdd33c4843073b79302707e7a4d4017922522128ae5817",
+      "entry_hash": "b0abd22908ca681d65b183dbf8fc338345b635ef69ea7c7977be43ffe4cec2ed"
+    },
+    {
+      "at": "2026-09-27T20:33:45.957Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: unstaged-deletion-no-exit: .*tip: its baseline still holds tools/big\\.mjs",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "814f1ffbc42a",
+      "seq": 20,
+      "parent_hash": "b0abd22908ca681d65b183dbf8fc338345b635ef69ea7c7977be43ffe4cec2ed",
+      "entry_hash": "23b9a6c3cf4d5f8f3a45bb9910b46c346411d8f66461353c6abc6dbe82b2d625"
     }
   ]
 }

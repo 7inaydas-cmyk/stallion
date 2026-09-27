@@ -445,16 +445,18 @@ dropping the rows stripped a source HEAD still tracks; carrying them kept a dele
 behind a false green; carrying only git's skip-worktree entries was blind to jj (which ignores the
 bit, and whose own sparse patterns never set it) and to guard-reach's HEAD-index copy (which
 carries no bits). The fix names the exits that settle it: put the source back on disk (restore it
-from HEAD, or widen a sparse checkout to include it), or stage its deletion with `git rm` and
-re-record — so a sparse checkout must hold every baselined source, since the ratchet judges only
-what it can read. A committed link that dangles in HEAD itself is refused like any other and clears
-only by `git rm`. A path HEAD holds nothing at (an intent-to-add entry, an untracked link) has no
-source any commit keeps, so its rows go stale. Neither tool re-reads what a commit carries but the
-disk does not show — HEAD's content for a skipped path, a committed file edited on disk without
-staging, staged content under a file since edited (staged, then edited); only a clean-clone run (CI
-on the pushed tip) judges it. test-lint's explicit paths (this repo's battery runs `test-lint
-tools`) walk the disk and never consult the index. Deleting or moving a file that has
-complexity-baseline rows needs a baseline refresh in the same task: stage the deletion with `git
-rm` (under jj too — `jj commit` then records it), then `--update-baseline`; that refresh is fence
-surface, so the task is protected. These are boundaries, not gaps, and they are stated so nobody
-has to discover them.
+from HEAD, or widen a sparse checkout — git's or jj's — to include it), or, for a file deleted for
+good in a full checkout, stage its deletion with `git rm` and re-record (under jj's sparse patterns
+a `git rm` deletes nothing `jj commit` records, so re-recording there would drop ceilings jj keeps)
+— so a sparse checkout must hold every baselined source, since the ratchet judges only what it can
+read. A committed link that dangles in HEAD itself is refused like any other; it clears once its
+target is on disk (or committed), or by `git rm`. A path HEAD holds nothing at (an intent-to-add
+entry, an untracked link) has no source any commit keeps, so its rows go stale. Neither tool
+re-reads what a commit carries but the disk does not show — HEAD's content for a skipped path, a
+committed file edited on disk without staging, staged content under a file since edited (staged,
+then edited); only a clean-clone run (CI on the pushed tip) judges it. test-lint's explicit paths
+(this repo's battery runs `test-lint tools`) walk the disk and never consult the index. Deleting or
+moving a file that has complexity-baseline rows needs a baseline refresh in the same task: stage
+the deletion with `git rm` in a full checkout (under jj too — `jj commit` then records it), then
+`--update-baseline`; that refresh is fence surface, so the task is protected. These are boundaries,
+not gaps, and they are stated so nobody has to discover them.

@@ -193,15 +193,17 @@ export function trackedFiles(globs, excludes, cwd = ROOT, env = process.env, not
 
 /**
  * A skipped path HEAD holds (a file, or a link a clean checkout may resolve) with rows in the
- * baseline is a source whose next commit nothing here can see: `git commit` and a sparse checkout
- * keep HEAD's copy (its ceilings stand), `git commit -a` and every colocated-jj commit take the
- * working tree, where it is gone (its rows go stale). Every guess shipped a red tip — dropping the
+ * baseline is a source whose next commit nothing here can see: `git commit` keeps HEAD's copy, and
+ * so does a sparse checkout (git's or jj's) that leaves it out (its ceilings stand), while `git
+ * commit -a` and a colocated-jj commit record a plain rm as its deletion (its rows go stale).
+ * Every guess shipped a red tip — dropping the
  * rows let --update-baseline strip a source HEAD still tracks; carrying them kept a deleted file's
  * ceilings behind a false green, and a sparse carve-out keyed on git's skip-worktree bit was blind
  * to jj (which ignores the bit, and whose own sparse patterns never set it) and to guard-reach's
  * HEAD-index copy (which carries no bits). So scan REFUSES — gate, --report and --update-baseline
  * alike — until the source is back on disk or its deletion is staged: the ratchet judges only
- * sources it can read. A path HEAD holds nothing at (an intent-to-add entry, an untracked link)
+ * sources it can read. The delete exit is conditioned on a full checkout: under jj's sparse
+ * patterns a git rm deletes nothing jj commits, so re-recording there drops ceilings jj keeps. A path HEAD holds nothing at (an intent-to-add entry, an untracked link)
  * has no source any commit keeps, so its rows go stale. An unreadable baseline refuses with the
  * restore alone: RESTORE_BASELINE's re-record route would die here again.
  */
@@ -215,10 +217,10 @@ function refuseMissingSources(skipped) {
 }
 
 const missingSourceRefusal = (p) =>
-  `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy, and so does a sparse checkout that leaves it out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (git checkout HEAD -- ${shq(p)}, and a link's target; if a sparse checkout leaves it out, widen the checkout to include it) or, if it is deleted for good, stage the deletion and re-record (git rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline)`;
+  `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy, and so does a sparse checkout that leaves it out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (git checkout HEAD -- ${shq(p)}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline)`;
 
 /** Which of `paths` HEAD holds as a file or link (mode 100644/100755/120000). An unborn HEAD holds none.
- *  `--literal-pathspecs`: a `*` in a file name is not a glob. */
+ *  `--literal-pathspecs`: a name starting with `:` is a path, not pathspec magic (ls-tree does no globbing). */
 function headBlobs(paths) {
   if (paths.length === 0 || spawnSync("git", ["rev-parse", "-q", "--verify", "HEAD"], { cwd: ROOT }).status !== 0) return [];
   const held = execFileSync("git", ["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", ...paths], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
@@ -782,7 +784,7 @@ function selfTestUnstagedDeletion(fail) {
     const host = baselinedHost(dir, BASELINED);
     writeFileSync(join(dir, "tools", "small.mjs"), "export const small = 1;\n");
     chmodSync(join(dir, "tools", "run.mjs"), 0o755);
-    host.git("add", ...BASELINED, "tools/small.mjs");
+    host.git("add", ...BASELINED, "tools/small.mjs", CONFIG_PATH, BASELINE_PATH);
     host.git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "tools", "small.mjs"));
     const unbaselined = host.run();
@@ -799,7 +801,7 @@ const BASELINED = ["tools/big.mjs", "tools/run.mjs"];
 
 /** The exits a missing baselined source's refusal names — put it back, or delete it for good. */
 const missingSourceFix = (p) =>
-  `fix: put it back on disk (git checkout HEAD -- ${p}, and a link's target; if a sparse checkout leaves it out, widen the checkout to include it) or, if it is deleted for good, stage the deletion and re-record (git rm --ignore-unmatch -- ${p} && node vendor/complexity-gate.mjs --update-baseline)`;
+  `fix: put it back on disk (git checkout HEAD -- ${p}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git rm --ignore-unmatch -- ${p} && node vendor/complexity-gate.mjs --update-baseline)`;
 
 /** The gate and the re-record both refuse each source with the exits that settle it; the baseline is untouched. */
 function unstagedDeletionRefused(fail, host) {
@@ -825,7 +827,8 @@ function conflictedUnderSkip(fail, host) {
  * rm, so it refuses the stale row and prints --update-baseline; run from the shell, where the rm is
  * unstaged, that fix must REFUSE rather than keep the row (carrying kept it, and the next commit -a
  * refused again, forever). The refusal's delete exit then lands the deletion and the dropped
- * ceilings together, through the same hooked `commit -a`, and the tip is green.
+ * ceilings together, through the same hooked `commit -a`: the TIP holds neither source nor row,
+ * and matches the working tree the final green gate judged.
  */
 function commitAllConverges(fail, host) {
   mkdirSync(join(host.dir, "hooks"));
@@ -838,7 +841,16 @@ function commitAllConverges(fail, host) {
   const rerecorded = host.run("--update-baseline");
   const landed = commitAll();
   const after = host.run();
-  if (rerecorded.status !== 0 || landed.status !== 0 || after.status !== 0 || host.baseline().includes("tools/big.mjs")) fail(`unstaged-deletion-no-exit: after git rm + re-record the hooked commit -a must land with a green gate and no row for the deleted source (re-record ${rerecorded.status}, commit -a ${landed.status}, gate ${after.status}: ${landed.stderr.trim()} ${after.stderr.trim()})`);
+  const tip = landedTipDefect(host);
+  if (rerecorded.status !== 0 || landed.status !== 0 || after.status !== 0 || tip !== "") fail(`unstaged-deletion-no-exit: after git rm + re-record the hooked commit -a must land a tip with no row for the deleted source, matching the green working tree (re-record ${rerecorded.status}, commit -a ${landed.status}, gate ${after.status}, tip: ${tip}: ${landed.stderr.trim()} ${after.stderr.trim()})`);
+}
+
+/** Why the landed tip is not the deleted-and-re-recorded one, or "": its baseline must hold no row
+ *  for the source, and no gate file or source may differ from the working tree the gate judged. */
+function landedTipDefect(host) {
+  if (host.gitRun("show", `HEAD:${BASELINE_PATH}`).stdout.includes("tools/big.mjs")) return "its baseline still holds tools/big.mjs";
+  const drift = host.gitRun("status", "--porcelain", "--", "tools", "docs").stdout.trim();
+  return drift === "" ? "" : `uncommitted ${drift}`;
 }
 
 /**
@@ -879,6 +891,10 @@ function selfTestSparseEntry(fail) {
       if (run.status !== 1 || !run.stderr.includes(missingSourceFix("tools/far.mjs"))) fail(`sparse-entry-carried: the ${what} on a skip-worktree baselined source must refuse and name the widen exit (exit ${run.status}: ${run.stderr.trim()})`);
     }
     if (host.baseline() !== recorded) fail(`sparse-entry-rerecorded: --update-baseline rewrote the baseline over a skip-worktree source: ${host.baseline()}`);
+    host.git("update-index", "--no-skip-worktree", "tools/far.mjs");
+    host.git("checkout", "HEAD", "--", "tools/far.mjs");
+    const widened = host.run();
+    if (widened.status !== 0) fail(`sparse-entry-no-exit: widening the checkout to include the source must clear the refusal (exit ${widened.status}: ${widened.stderr.trim()})`);
   });
 }
 
