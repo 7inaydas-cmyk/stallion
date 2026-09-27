@@ -217,16 +217,23 @@ function refuseMissingSources(skipped) {
   if (held.length > 0) process.exit(1);
 }
 
+/** The pathspec modes git refuses beside --literal-pathspecs. GIT_LITERAL_PATHSPECS is that flag's own variable, so it stays. */
+const PATHSPEC_ENV = ["GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"];
+
 const missingSourceRefusal = (p) =>
   `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy and \`jj commit\` a file it added, even where a sparse checkout leaves them out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (a file HEAD holds: git --literal-pathspecs checkout HEAD -- ${shq(p)}; a link: restore its target; a file HEAD never held, an intent-to-add entry: re-create it; left out by a sparse checkout, git's or jj's: widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline — it writes fence surface: land it under a protected task)`;
 
 /** Which of `paths` the index lists. Every path is literal, here and in each printed exit: a name
  *  starting with `:` is a path, not pathspec magic (`:!x.mjs` would name every OTHER file). The
- *  query spells it per path, `:(literal)`, because git refuses the global --literal-pathspecs
- *  beside a GIT_ICASE/GLOB/NOGLOB_PATHSPECS a developer may export. */
+ *  query uses the global flag, which an exported GIT_LITERAL_PATHSPECS (git exports it to a child
+ *  of `git --literal-pathspecs`) only repeats — a per-path `:(literal)` became part of the name
+ *  under it, the query matched nothing, and every refusal went silent — and drops the modes git
+ *  refuses beside the flag (PATHSPEC_ENV). The printed exits keep the flag: beside an exported
+ *  ICASE/GLOB they die with git's own message (unset it), never on the wrong file. */
 function indexListed(paths) {
   if (paths.length === 0) return [];
-  const listed = execFileSync("git", ["ls-files", "-z", "--cached", "--", ...paths.map((p) => `:(literal)${p}`)], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0");
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !PATHSPEC_ENV.includes(key)));
+  const listed = execFileSync("git", ["--literal-pathspecs", "ls-files", "-z", "--cached", "--", ...paths], { cwd: ROOT, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0");
   return paths.filter((p) => listed.includes(p));
 }
 
@@ -902,22 +909,20 @@ function selfTestSparseEntry(fail) {
 /**
  * A skipped path the index does not list — an untracked dangling link — carries no source into
  * any commit, so its rows are STALE: reported by the gate, dropped by the re-record. Carrying them
- * kept a dead ceiling that every clean clone then refused. Run on an unborn HEAD as well as after a
- * seed commit: an earlier HEAD-based query needed its own unborn guard, and nothing may again.
+ * kept a dead ceiling that every clean clone then refused. Run on an unborn HEAD: an earlier
+ * HEAD-based query needed its own unborn guard, and the index query must need none.
  */
 function selfTestNoHeadFile(fail) {
-  for (const seeded of [false, true]) inScratch("complexity-gate-nohead-", (dir) => noHeadFileStale(fail, dir, seeded));
+  inScratch("complexity-gate-nohead-", (dir) => noHeadFileStale(fail, dir));
 }
 
-function noHeadFileStale(fail, dir, seeded) {
+function noHeadFileStale(fail, dir) {
   const host = baselinedHost(dir, ["tools/loose.mjs"], []);
-  if (seeded) host.git("commit", "-q", "--allow-empty", "-m", "seed");
   symlinkSync("nowhere.mjs", join(dir, "tools", "loose.mjs"));
   const judged = host.run();
-  const head = seeded ? "a seeded HEAD" : "an unborn HEAD";
-  if (judged.status !== 1 || !judged.stderr.includes("still exempts tools/loose.mjs big (9)") || judged.stderr.includes("stage the deletion")) fail(`no-head-file-carried: under ${head}, rows for a path the index does not list must read as stale, never carried or refused (exit ${judged.status}: ${judged.stderr.trim()})`);
+  if (judged.status !== 1 || !judged.stderr.includes("still exempts tools/loose.mjs big (9)") || judged.stderr.includes("stage the deletion")) fail(`no-head-file-carried: under an unborn HEAD, rows for a path the index does not list must read as stale, never carried or refused (exit ${judged.status}: ${judged.stderr.trim()})`);
   const updated = host.run("--update-baseline");
-  if (updated.status !== 0 || JSON.parse(host.baseline()).functions.length !== 0) fail(`no-head-file-kept: under ${head}, --update-baseline kept ceilings no commit can hold (exit ${updated.status}: ${host.baseline()})`);
+  if (updated.status !== 0 || JSON.parse(host.baseline()).functions.length !== 0) fail(`no-head-file-kept: under an unborn HEAD, --update-baseline kept ceilings no commit can hold (exit ${updated.status}: ${host.baseline()})`);
 }
 
 /**
@@ -942,9 +947,9 @@ function selfTestIntentToAdd(fail) {
 /**
  * A root-level source named with a leading `:` is pathspec magic to git unless the pathspec is
  * literal: `:!x.mjs` names every OTHER file. The index query must not miss it (the refusal would
- * read its rows as stale), even under an exported GIT_ICASE_PATHSPECS (git refuses the global
- * literal flag beside it), and both printed exits — run here verbatim, through a shell — must act
- * on that one file, quoted: the restore clears the refusal, the delete exit drops its row.
+ * read its rows as stale), under any exported GIT_*_PATHSPECS variable either, and both printed
+ * exits — run here verbatim, through a shell, in the host's clean environment — must act on that
+ * one file, quoted: the restore clears the refusal, the delete exit drops its row.
  */
 function selfTestLiteralName(fail) {
   inScratch("complexity-gate-literal-", (dir) => {
@@ -962,13 +967,18 @@ function selfTestLiteralName(fail) {
 
 const LITERAL_NAME = ":big one.mjs";
 
-/** The same source removed again: refused under GIT_ICASE_PATHSPECS too, and its delete exit, run verbatim, drops the row. */
+/** The same source removed again: refused under each exported GIT_*_PATHSPECS variable too, and
+ *  its delete exit, run verbatim (in the host's clean environment), drops the row. */
 function literalDeleteExit(fail, host, dir) {
   rmSync(join(dir, LITERAL_NAME));
-  const judged = host.runWith({ GIT_ICASE_PATHSPECS: "1" });
+  // Spelled out, not PATHSPEC_ENV: a test that reads its inputs off the code under test shrinks with it.
+  const exported = ["GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"];
+  const silenced = exported.filter((key) => !host.runWith({ [key]: "1" }).stderr.includes("holds its ceilings"));
+  if (silenced.length > 0) fail(`literal-name-silenced: an exported ${silenced.join(", ")} must not switch the refusal off`);
+  const judged = host.run();
   const remove = /git --literal-pathspecs rm --ignore-unmatch -- '[^']*' && node vendor\/complexity-gate\.mjs --update-baseline/.exec(judged.stderr)?.[0];
   const removed = remove ? host.sh(remove).status : null;
-  if (judged.status !== 1 || !remove || removed !== 0 || host.run().status !== 0 || host.baseline().includes(LITERAL_NAME)) fail(`literal-name-kept: under GIT_ICASE_PATHSPECS the source must still be refused, and its delete exit run verbatim must drop its row (gate ${judged.status}, delete ${removed}: ${judged.stderr.trim()})`);
+  if (judged.status !== 1 || !remove || removed !== 0 || host.run().status !== 0 || host.baseline().includes(LITERAL_NAME)) fail(`literal-name-kept: the delete exit, run verbatim, must drop the source's row (gate ${judged.status}, delete ${removed}: ${judged.stderr.trim()})`);
 }
 
 /**

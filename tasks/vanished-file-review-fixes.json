@@ -285,6 +285,27 @@
       "seq": 26,
       "parent_hash": "c547def8eb1d1b104236a2f212ce8d15c47b73e702e20268d8c225b66c12d692",
       "entry_hash": "4e103e9706d014d31e40e930b1b0bd2aec78455d3cb2c3a06036c8bcb9398f5a"
+    },
+    {
+      "at": "2026-09-27T21:23:59.234Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: literal-name-silenced: an exported GIT_LITERAL_PATHSPECS",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "76fa68ae62a7",
+      "seq": 27,
+      "parent_hash": "4e103e9706d014d31e40e930b1b0bd2aec78455d3cb2c3a06036c8bcb9398f5a",
+      "entry_hash": "462831b98ca05ee8c6987f986e198ee3ebeaa9108033a5786465d928f25db180"
+    },
+    {
+      "at": "2026-09-27T21:26:15.137Z",
+      "type": "pin-retire",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "expect": "complexity-gate SELF-TEST FAIL: no-head-file-carried: under a seeded HEAD",
+      "justification": "Its branch is gone: it pinned headBlobs' ls-tree HEAD branch, which 1c12223 replaced with an index query that reads no HEAD (the sixth pass's lane-3 finding). The seeded run is removed with it; the unborn run stays, since an earlier HEAD-based query needed its own unborn guard and the index query must need none.",
+      "seq": 28,
+      "parent_hash": "462831b98ca05ee8c6987f986e198ee3ebeaa9108033a5786465d928f25db180",
+      "entry_hash": "1b985f608d41e84e0fe96b76023139c666fde93edf80b75fb93f8b1c4afa1a29"
     }
   ]
 }
