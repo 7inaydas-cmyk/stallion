@@ -18,10 +18,11 @@
  * (CI has no jj — the guards are still proven there, and the live jj path prints its own law).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadRecord } from "./task-coverage.mjs";
 import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, derivePhase, PHASES, TASK_ID } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -138,12 +139,23 @@ function jjOut(...args) {
   }
 }
 
+/** A task's record as the workspace commands read it: { record }, or { error } naming why none,
+ *  with its fix. Read through the fence's loadRecord law: a copied record (its id not the task
+ *  its file names) carries another task's phase and scope, and opens or forgets nothing. A
+ *  missing id is task-state's own "no such task": the fence's new-then-advance fix would send a
+ *  typo (or a forget cleaning up) to mint a phantom task in flight (a review finding). */
+function readTask(id, dir = STATE_DIR) {
+  if (!existsSync(`${dir}/${id}.json`)) return { error: `no such task: ${id} (expected ${dir}/${id}.json)\n  fix: node tools/task-state.mjs status   — lists every recorded task (or correct the id)` };
+  const { record, error, fix } = loadRecord(id, dir);
+  if (error) return { error: `${error}\n  fix: ${fix}` };
+  if (record.schema !== "stallion/task-state@1") return { error: `task record has unknown schema: ${String(record.schema)}` };
+  return { record };
+}
+
 function loadTask(id) {
   if (!TASK_ID.test(id)) die(`task id must be kebab-case (a-z, 0-9, -): ${id} — a traversal-bearing id must never reach a path join`);
-  const path = `${STATE_DIR}/${id}.json`;
-  if (!existsSync(path)) die(`no such task: ${id} (expected ${path})`);
-  const record = JSON.parse(readFileSync(path, "utf8"));
-  if (record.schema !== "stallion/task-state@1") die(`task record has unknown schema: ${String(record.schema)}`);
+  const { record, error } = readTask(id);
+  if (error) die(error);
   return record;
 }
 
@@ -216,34 +228,55 @@ function parseArgs(argv) {
   return args;
 }
 
-/** The host-hook isolation case as a case row; none when jj is absent (the live cases skip). */
-function hostHookCases() {
-  const clean = liveCasesInHostHook();
-  return clean === null ? [] : [["a live landing case run inside a git hook wrote into the HOST repo (GIT_DIR/GIT_INDEX_FILE leaked into the fixture)", clean]];
-}
+/** The git-hook env shapes the live cases re-run inside, each naming a throwaway HOST: a linked
+ *  worktree's hook gets GIT_DIR and GIT_INDEX_FILE, a main-worktree `commit -a` hook gets
+ *  GIT_INDEX_FILE alone (the commonest real shape — a fixture `git add` then stages into it). */
+const HOOK_SHAPES = [
+  ["a linked worktree's hook (GIT_DIR + GIT_INDEX_FILE)", (host) => ({ GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index") })],
+  ["commit -a's hook (GIT_INDEX_FILE alone)", (host) => ({ GIT_INDEX_FILE: join(host, "index") })],
+];
 
-/** The live cases run inside a simulated git hook — GIT_DIR and GIT_INDEX_FILE name a throwaway
- *  HOST repo, as git exports them to a pre-commit hook in a linked worktree or under commit -a —
- *  and must leave that host untouched: a fixture inheriting them inits, stages and commits into
- *  the host (the Antitube wave-4 finding, where a vendor's pre-commit runs this self-test). A crash
- *  under the hook env counts as a leak. null when jj is absent. */
-function liveCasesInHostHook() {
-  const host = mkdtempSync(join(tmpdir(), "task-workspace-host-"));
-  const hookEnv = { GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index") };
-  const saved = Object.keys(hookEnv).map((k) => [k, process.env[k]]);
-  Object.assign(process.env, hookEnv);
+/** Run fn with `vars` set in process.env — where a hook's env reaches every child — then restore it. */
+function withProcessEnv(vars, fn) {
+  const saved = Object.keys(vars).map((k) => [k, process.env[k]]);
+  Object.assign(process.env, vars);
   try {
-    if (liveLandingCases() === null) return null;
-    return !existsSync(hookEnv.GIT_DIR) && !existsSync(hookEnv.GIT_INDEX_FILE);
-  } catch {
-    return false;
+    return fn();
   } finally {
     for (const [k, v] of saved) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
-    rmSync(host, { recursive: true, force: true });
   }
+}
+
+/** The live cases re-run inside each HOOK_SHAPES env, one row per shape (the Antitube wave-4
+ *  finding: a vendor's pre-commit runs this self-test, and a fixture inheriting the hook's GIT_*
+ *  inits, stages and commits into the host). Every landing verdict must still hold there — a
+ *  fixture command that leaked fails against the host, and a crash is a failed row — and the host
+ *  must stay empty. Their verdicts were once thrown away: a leak past `git init` passed as clean. */
+function hostHookCases() {
+  return HOOK_SHAPES.map(([shape, envOf]) => {
+    const host = mkdtempSync(join(tmpdir(), "task-workspace-host-"));
+    try {
+      const rows = withProcessEnv(envOf(host), liveLandingCases) ?? [["jj vanished between runs", false]];
+      const failed = rows.filter(([, passes]) => !passes).map(([name]) => name);
+      const wrote = readdirSync(host);
+      return [`a live landing case run inside a git hook wrote into the HOST repo or failed there — ${shape}: ${[...failed, ...wrote.map((f) => `host gained ${f}`)].join("; ")}`, failed.length === 0 && wrote.length === 0];
+    } finally {
+      rmSync(host, { recursive: true, force: true });
+    }
+  });
+}
+
+const FIXTURE_WHO = { GIT_AUTHOR_NAME: "self-test", GIT_AUTHOR_EMAIL: "self-test@example.invalid", GIT_COMMITTER_NAME: "self-test", GIT_COMMITTER_EMAIL: "self-test@example.invalid", JJ_USER: "self-test", JJ_EMAIL: "self-test@example.invalid" };
+
+/** The fixture's env, pure: the caller's minus every GIT_* — inside a git hook GIT_DIR and
+ *  GIT_INDEX_FILE name the HOST repo, and a fixture inheriting them inits, stages and commits into
+ *  it (the Antitube wave-4 finding) — plus the fixture's own identity and empty configs. */
+function fixtureEnv(env, base) {
+  const hostless = Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("GIT_")));
+  return { ...hostless, ...FIXTURE_WHO, JJ_CONFIG: join(base, "jj.toml"), GIT_CONFIG_GLOBAL: join(base, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
 }
 
 /**
@@ -263,11 +296,7 @@ function liveLandingCases() {
   const cwd = process.cwd();
   const primary = join(base, "primary");
   const ws = join(base, "primary-task-t1");
-  const who = { GIT_AUTHOR_NAME: "self-test", GIT_AUTHOR_EMAIL: "self-test@example.invalid", GIT_COMMITTER_NAME: "self-test", GIT_COMMITTER_EMAIL: "self-test@example.invalid", JJ_USER: "self-test", JJ_EMAIL: "self-test@example.invalid" };
-  // Never the caller's GIT_* — inside a git hook GIT_DIR/GIT_INDEX_FILE name the HOST repo, and a
-  // fixture inheriting them inits, stages and commits into it (the Antitube wave-4 finding).
-  const hostless = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
-  const env = { ...hostless, ...who, JJ_CONFIG: join(base, "jj.toml"), GIT_CONFIG_GLOBAL: join(base, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
+  const env = fixtureEnv(process.env, base);
   const sh = (dir, cmd, ...args) => execFileSync(cmd, args, { cwd: dir, env, stdio: "pipe" });
   const put = (path, text) => writeFileSync(path, text);
   try {
@@ -316,6 +345,17 @@ function liveLandingCases() {
   }
 }
 
+/** The live rows the self-test judges and the OK line's note on them, both derived from what ran:
+ *  the landing cases, their re-runs inside every git-hook shape (a pin that stopped re-running
+ *  once left the OK line unchanged — a review finding), or the SKIP when jj is absent. */
+function selfTestLiveRows() {
+  const live = liveLandingCases();
+  if (live === null) return { rows: [], note: "live jj landing cases and their git-hook re-runs SKIPPED — jj is not on PATH" };
+  const hook = hostHookCases();
+  const reran = ["jj is on PATH, so the live cases re-ran inside every git-hook shape", hook.length === HOOK_SHAPES.length];
+  return { rows: [...live, ...hook, reran], note: `${live.length} live jj landing cases, re-run inside ${hook.length} git-hook shapes` };
+}
+
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
@@ -360,11 +400,34 @@ export function selfTest() {
     })()],
     ["workspace sibling derives from the repo's own name, not the harness's", workspaceSiblingPath("/x/clones/my-repo/", "t1") === "../my-repo-task-t1"],
     ["forged transition to an unknown phase is ignored (no fake-phase workspace)", canAddWorkspace({ ...mk("planned"), events: [...mk("planned").events, { type: "transition", to: "shipped" }] }, false).ok],
+    ["a copied record (its id not the task its file names) opens and forgets no workspace, and the refusal prints task-state's rm-then-new exit", (() => {
+      const dir = mkdtempSync(join(tmpdir(), "task-workspace-copy-"));
+      try {
+        writeFileSync(join(dir, "t.json"), JSON.stringify(mk("executing")));
+        writeFileSync(join(dir, "copy.json"), JSON.stringify(mk("executing")));
+        const copy = readTask("copy", dir);
+        return readTask("t", dir).record?.id === "t" && copy.record === undefined && String(copy.error).includes("rm tasks/copy.json && node tools/task-state.mjs new copy");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    })()],
+    ["a missing task id refuses with task-state's status exit (a typo, or forget cleaning up), never a new-then-advance chain to executing", (() => {
+      const dir = mkdtempSync(join(tmpdir(), "task-workspace-missing-"));
+      try {
+        const { record, error } = readTask("nope", dir);
+        return record === undefined && String(error).includes("fix: node tools/task-state.mjs status") && !String(error).includes("advance nope executing");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    })()],
+    ["the fixture env drops every inherited GIT_* — inside a git hook they name the HOST repo (pure, so a run without jj pins it too)", (() => {
+      const env = fixtureEnv({ PATH: "/bin", GIT_DIR: "/host/.git", GIT_INDEX_FILE: "/host/.git/index.lock", GIT_WORK_TREE: "/host", GIT_CONFIG_GLOBAL: "/host/gitconfig" }, "/b");
+      return env.PATH === "/bin" && !["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"].some((k) => k in env) && env.GIT_CONFIG_GLOBAL === join("/b", "gitconfig");
+    })()],
   ];
-  const live = liveLandingCases();
-  for (const [name, passes] of [...cases, ...(live ?? []), ...hostHookCases()]) if (!passes) fail(`task-workspace: ${name}`);
-  const liveNote = live === null ? "live jj landing cases SKIPPED — jj is not on PATH" : `${live.length} live jj landing cases`;
-  console.log(failures.length === 0 ? `task-workspace self-test: OK (${cases.length} guard cases, ${liveNote} — count derived)` : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const live = selfTestLiveRows();
+  for (const [name, passes] of [...cases, ...live.rows]) if (!passes) fail(`task-workspace: ${name}`);
+  console.log(failures.length === 0 ? `task-workspace self-test: OK (${cases.length} guard cases, ${live.note} — count derived)` : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 

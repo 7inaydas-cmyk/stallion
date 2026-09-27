@@ -55,8 +55,13 @@ Code in this repo is written under the stallion task lifecycle.
 - Verify with \`npm run selftest\`.
 `;
 
+/** The caller's env without its GIT_* — inside a git hook GIT_DIR/GIT_INDEX_FILE name the HOST
+ *  repo, and a sandbox inheriting them inits, stages and commits into it (vendor-feedback-wave4).
+ *  Read at call time: the grader's self-test sets a hook env on process.env. */
+export const fixtureEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+
 function git(dir, ...args) {
-  execFileSync("git", args, { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", args, { cwd: dir, env: fixtureEnv(), stdio: ["ignore", "pipe", "pipe"] });
 }
 
 const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);

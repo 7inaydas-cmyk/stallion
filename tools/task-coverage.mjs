@@ -806,25 +806,39 @@ function committedBase() {
 
 /** Every task record the staged gate may count, read through loadRecord's one law: a malformed
  *  or copied record (its id not the task its file names) cannot authorize anything — it simply
- *  is not an active task. */
-function readTaskRecords(dir = STATE_DIR) {
-  if (!existsSync(dir)) return [];
-  const ids = readdirSync(dir).filter((x) => x.endsWith(".json") && !x.includes(".findings.")).map((x) => x.slice(0, -5));
-  return ids.map((id) => loadRecord(id, dir).record).filter(Boolean);
+ *  is not an active task. `dropped` keeps each such file's error and fix for the refusal: "no
+ *  record is executing" while a copy of one sat on disk sent the reader to `new` (a review
+ *  finding). A file of another schema (a calibration register) is no task, and is not named.
+ *  Exported for the plugin's agreement pin: its readRecords must keep exactly these records. */
+export function readTaskRecords(dir = STATE_DIR) {
+  if (!existsSync(dir)) return { records: [], dropped: [] };
+  const loaded = readdirSync(dir).filter((x) => x.endsWith(".json") && !x.includes(".findings.")).map((x) => loadRecord(x.slice(0, -5), dir));
+  return { records: loaded.map((l) => l.record).filter(Boolean), dropped: loaded.filter((l) => l.error !== undefined && !l.foreign) };
 }
 
-function loadRecord(id, dir = STATE_DIR) {
+/** A task's record, or { error, fix } — the fix is the exit from THAT error, so every transport
+ *  prints one that runs: `new` for a missing record, restore for torn JSON, and for a copy
+ *  task-state's own rm-then-new (a copy's file exists, so `new` refuses it, and an untracked
+ *  copy has no history for `git log` to restore — a review finding). */
+export function loadRecord(id, dir = STATE_DIR) {
   const path = `${dir}/${id}.json`;
-  if (!existsSync(path)) return { error: `no task record for '${id}' (expected ${path})` };
+  const t = "node tools/task-state.mjs";
+  if (!existsSync(path)) return { error: `no task record for '${id}' (expected ${path})`, fix: `${t} new ${id} --risk-class <class> && ${t} advance ${id} planned && ${t} advance ${id} executing` };
   let record;
   try {
     record = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
-    return { error: `task record '${id}' is not valid JSON: ${e.message}` };
+    return { error: `task record '${id}' is not valid JSON: ${e.message}`, fix: restoreRemedy(id) };
   }
   // A copied record carries another task's scope, approval and phase; task-state refuses it at
   // every command (parseTaskRecord), and so must the seam that authorizes code.
-  if (record?.id !== id) return { error: `task record '${String(record?.id)}' is not the task its file names (${id}) — a copied record authorizes nothing (restore it: git log -p -- ${path})` };
+  if (record?.id !== id) {
+    return {
+      error: `task record '${String(record?.id)}' is not the task its file names (${id}) — a copied record authorizes nothing`,
+      fix: `if it is a copy of task '${String(record?.id)}' (whose own file keeps its history): rm tasks/${id}.json && ${t} new ${id} --risk-class <class>   — otherwise: git log -p -- tasks/${id}.json   — investigate before writing`,
+      foreign: record?.schema !== "stallion/task-state@1",
+    };
+  }
   return { record };
 }
 
@@ -903,8 +917,8 @@ function checkRange(base, anchorRef = null) {
       errors.push(`${short} touches code but carries no 'task: <id>' footer — future code is written only through the task-state lifecycle (task-state new)\n      fix: ${fix}`);
       continue;
     }
-    const { record, error } = loadRecord(footer);
-    if (error) { errors.push(`${short}: ${error}\n      fix: node tools/task-state.mjs new ${footer} --risk-class <class> && node tools/task-state.mjs advance ${footer} planned && node tools/task-state.mjs advance ${footer} executing`); continue; }
+    const { record, error, fix } = loadRecord(footer);
+    if (error) { errors.push(`${short}: ${error}\n      fix: ${fix}`); continue; }
     const refusal = recordRefusal(record);
     if (refusal) { errors.push(`${short} (task ${footer}): ${refusal}\n      fix: ${recordRemedy(record, footer)}`); continue; }
     // The binding half of issue #8, through the ONE citation seam the commit-msg gate also
@@ -979,7 +993,8 @@ function cmdStaged() {
   } catch (e) {
     die(`cannot read the staged file list — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass — this seam fails closed like every other\n  fix: make git work in this environment (PATH, safe.directory, readable index), then retry the commit`);
   }
-  const refusal = stagedRefusal(files, readTaskRecords());
+  const { records, dropped } = readTaskRecords();
+  const refusal = stagedRefusal(files, records);
   if (!refusal) {
     const stagedCode = files.filter(isCodePath).length;
     return console.log(stagedCode === 0
@@ -990,6 +1005,7 @@ function cmdStaged() {
   console.error(`  rule: implementation happens only under a task the machine has authorized`);
   console.error(`  evidence: ${refusal.codeFiles.join(", ")}`);
   console.error(`  evidence: ${refusedEvidence(refusal.refused)}`);
+  for (const { error, fix } of dropped) console.error(`  evidence: not counted — ${error}\n      fix: ${fix}`);
   const t = "node tools/task-state.mjs";
   const fix = refusal.fenceSurface
     ? `${t} new <id> --risk-class protected && ${t} approve <id> --decision "<full ${DECISIONS_REL} entry heading>" && ${t} advance <id> planned && ${t} scope <id> --add "<the fence-surface paths>" && ${t} advance <id> executing   (fence surface is protected-tier)`
@@ -1111,10 +1127,11 @@ function reRunCommit(messageFile) {
  * Pure: the commit-msg law, one seam the self-test drives end to end — the transport only
  * gathers git's facts. `facts`: { message, messageFile, files, mergeParents, editorUsed, cleanup,
  * addedLines, load } — `mergeParents` is null outside a merge, else mergeFacts over the parents
- * git will record, so a merge is judged by the fence's own law. Returns { refusal } (evidence,
- * rule, fix) or { ok } (the pass line). The staged scan runs FIRST, on every commit: a footerless
- * commit staging only .env or a config file is exactly where keys land (a review finding: the
- * scan once ran only after a footer had passed).
+ * git will record, so a merge is judged by the fence's own law; `load` is loadRecord's shape,
+ * { record } or { error, fix }. Returns { refusal } (evidence, rule, fix) or { ok } (the pass
+ * line). The staged scan runs FIRST, on every commit: a footerless commit staging only .env or a
+ * config file is exactly where keys land (a review finding: the scan once ran only after a footer
+ * had passed).
  */
 export function commitMsgVerdict(facts) {
   const scan = stagedScanRefusal(facts.addedLines);
@@ -1122,9 +1139,9 @@ export function commitMsgVerdict(facts) {
   const codeFiles = (facts.mergeParents ? mergeOwnFiles(facts.mergeParents.diffs, facts.mergeParents.changes, facts.mergeParents.clean) : facts.files).filter(isCodePath);
   const footer = taskFooterOf(CLEANUPS[gitCleanupMode(facts.editorUsed, facts.cleanup)](facts.message));
   if (!footer) return footerlessVerdict(codeFiles, facts.messageFile);
-  const { record, error } = facts.load(footer);
+  const { record, error, fix } = facts.load(footer);
   if (error) {
-    return { refusal: `✖ REFUSED — ${error}\n  rule: a footer names a task record this machine wrote\n  fix: node tools/task-state.mjs new ${footer} --risk-class <class> && node tools/task-state.mjs advance ${footer} planned && node tools/task-state.mjs advance ${footer} executing   (or correct the footer in ${facts.messageFile} and re-run: ${reRunCommit(facts.messageFile)})` };
+    return { refusal: `✖ REFUSED — ${error}\n  rule: a footer names a task record this machine wrote\n  fix: ${fix}   (or correct the footer in ${facts.messageFile} and re-run: ${reRunCommit(facts.messageFile)})` };
   }
   return citedVerdict(record, footer, codeFiles);
 }
@@ -1568,20 +1585,38 @@ function gitOutCarriesLargeOutput() {
   }
 }
 
-/** Self-test helper: a byte-identical copy of a record under another task's file name must load
- *  as an error, never as that task's authority (the Antitube wave-4 finding: the copy carried a
- *  done or approved task's scope and phase to a footer that was never created). */
-function copiedRecordRefused() {
+/** Self-test helper: `fn(dir)` over a state dir holding t-orig's record under its own name, a
+ *  byte-identical copy of it under t-copy's, and a register of another schema (no id) beside
+ *  them, as tasks/ holds a calibration register. */
+function withCopiedRecord(fn) {
   const dir = mkdtempSync(`${tmpdir()}/task-coverage-copy-`);
   try {
-    writeFileSync(`${dir}/t-copy.json`, JSON.stringify({ schema: "stallion/task-state@1", id: "t-orig", riskClass: "runtime-code", events: [] }));
-    writeFileSync(`${dir}/t-orig.json`, JSON.stringify({ schema: "stallion/task-state@1", id: "t-orig", riskClass: "runtime-code", events: [] }));
-    const counted = readTaskRecords(dir).map((r) => r.id);
-    return String(loadRecord("t-copy", dir).error ?? "").includes("is not the task its file names") && counted.join() === "t-orig";
+    const record = JSON.stringify({ schema: "stallion/task-state@1", id: "t-orig", riskClass: "runtime-code", events: [] });
+    writeFileSync(`${dir}/t-copy.json`, record);
+    writeFileSync(`${dir}/t-orig.json`, record);
+    writeFileSync(`${dir}/t-orig.calibration.json`, JSON.stringify({ schema: "stallion/calibration@1" }));
+    return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/** Self-test helper: a byte-identical copy of a record under another task's file name must load
+ *  as an error, never as that task's authority (the Antitube wave-4 finding: the copy carried a
+ *  done or approved task's scope and phase to a footer that was never created). The staged
+ *  refusal names the copy alone: a register is no task, and its "copy" fix would rm it. */
+const copiedRecordRefused = () => withCopiedRecord((dir) => {
+  const { records, dropped } = readTaskRecords(dir);
+  return String(loadRecord("t-copy", dir).error ?? "").includes("is not the task its file names") && records.map((r) => r.id).join() === "t-orig" && dropped.length === 1 && dropped[0].error.includes("(t-copy)");
+});
+
+/** Self-test helper: a footer naming the copy refuses with task-state's own exit for a copy — rm
+ *  it, then new — never `new <id>`, which the copy's existing file refuses, and never a `git log`
+ *  alone, which an untracked copy has no history in. */
+const copiedRecordFixRuns = () => withCopiedRecord((dir) => {
+  const { refusal } = commitMsgVerdict({ message: "fix: x\n\ntask: t-copy\n", messageFile: ".git/COMMIT_EDITMSG", files: ["tools/a.mjs"], mergeParents: null, editorUsed: true, cleanup: null, addedLines: [], load: (id) => loadRecord(id, dir) });
+  return String(refusal).includes("fix: if it is a copy of task 't-orig' (whose own file keeps its history): rm tasks/t-copy.json && node tools/task-state.mjs new t-copy --risk-class <class>") && !String(refusal).includes("advance t-copy planned");
+});
 
 /** Self-test: the refusals ARE the feature — every guard proven both directions. */
 export function selfTest() {
@@ -1820,7 +1855,8 @@ export function selfTest() {
     ["a new commit citing an in-flight scoped task passes the seam", citationRefusal(scopedPost, ["tools/a.mjs"], false) === null && citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "transition", to: "executing" }] }, ["tools/a.mjs"], true) === null],
     ["a malformed doneAt stamp does not grandfather the pin law", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "not-a-date" }] }) !== null],
   ];
-  citationCases.push(["a copied record (id not the task its file names) authorizes nothing at the fence", copiedRecordRefused()]);
+  citationCases.push(["a copied record (id not the task its file names) authorizes nothing at the fence, and the staged refusal names the copy, never a register of another schema", copiedRecordRefused()]);
+  citationCases.push(["a copied record's refusal prints task-state's rm-then-new exit, never a `new` its existing file refuses", copiedRecordFixRuns()]);
   for (const [name, passes] of citationCases) if (!passes) fail(`task-coverage: ${name}`);
 
   const anchorCases = [
@@ -1883,7 +1919,7 @@ function commitMsgFixture() {
   const scopedExec = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "scope", patterns: ["tools/**"] }, { type: "transition", to: "executing" }] };
   const planned = { ...scopedExec, id: "p", events: scopedExec.events.slice(0, 3) };
   const records = { t: scopedExec, d: { ...scopedExec, id: "d", riskClass: "docs-only" }, p: planned, dp: { ...planned, id: "dp", riskClass: "docs-only" } };
-  const load = (id) => (records[id] ? { record: records[id] } : { error: `no task record for '${id}'` });
+  const load = (id) => (records[id] ? { record: records[id] } : { error: `no task record for '${id}'`, fix: `node tools/task-state.mjs new ${id} --risk-class <class>` });
   return (message, files, facts = {}) => commitMsgVerdict({ message, messageFile: ".git/COMMIT_EDITMSG", files, mergeParents: null, editorUsed: true, cleanup: null, addedLines: [], load, ...facts });
 }
 
@@ -2344,6 +2380,29 @@ function doctorRefusesAbsentRegistry(r) {
   return out.includes("✖ the gate registry holds") && out.includes("evidence: tools/gate-registry.mjs is absent — the battery (package.json) runs unguarded\n") && out.includes("fix: vendor tools/gate-registry.mjs and docs/gates/gate-registry.json") && !out.includes("Cannot find module");
 }
 
+/** An untracked copy in a real repo: tasks/copy.json holds executing task `orig`'s record, and no
+ *  tasks/orig.json exists. Every transport reads through the record law — the staged gate refuses
+ *  and names the copy it dropped, commit-msg and the fence refuse its footer — each with
+ *  task-state's rm-then-new exit; the same record under its own name passes the staged gate. */
+function copiedRecordRefusesAtEveryTransport(r) {
+  const root = r.commit("README.md", "x\n", "docs: root");
+  const record = JSON.stringify({ schema: "stallion/task-state@1", id: "orig", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }] });
+  const exit = "rm tasks/copy.json && node tools/task-state.mjs new copy --risk-class <class>";
+  r.write("tasks/copy.json", record);
+  r.write("apps/a.mjs", "export {};\n");
+  r.git("add", "apps/a.mjs");
+  const staged = r.run(["--staged"]);
+  const commitMsg = r.run(["--commit-msg", r.message("feat: a\n\ntask: copy\n")]);
+  r.git("commit", "-q", "-m", "feat: a\n\ntask: copy");
+  const fence = r.run(["--base", root]);
+  rmSync(`${r.dir}/tasks/copy.json`);
+  r.write("tasks/orig.json", record);
+  r.write("apps/b.mjs", "export {};\n");
+  r.git("add", "apps/b.mjs");
+  const own = r.run(["--staged"]);
+  return staged.status === 1 && staged.out.includes("task record 'orig' is not the task its file names (copy)") && [staged, commitMsg, fence].every((t) => t.status === 1 && t.out.includes(exit)) && own.status === 0;
+}
+
 /** The transports end to end, in scratch repos: the pure seams take git's facts as data, so only
  *  here do git's quoting, rename detection, merge state, cleanup, and pre-push stdin reach them. */
 function selfTestTransportCases(fail) {
@@ -2362,6 +2421,7 @@ function selfTestTransportCases(fail) {
     ["the doctor refuses a bare pre-push and a guardless pre-commit, committed and live, and certifies the wired forms", inScratchRepo(doctorSeesHookControls)],
     ["the doctor runs the gate registry: a battery gate swallowed in package.json refuses with the registry's lines, the carried battery passes", inScratchRepo(doctorRunsGateRegistry)],
     ["the doctor refuses an absent gate registry in one line with a vendoring fix", inScratchRepo(doctorRefusesAbsentRegistry)],
+    ["an untracked copied record authorizes nothing at the staged gate, commit-msg, or the fence, and each refusal names it with task-state's rm-then-new exit", inScratchRepo(copiedRecordRefusesAtEveryTransport)],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
   return cases.length;

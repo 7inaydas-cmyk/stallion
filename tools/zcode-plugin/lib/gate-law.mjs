@@ -62,7 +62,10 @@ export function parseEditPayload(payload) {
   return { ok: true, toolName, filePath: raw, cwd };
 }
 
-/** Read every parsable task record in the state dir — malformed records authorize nothing. */
+/** Read every parsable task record in the state dir — malformed records authorize nothing, and
+ *  neither does a copy: a record whose id is not the task its file names carries another task's
+ *  scope, phase and approval, and the staged gate, the fence and task-state all skip it (the same
+ *  identity law as task-coverage's loadRecord — this gate once allowed what they refused). */
 export function readRecords(stateDir) {
   const records = [];
   let files = [];
@@ -73,7 +76,8 @@ export function readRecords(stateDir) {
   }
   for (const f of files) {
     try {
-      records.push(JSON.parse(readFileSync(join(stateDir, f), "utf8")));
+      const record = JSON.parse(readFileSync(join(stateDir, f), "utf8"));
+      if (record?.id === f.slice(0, -".json".length)) records.push(record);
     } catch {
       // a malformed record cannot authorize anything — it simply is not an active task
     }
@@ -317,6 +321,14 @@ const withQuietHarness = (fn) => withTree({
   "tools/task-state.mjs": 'export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];\nexport const derivePhase = () => "intake";\nexport const scopeOf = () => [];\n',
 }, fn);
 
+/** A harness whose every record is executing and authorizes tools/, holding one record with id
+ *  `orig` under the file name `file` — a copy when `file` is not orig.json. */
+const withRecordFiledAs = (file, fn) => withTree({
+  "tools/task-coverage.mjs": 'const none = () => null;\nexport const isCodePath = (p) => p.startsWith("tools/");\nexport { none as recordRefusal, none as scopeRefusal, none as citationRefusal };\n',
+  "tools/task-state.mjs": 'export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];\nexport const derivePhase = () => "executing";\nexport const scopeOf = () => ["tools/**"];\n',
+  [`tasks/${file}`]: JSON.stringify({ id: "orig", events: [] }),
+}, fn);
+
 /** Run one of the plugin's hooks as the runner does: the payload on stdin (an object is sent as
  *  its JSON, a string as-is), the verdict in the exit. `hooksDir` runs a copied plugin's hooks. */
 function runHook(name, payload, hooksDir = fileURLToPath(new URL("../hooks/", import.meta.url))) {
@@ -339,6 +351,12 @@ function hookExitCases() {
     ["the authoring hook refuses (exit 2) where no harness is found", withTree({}, (dir) => refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")), "no stallion harness found"))],
     ["the authoring hook refuses (exit 2) a harness missing the law's exports", withTree({ "tools/task-coverage.mjs": "export const x = 1;\n", "tools/task-state.mjs": "export const y = 1;\n" }, (dir) => refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")), "does not export"))],
     ["the authoring hook's ordinary deny exits 2 with the fix, and a non-code edit exits 0", withQuietHarness((dir) => refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")), "fix:") && runHook("authoring-gate.mjs", editIn(dir, "README.md")).status === 0)],
+    ["a copied record (its id not the task its file names) authorizes no edit and shows in no banner — both hooks read through the fence's identity law", (() => {
+      const judged = (file) => withRecordFiledAs(file, (dir) => [runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")).status, runHook("banner.mjs", { cwd: dir }).stdout.includes("task 'orig'")]);
+      const [copyExit, copyShown] = judged("copy.json");
+      const [ownExit, ownShown] = judged("orig.json");
+      return copyExit === 2 && !copyShown && ownExit === 0 && ownShown;
+    })()],
     ["the authoring hook fails CLOSED (exit 2) when one of its own modules cannot load", withTree({}, (dir) => {
       cpSync(fileURLToPath(new URL("../", import.meta.url)), dir, { recursive: true });
       appendFileSync(join(dir, "lib/gate-law.mjs"), "\nexport const broken = ;\n");
@@ -437,6 +455,34 @@ process.exit(d?.reason?.includes("--risk-class protected") ? 0 : 1);`;
   return spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).status === 0;
 }
 
+/**
+ * readRecords against the fence's own reader, over one state dir of every edge shape. The plugin
+ * re-types the identity law (a copied plugin has no harness to import it from), so a law that
+ * tightened on one side drifted with every case green — this gate once let a copy authorize what
+ * the fence refused (a review finding). Both readers must keep the same ids; a copied plugin has
+ * no tree beside it, the same skip realTierPin takes.
+ */
+function realReaderPin() {
+  const layout = layoutAt(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."));
+  if (layout === null) return true;
+  const dir = mkdtempSync(join(tmpdir(), "gate-law-agree-"));
+  const task = (id) => JSON.stringify({ schema: "stallion/task-state@1", id, events: [] });
+  const shapes = { "t.json": task("t"), "copy.json": task("t"), "torn.json": "{", "null.json": "null", "t.findings.json": task("t.findings"), "t.calibration.json": JSON.stringify({ schema: "stallion/calibration@1" }), "Upper.json": task("Upper") };
+  const code = `const { loadLaw } = await import(${JSON.stringify(new URL("./law-source.mjs", import.meta.url).href)});
+const { readRecords } = await import(${JSON.stringify(import.meta.url)});
+const law = await loadLaw(${JSON.stringify(layout)});
+const ids = (records) => records.map((r) => r.id).sort().join();
+const ours = ids(readRecords(${JSON.stringify(dir)}));
+const fence = law.ok ? ids(law.coverage.readTaskRecords(${JSON.stringify(dir)}).records) : null;
+if (ours !== fence || !ours.split(",").includes("t")) { console.error(\`readRecords kept [\${ours}], the fence's reader [\${fence}]\`); process.exit(1); }`;
+  try {
+    for (const [file, text] of Object.entries(shapes)) writeFileSync(join(dir, file), text);
+    return spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).status === 0;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** The sitrep case family, split from selfTest so the ratchet keeps its word on both. */
 function sitrepCases(fakeLaw) {
   return [
@@ -519,6 +565,7 @@ if (checked === 0) console.error("(no harness tree found from the plugin locatio
       return !inRepo || !run.stderr.includes("pins unchecked here");
     })()],
     ["the real law's tier export still reaches the gate — a fence-surface path's fix opens a protected task", realTierPin()],
+    ["readRecords keeps exactly the records the fence's own reader keeps (a copy, torn JSON, a findings file, a register, a non-kebab id) — the identity law is re-typed here, so a drift must fail the battery", realReaderPin()],
     ["file_path, filePath, and path spellings are all read", parseEditPayload({ tool_input: { file_path: "a" } }).ok && parseEditPayload({ tool_input: { filePath: "a" } }).ok && parseEditPayload({ tool_input: { path: "a" } }).ok],
     ["a non-object payload refuses", parseEditPayload(null).ok === false],
     ["the banner names the in-flight task, its phase, and the next command", (() => { const b = bannerContext(fakeLaw, [task("executing", ["tools/**"])]); return b.includes("t-executing") && b.includes("advance") && b.includes("tools/**"); })()],

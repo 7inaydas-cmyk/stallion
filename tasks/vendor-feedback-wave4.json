@@ -60,6 +60,92 @@
       "seq": 5,
       "parent_hash": "ca4ddfbf614912d97a05750f7fb36fe26fa4ee260cd4d20b6009c8fc75c4f488",
       "entry_hash": "40893960fe574b4dc67ba41f2f3079a4288e616c5173db2dd984f388f80e4b6c"
+    },
+    {
+      "at": "2026-09-27T14:05:41.606Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "40893960fe574b4dc67ba41f2f3079a4288e616c5173db2dd984f388f80e4b6c",
+      "entry_hash": "adfed996e7c62d495dbd3afc8b8e8a1ee0fefb4972b2fd2054fab0932332b907"
+    },
+    {
+      "at": "2026-09-27T14:18:36.098Z",
+      "type": "scope",
+      "patterns": [
+        "tools/zcode-plugin/lib/gate-law.mjs",
+        "tools/bench/setup.mjs",
+        "tools/bench/grade.mjs"
+      ],
+      "seq": 7,
+      "parent_hash": "adfed996e7c62d495dbd3afc8b8e8a1ee0fefb4972b2fd2054fab0932332b907",
+      "entry_hash": "0471fa8eb0448a66547372a379e45bae4bb88f91772ee9f264c48a0526ab4c13"
+    },
+    {
+      "at": "2026-09-27T14:21:58.931Z",
+      "type": "red-check",
+      "expect": "the kit run inside a git hook leaves the HOST repo untouched",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "afbba3f6af9a",
+      "seq": 8,
+      "parent_hash": "0471fa8eb0448a66547372a379e45bae4bb88f91772ee9f264c48a0526ab4c13",
+      "entry_hash": "cc87d8ae09234994b69be48366afbf7dc7fb23676373f5733f019a66feccf9cf"
+    },
+    {
+      "at": "2026-09-27T14:24:04.125Z",
+      "type": "red-check",
+      "expect": "a copied record \\(its id not the task its file names\\) authorizes no edit and shows in no banner",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "64c43e54108e",
+      "seq": 9,
+      "parent_hash": "cc87d8ae09234994b69be48366afbf7dc7fb23676373f5733f019a66feccf9cf",
+      "entry_hash": "48c96769735e77ed975fdbdf5e5de5cc829a78b8486adaebb489990cf7b41494"
+    },
+    {
+      "at": "2026-09-27T14:26:43.030Z",
+      "type": "red-check",
+      "expect": "a copied record's refusal prints task-state's rm-then-new exit, never a `new` its existing file refuses",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1ad6f03872fa",
+      "seq": 10,
+      "parent_hash": "48c96769735e77ed975fdbdf5e5de5cc829a78b8486adaebb489990cf7b41494",
+      "entry_hash": "db0e1d3f2def0f0e33a94c21f9a7e67113973fbb35a04e20b4dccea24391969d"
+    },
+    {
+      "at": "2026-09-27T14:26:46.150Z",
+      "type": "red-check",
+      "expect": "an untracked copied record authorizes nothing at the staged gate, commit-msg, or the fence, and each refusal names it with task-state's rm-then-new exit",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1ad6f03872fa",
+      "seq": 11,
+      "parent_hash": "db0e1d3f2def0f0e33a94c21f9a7e67113973fbb35a04e20b4dccea24391969d",
+      "entry_hash": "eacddce9c89cc3d93e8f83c7373194227552612fd30a9f5f019a445b488c4172"
+    },
+    {
+      "at": "2026-09-27T14:29:08.095Z",
+      "type": "red-check",
+      "expect": "a copied record \\(its id not the task its file names\\) opens and forgets no workspace",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8e292e439394",
+      "seq": 12,
+      "parent_hash": "eacddce9c89cc3d93e8f83c7373194227552612fd30a9f5f019a445b488c4172",
+      "entry_hash": "30b383003ebc29cda41cce7d1ea36b26b58ce10208b01b42e1bc57a20dbe3268"
+    },
+    {
+      "at": "2026-09-27T14:44:57.540Z",
+      "type": "red-check",
+      "expect": "a missing task id refuses with task-state's status exit \\(a typo, or forget cleaning up\\)",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "699c91ca6d5f",
+      "seq": 13,
+      "parent_hash": "30b383003ebc29cda41cce7d1ea36b26b58ce10208b01b42e1bc57a20dbe3268",
+      "entry_hash": "10d797ba001eb5fdfe56e3fd7050e5e66ae0363649407146db857d8a17ea00dc"
     }
   ]
 }

@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { greenVerdictOf } from "../task-state.mjs";
-import { derivedBattery } from "./setup.mjs";
+import { derivedBattery, fixtureEnv } from "./setup.mjs";
 import { TASKS, taskById } from "./tasks.mjs";
 
 const SETUP = fileURLToPath(new URL("./setup.mjs", import.meta.url));
@@ -131,9 +131,10 @@ function tally(tap) {
 }
 
 /** Runs a command to completion and returns its status with both streams joined by a newline
- *  (the capture seam's glue law: two streams concatenated bare can fuse a TAP line). */
+ *  (the capture seam's glue law: two streams concatenated bare can fuse a TAP line). Never with
+ *  the caller's GIT_*: every sandbox git, task-state and npm child would act on a hook's HOST repo. */
 function capture(command, args, cwd) {
-  const r = spawnSync(command, args, { cwd, encoding: "utf8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+  const r = spawnSync(command, args, { cwd, encoding: "utf8", env: fixtureEnv(), timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
   return { status: r.status, output: `${r.stdout ?? ""}\n${r.stderr ?? ""}` };
 }
 
@@ -251,6 +252,55 @@ function selfTestSandboxes() {
     ];
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/** A pre-commit hook's env as git exports it: GIT_DIR and GIT_INDEX_FILE both name the HOST repo
+ *  in a linked worktree; commit -a exports GIT_INDEX_FILE alone. Every path lies under <host>. */
+const hookShapes = (host) => [
+  { GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index") },
+  { GIT_INDEX_FILE: join(host, "index") },
+];
+
+/** Runs <fn> with <vars> set on process.env, every prior value restored after. Under a hook env
+ *  a crash is a leak: it comes back as { crash: "a crash: <its first message line>" }, never as a
+ *  stack trace, so the row that fails still says why. */
+function underHookEnv(vars, fn) {
+  const saved = Object.keys(vars).map((k) => [k, process.env[k]]);
+  Object.assign(process.env, vars);
+  try {
+    return { result: fn() };
+  } catch (error) {
+    return { crash: `a crash: ${`${error.message}`.split("\n")[0]}` };
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+/** The kit run inside a simulated git hook must leave the HOST repo untouched: a sandbox that
+ *  inherits the hook's GIT_DIR/GIT_INDEX_FILE inits, stages and commits into the host (the
+ *  vendor-feedback-wave4 finding — setup.mjs's git() and capture() both passed the caller's env
+ *  on). setup.mjs run by the hook itself under each shape, each shape on a GIT_*-free base (so a
+ *  battery itself run from a real hook can only ever reach the throwaway host), then every sandbox
+ *  row under the linked-worktree shape through capture(), each named for that env: every row must
+ *  still pass there, the host paths must stay absent, and a crash is a leak. */
+function selfTestSandboxesInHostHook() {
+  const [host, arms] = [mkdtempSync(join(tmpdir(), "bench-host-")), mkdtempSync(join(tmpdir(), "bench-hook-arms-"))];
+  try {
+    const shapes = hookShapes(host);
+    const built = shapes.map((shape, i) => spawnSync("node", [SETUP, "control", "chunk-generator", join(arms, `arm-${i}`)], { env: { ...fixtureEnv(), ...shape }, stdio: "ignore" }).status === 0);
+    const { result: rows = [], crash } = underHookEnv(shapes[0], selfTestSandboxes);
+    const hostAbsent = shapes.every((shape) => Object.values(shape).every((path) => !existsSync(path)));
+    return [
+      ...rows.map(([name, passes]) => [`under a git hook's env (capture() drops its GIT_*): ${name}`, passes]),
+      [`the kit run inside a git hook leaves the HOST repo untouched (setup.mjs drops the hook's GIT_*, nothing appears at the host paths, no crash)${crash ? `: ${crash}` : ""}`, !crash && built.every(Boolean) && hostAbsent],
+    ];
+  } finally {
+    rmSync(host, { recursive: true, force: true });
+    rmSync(arms, { recursive: true, force: true });
   }
 }
 
@@ -415,7 +465,7 @@ function selfTest() {
     ["every spec names its module's path", TASKS.every((t) => t.spec.includes(`apps/lib/${t.module}.mjs`))],
     ["chunk-generator: the spec states the call-time RangeError its hidden suite grades", /throws as soon as chunk\(\) is called, before any iteration/.test(taskById("chunk-generator").spec)],
   ];
-  const all = [...shape, ...cases, ...selfTestVerdicts(), ...selfTestGraderSeams(), ...selfTestGraderLimits(), ...selfTestSandboxes()];
+  const all = [...shape, ...cases, ...selfTestVerdicts(), ...selfTestGraderSeams(), ...selfTestGraderLimits(), ...selfTestSandboxesInHostHook()];
   for (const [name, passes] of all) if (!passes) fail(`bench: ${name}`);
   console.log(failures.length === 0
     ? `bench grade self-test: OK (${all.length} cases over ${TASKS.length} tasks; both suites discriminate, the refusals fire, the sandboxes pass their own harness)`
