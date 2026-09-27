@@ -192,42 +192,40 @@ export function trackedFiles(globs, excludes, cwd = ROOT, env = process.env, not
 }
 
 /**
- * A skipped path HEAD holds (a file, or a link a clean checkout may resolve) with rows in the
- * baseline is a source whose next commit nothing here can see: `git commit` keeps HEAD's copy, and
- * so does a sparse checkout (git's or jj's) that leaves it out (its ceilings stand), while `git
- * commit -a` and a colocated-jj commit record a plain rm as its deletion (its rows go stale).
- * Every guess shipped a red tip — dropping the
- * rows let --update-baseline strip a source HEAD still tracks; carrying them kept a deleted file's
- * ceilings behind a false green, and a sparse carve-out keyed on git's skip-worktree bit was blind
- * to jj (which ignores the bit, and whose own sparse patterns never set it) and to guard-reach's
- * HEAD-index copy (which carries no bits). So scan REFUSES — gate, --report and --update-baseline
- * alike — until the source is back on disk or its deletion is staged: the ratchet judges only
- * sources it can read. The delete exit is conditioned on a full checkout: under jj's sparse
- * patterns a git rm deletes nothing jj commits, so re-recording there drops ceilings jj keeps. A path HEAD holds nothing at (an intent-to-add entry, an untracked link)
- * has no source any commit keeps, so its rows go stale. An unreadable baseline refuses with the
+ * A skipped path the INDEX lists — a file or link HEAD holds, a skip-worktree entry, or an
+ * intent-to-add entry (which is how colocated jj writes a file added in its working-copy commit) —
+ * with rows in the baseline is a source whose next commit nothing here can see: `git commit` keeps
+ * HEAD's copy, and so does a sparse checkout (git's or jj's) that leaves it out, and `jj commit`
+ * keeps a file it added; `git commit -a` and `jj commit` record a plain rm as its deletion. Every
+ * guess shipped a red tip — dropping the rows let --update-baseline strip a source a commit still
+ * keeps; carrying them kept a deleted file's ceilings behind a false green; carrying on git's
+ * skip-worktree bit was blind to jj (which ignores the bit, and whose own sparse patterns never
+ * set it) and to guard-reach's HEAD-index copy (which carries no bits). So scan REFUSES — gate,
+ * --report and --update-baseline alike — until the source is back on disk or its deletion is
+ * staged: the ratchet judges only sources it can read. The delete exit is conditioned on a full
+ * checkout in the text alone — under jj's sparse patterns a git rm deletes nothing jj commits, and
+ * nothing here can read jj's patterns. A path the index does not list (an untracked dangling link)
+ * carries no source into any commit, so its rows go stale. An unreadable baseline refuses with the
  * restore alone: RESTORE_BASELINE's re-record route would die here again.
  */
 function refuseMissingSources(skipped) {
   if (skipped.length === 0) return;
   const loaded = loadBaseline();
   if (!loaded.ok) die(`${loaded.reason.split("\n")[0]} — and it may hold the ceilings of ${skipped.length} path(s) missing from disk\n  fix: git checkout -- ${BASELINE_PATH} (or resolve its merge conflict)`);
-  const held = headBlobs(skipped.filter((p) => loaded.baseline.functions.some((row) => row.file === p)));
+  const held = indexListed(skipped.filter((p) => loaded.baseline.functions.some((row) => row.file === p)));
   for (const p of held) console.error(`complexity-gate: ${missingSourceRefusal(p)}`);
   if (held.length > 0) process.exit(1);
 }
 
 const missingSourceRefusal = (p) =>
-  `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy, and so does a sparse checkout that leaves it out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (git checkout HEAD -- ${shq(p)}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline)`;
+  `${p} has no regular file on disk and no staged change, and ${BASELINE_PATH} holds its ceilings — whether the next commit keeps its source is not visible here (\`git commit\` keeps HEAD's copy, and so does a sparse checkout that leaves it out; \`git commit -a\` and \`jj commit\` record a plain rm as its deletion)\n  fix: put it back on disk (git --literal-pathspecs checkout HEAD -- ${shq(p)}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${shq(p)} && node ${SELF_REL} --update-baseline)`;
 
-/** Which of `paths` HEAD holds as a file or link (mode 100644/100755/120000). An unborn HEAD holds none.
- *  `--literal-pathspecs`: a name starting with `:` is a path, not pathspec magic (ls-tree does no globbing). */
-function headBlobs(paths) {
-  if (paths.length === 0 || spawnSync("git", ["rev-parse", "-q", "--verify", "HEAD"], { cwd: ROOT }).status !== 0) return [];
-  const held = execFileSync("git", ["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", ...paths], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
-    .split("\0")
-    .filter((e) => /^(100644|100755|120000) blob /.test(e))
-    .map((e) => e.slice(e.indexOf("\t") + 1));
-  return paths.filter((p) => held.includes(p));
+/** Which of `paths` the index lists. `--literal-pathspecs` in the query and in every printed exit:
+ *  a name starting with `:` is a path, not pathspec magic (`:!x.mjs` would name every OTHER file). */
+function indexListed(paths) {
+  if (paths.length === 0) return [];
+  const listed = execFileSync("git", ["--literal-pathspecs", "ls-files", "-z", "--cached", "--", ...paths], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0");
+  return paths.filter((p) => listed.includes(p));
 }
 
 const FUNCTION_KINDS = new Set([
@@ -666,7 +664,7 @@ function selfTestStagedMissing(fail, dir, env, git) {
   const probe = `(await import(${JSON.stringify(import.meta.url)})).trackedFiles(["tools/**/*.mjs"], [], ${JSON.stringify(dir)});`;
   const run = spawnSync(process.execPath, ["--input-type=module", "-e", probe], { encoding: "utf8", env });
   const refusal = "complexity-gate: tools/new.mjs is staged but missing from disk";
-  const fix = "fix: restore it (git checkout -- tools/new.mjs) or stage the deletion (git rm -- tools/new.mjs)";
+  const fix = "fix: restore it (git --literal-pathspecs checkout -- tools/new.mjs) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- tools/new.mjs)";
   if (run.status !== 1 || !run.stderr.includes(refusal) || !run.stderr.includes(fix)) fail(`staged-missing-unjudged: staged content missing from disk must refuse with its remedy (exit ${run.status}: ${run.stderr.trim()})`);
 }
 
@@ -733,16 +731,16 @@ function hostCopy(dir) {
 const BIG_SOURCE = `export function big(a) {\n${Array.from({ length: 8 }, (_, n) => `  if (a === ${n}) return ${n};\n`).join("")}  return -1;\n}\n`;
 
 /**
- * A scratch host (hostCopy) in `dir` under a fresh git repo: threshold 8 over tools/**, a baseline
+ * A scratch host (hostCopy) in `dir` under a fresh git repo: threshold 8 over `includes`, a baseline
  * holding a `big` (9) row for each of `files`, and each of `sources` written as BIG_SOURCE. Every
- * git and gate run drops the inherited GIT_* env (inside a hook it names the HOST repo); `git`
+ * git, shell and gate run drops the inherited GIT_* env (inside a hook it names the HOST repo); `git`
  * throws on failure, `gitRun` returns the result (a refused commit is an outcome, not an error).
  */
-function baselinedHost(dir, files, sources = files) {
+function baselinedHost(dir, files, sources = files, includes = ["tools/**/*.mjs"]) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
   const gate = hostCopy(dir);
   for (const sub of ["tools", "lib"]) mkdirSync(join(dir, sub));
-  writeFileSync(join(dir, CONFIG_PATH), JSON.stringify({ threshold: 8, includes: ["tools/**/*.mjs"], excludes: ["**/node_modules/**"], testGlobs: [] }));
+  writeFileSync(join(dir, CONFIG_PATH), JSON.stringify({ threshold: 8, includes, excludes: ["**/node_modules/**"], testGlobs: [] }));
   writeFileSync(join(dir, BASELINE_PATH), JSON.stringify({ threshold: 8, functions: files.map((file) => ({ file, name: "big", complexity: 9 })) }));
   for (const source of sources) writeFileSync(join(dir, source), BIG_SOURCE);
   const argv = (args) => ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args];
@@ -755,6 +753,7 @@ function baselinedHost(dir, files, sources = files) {
     gitRun: (...args) => spawnSync("git", argv(args), { cwd: dir, env, encoding: "utf8" }),
     baselinePath,
     run: (...args) => spawnSync(process.execPath, [gate, ...args], { cwd: dir, env, encoding: "utf8" }),
+    sh: (command) => spawnSync("sh", ["-c", command], { cwd: dir, env, encoding: "utf8" }),
     baseline: () => readFileSync(baselinePath, "utf8"),
   };
 }
@@ -801,7 +800,7 @@ const BASELINED = ["tools/big.mjs", "tools/run.mjs"];
 
 /** The exits a missing baselined source's refusal names — put it back, or delete it for good. */
 const missingSourceFix = (p) =>
-  `fix: put it back on disk (git checkout HEAD -- ${p}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git rm --ignore-unmatch -- ${p} && node vendor/complexity-gate.mjs --update-baseline)`;
+  `fix: put it back on disk (git --literal-pathspecs checkout HEAD -- ${p}, and a link's target; if a sparse checkout — git's or jj's — leaves it out, widen the checkout to include it) or, if you deleted it for good in a full checkout, stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- ${p} && node vendor/complexity-gate.mjs --update-baseline)`;
 
 /** The gate and the re-record both refuse each source with the exits that settle it; the baseline is untouched. */
 function unstagedDeletionRefused(fail, host) {
@@ -866,7 +865,7 @@ function selfTestLinkedSource(fail) {
     host.git("add", "lib/real.mjs", "tools/alias.mjs");
     host.git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "lib", "real.mjs"));
-    const fix = "stage the deletion and re-record (git rm --ignore-unmatch -- tools/alias.mjs && node vendor/complexity-gate.mjs --update-baseline)";
+    const fix = "stage the deletion and re-record (git --literal-pathspecs rm --ignore-unmatch -- tools/alias.mjs && node vendor/complexity-gate.mjs --update-baseline)";
     for (const [what, run] of [["gate", host.run()], ["--update-baseline", host.run("--update-baseline")]]) {
       if (run.status !== 1 || !run.stderr.includes(fix)) fail(`linked-source-dropped: the ${what} on a committed link whose target was removed from disk only must refuse (exit ${run.status}: ${run.stderr.trim()})`);
     }
@@ -899,28 +898,63 @@ function selfTestSparseEntry(fail) {
 }
 
 /**
- * A skipped path HEAD holds nothing at — a removed intent-to-add entry, an untracked dangling link
- * — has no source any commit keeps, so its rows are STALE: reported by the gate, dropped by the
- * re-record. Carrying them kept a dead ceiling that every clean clone then refused. Run twice: on
- * an unborn HEAD (headBlobs' early branch) and after a seed commit (its ls-tree branch).
+ * A skipped path the index does not list — an untracked dangling link — carries no source into
+ * any commit, so its rows are STALE: reported by the gate, dropped by the re-record. Carrying them
+ * kept a dead ceiling that every clean clone then refused. Run on an unborn HEAD and after a seed
+ * commit, so neither shape of the repo decides it.
  */
 function selfTestNoHeadFile(fail) {
   for (const seeded of [false, true]) inScratch("complexity-gate-nohead-", (dir) => noHeadFileStale(fail, dir, seeded));
 }
 
 function noHeadFileStale(fail, dir, seeded) {
-  const paths = ["tools/ita.mjs", "tools/loose.mjs"];
-  const host = baselinedHost(dir, paths, ["tools/ita.mjs"]);
+  const host = baselinedHost(dir, ["tools/loose.mjs"], []);
   if (seeded) host.git("commit", "-q", "--allow-empty", "-m", "seed");
-  host.git("add", "-N", "tools/ita.mjs");
-  rmSync(join(dir, "tools", "ita.mjs"));
   symlinkSync("nowhere.mjs", join(dir, "tools", "loose.mjs"));
   const judged = host.run();
-  const stale = paths.filter((p) => judged.stderr.includes(`still exempts ${p} big (9)`));
   const head = seeded ? "a seeded HEAD" : "an unborn HEAD";
-  if (judged.status !== 1 || stale.length !== paths.length || judged.stderr.includes("stage the deletion")) fail(`no-head-file-carried: under ${head}, rows for paths HEAD holds nothing at must read as stale, never carried or refused (exit ${judged.status}: ${judged.stderr.trim()})`);
+  if (judged.status !== 1 || !judged.stderr.includes("still exempts tools/loose.mjs big (9)") || judged.stderr.includes("stage the deletion")) fail(`no-head-file-carried: under ${head}, rows for a path the index does not list must read as stale, never carried or refused (exit ${judged.status}: ${judged.stderr.trim()})`);
   const updated = host.run("--update-baseline");
   if (updated.status !== 0 || JSON.parse(host.baseline()).functions.length !== 0) fail(`no-head-file-kept: under ${head}, --update-baseline kept ceilings no commit can hold (exit ${updated.status}: ${host.baseline()})`);
+}
+
+/**
+ * An intent-to-add entry is how colocated jj writes a file added in its working-copy commit, and
+ * `jj commit` keeps it even when jj's sparse patterns take it off disk: reading its rows as stale
+ * let --update-baseline strip a ceiling the commit kept. The index lists it, so it is refused, and
+ * the delete exit — the one that runs for a file HEAD never held — clears it.
+ */
+function selfTestIntentToAdd(fail) {
+  inScratch("complexity-gate-ita-", (dir) => {
+    const host = baselinedHost(dir, ["tools/ita.mjs"]);
+    host.git("add", "-N", "tools/ita.mjs");
+    rmSync(join(dir, "tools", "ita.mjs"));
+    const judged = host.run();
+    if (judged.status !== 1 || !judged.stderr.includes(missingSourceFix("tools/ita.mjs"))) fail(`intent-to-add-dropped: an intent-to-add baselined source missing from disk must be refused, not read as stale rows (exit ${judged.status}: ${judged.stderr.trim()})`);
+    host.git("rm", "-q", "--ignore-unmatch", "--", "tools/ita.mjs");
+    const rerecorded = host.run("--update-baseline");
+    if (rerecorded.status !== 0 || host.run().status !== 0) fail(`intent-to-add-no-exit: the delete exit must clear an intent-to-add entry's refusal (re-record ${rerecorded.status}: ${rerecorded.stderr.trim()})`);
+  });
+}
+
+/**
+ * A root-level source named with a leading `:` is pathspec magic to git unless the pathspec is
+ * literal: `:!x.mjs` names every OTHER file. The index query must not miss it (the refusal would
+ * read its rows as stale), and the printed restore — run here verbatim, through a shell — must
+ * restore that one file, quoted, and clear the refusal.
+ */
+function selfTestLiteralName(fail) {
+  inScratch("complexity-gate-literal-", (dir) => {
+    const name = ":big one.mjs";
+    const host = baselinedHost(dir, [name], [name], [":*.mjs"]);
+    host.git("add", "--", `${dir}/${name}`);
+    host.git("commit", "-q", "-m", "seed");
+    rmSync(join(dir, name));
+    const judged = host.run();
+    const restore = /git --literal-pathspecs checkout HEAD -- '[^']*'/.exec(judged.stderr)?.[0];
+    const restored = restore ? host.sh(restore).status : null;
+    if (judged.status !== 1 || !restore || restored !== 0 || host.run().status !== 0) fail(`literal-name-dropped: a source named '${name}' must be refused with a quoted literal-pathspec restore that clears it (gate ${judged.status}, restore ${restored}: ${judged.stderr.trim()})`);
+  });
 }
 
 /**
@@ -968,6 +1002,8 @@ export function selfTest() {
   selfTestLinkedSource(fail);
   selfTestSparseEntry(fail);
   selfTestNoHeadFile(fail);
+  selfTestIntentToAdd(fail);
+  selfTestLiteralName(fail);
   selfTestSelfAlarm(fail);
   selfTestVendoredSelf(fail);
 

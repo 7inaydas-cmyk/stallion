@@ -220,6 +220,39 @@
       "seq": 20,
       "parent_hash": "b0abd22908ca681d65b183dbf8fc338345b635ef69ea7c7977be43ffe4cec2ed",
       "entry_hash": "23b9a6c3cf4d5f8f3a45bb9910b46c346411d8f66461353c6abc6dbe82b2d625"
+    },
+    {
+      "at": "2026-09-27T20:53:21.716Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: intent-to-add-dropped",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "86dae223e6ed",
+      "seq": 21,
+      "parent_hash": "23b9a6c3cf4d5f8f3a45bb9910b46c346411d8f66461353c6abc6dbe82b2d625",
+      "entry_hash": "794c8f5bd723fbfba962af4cd0dbebb82626f2683536035da3f197f7122fd91a"
+    },
+    {
+      "at": "2026-09-27T20:53:30.120Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: literal-name-dropped",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "86dae223e6ed",
+      "seq": 22,
+      "parent_hash": "794c8f5bd723fbfba962af4cd0dbebb82626f2683536035da3f197f7122fd91a",
+      "entry_hash": "b18cf9baa6757947e7503eb59f9c5011e1a319f0a290f27fbe5be212d6d24697"
+    },
+    {
+      "at": "2026-09-27T20:53:38.494Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: literal-name-dropped: .*gate 1, restore null",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "cdf0dda9e9f6",
+      "seq": 23,
+      "parent_hash": "b18cf9baa6757947e7503eb59f9c5011e1a319f0a290f27fbe5be212d6d24697",
+      "entry_hash": "6b5d825e35275b2acf6c691e060b724bd88694bd468e52d5dc06fd6b413c7561"
     }
   ]
 }

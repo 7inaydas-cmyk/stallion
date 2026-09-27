@@ -77,9 +77,10 @@ function discoverTestFiles(cwd = process.cwd(), env = process.env) {
  * index content this tool cannot read — refused. `skipped` is everything else with no regular file:
  * no staged change: the next commit keeps HEAD's copy (a sparse checkout; an unstaged rm under
  * `git commit`) or deletes it (an unstaged rm under `git commit -a` or a colocated-jj commit), or
- * carries nothing (an intent-to-add entry; an untracked dangling link). Its content is NOT
+ * carries no content git commits (an intent-to-add entry, though `jj commit` keeps a file jj added
+ * and wrote so; an untracked dangling link). Its content is NOT
  * re-judged here — the same boundary as a committed file edited on disk; complexity-gate refuses a
- * skip HEAD holds as a file or link and its baseline holds rows for (refuseMissingSources). Under
+ * skip the index lists and its baseline holds rows for (refuseMissingSources). Under
  * guard-reach's HEAD-index copy `diff --cached` is empty, so a
  * correct `git rm`/`git mv` is skipped rather than refused here. `--relative` keeps diff's
  * names in ls-files' cwd-relative form. complexity-gate imports this: one law, one copy.
@@ -101,7 +102,7 @@ export function listedOnDisk(cwd, env, files) {
 export const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
 
 export const stagedMissingRefusal = (p) =>
-  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion (git rm -- ${shq(p)})`;
+  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git --literal-pathspecs checkout -- ${shq(p)}) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- ${shq(p)})`;
 
 /** The skip note: what listedOnDisk checked, and no more. */
 export const skippedNote = (skipped) => `skipped ${skipped.length} listed path(s) with no regular file on disk and no staged change: ${skipped.map(shq).join(" ")}`;
@@ -391,7 +392,7 @@ function stagedMissingCases(t, dir, env, git) {
   const staged = lintIn(dir, env);
   t(
     "staged-missing-test-unjudged: a staged test file missing from disk refuses with its remedy",
-    staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git checkout -- new.test.mjs) or stage the deletion (git rm -- new.test.mjs)"),
+    staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git --literal-pathspecs checkout -- new.test.mjs) or, if you deleted it for good in a full checkout, stage the deletion (git --literal-pathspecs rm -- new.test.mjs)"),
   );
   t("refusal-ends-green: a refused run does not end on the clean verdict", !staged.stdout.includes("no bug-pinned tests") && staged.out.includes("test-lint: FAILED"));
   const deep = lintIn(join(dir, "sub"), env);
