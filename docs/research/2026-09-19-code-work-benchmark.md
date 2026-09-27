@@ -93,6 +93,28 @@ of six defects in the benchmark kit itself, including the confound that would ha
 flattered the result. The harness auditing the harness is the strongest signal in this
 report.
 
+## Additive correction (2026-09-27 code-review sweep)
+
+The tables above stand as measured; four statements about them do not.
+
+- The chunk-generator acceptance delta is a kit defect, not evidence either way. The chunk
+  spec then said chunk "yields arrays" and strings "chunk by code unit"; the hidden suite
+  demanded joined strings. The control implementation followed the spec (arrays of code units)
+  and was graded failing; the treatment implementation matched the suite but walked code
+  points, breaking the code-unit clause where no hidden case looked. The "round-trip sentence"
+  cited above is the csv-fields spec's, not chunk's. With the control's chunk HIGH reclassified
+  as the kit's spec/suite mismatch, the defect counts read 2 vs 1, and neither count is a
+  signal.
+- The Honest reading's "defects 2 vs 3" miscounts the adversarial table, which totals 2 vs 2
+  (one parse-duration LOW and one chunk HIGH per arm); after the reclassification above it is
+  2 vs 1.
+- The treatment sandboxes shipped no `docs/ADVERSARIAL-CHECKLIST.md`, so `adversarial-runner
+  prepare` could not run in any of them and `done` was unreachable; "adversarial is the
+  operator's" hid that the operator could not dispatch the pass in that kit either.
+- The kit is repaired: `tools/bench/tasks.mjs` now aligns spec, suite and reference (a string
+  yields code-unit strings, and a non-BMP hidden case grades it), and `tools/bench/setup.mjs`
+  vendors the checklist. A re-run is needed before any acceptance or defect delta is quoted.
+
 Reproduce: `node tools/bench/setup.mjs <treatment|control> <taskId> <dir>`, dispatch a fresh
 agent per sandbox, `node tools/bench/grade.mjs <dir> <taskId>` grades (refuses ungradable
 runs). The grader self-test proves discrimination (reference passes all, seed fails at least

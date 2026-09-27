@@ -25,9 +25,10 @@ The interesting part is what it refuses:
 - a planning-only task can never reach `executing`
 - a protected or migration task needs an approval that cites a full entry heading from your
   decisions register; a substring is not a decision
-- `verified` requires a command pin: `red-check --command` runs the failing check, refuses if
-  it passes, and records the command with its nonzero exit and an output digest. Advancing
-  also runs the whole tool battery at the phase boundary, so a red tool blocks the phase.
+- `verified` requires a command pin: `red-check --command --expect` runs the failing check,
+  refuses if it passes or its output does not match the expected-failure regex, and records the
+  command with its nonzero exit and an output digest. Advancing also runs the whole tool
+  battery at the phase boundary, so a red tool blocks the phase.
 - `done` requires an adversarial findings register that aggregates clean, and every pin
   re-runs GREEN at the gate. The full RED-to-GREEN arc is machine-verified, not promised.
 

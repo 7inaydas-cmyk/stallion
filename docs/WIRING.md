@@ -2,7 +2,9 @@
 
 The tools are dependency-free Node scripts that resolve your repo root from their own location
 (`tools/` at the root) — the one deliberate exception is complexity-gate's optional TypeScript
-compiler, declared as an optional peer dependency; skipping that gate costs nothing else.
+compiler, declared as an optional peer dependency; skipping that gate means deleting
+`tools/complexity-gate.mjs` and dropping its battery line, `docs/gates/complexity*.json`, and its
+`complexity-gate-new-file` guard in `docs/gates/guard-reach.json`.
 Adoption means vendoring: copy `tools/` into your repo, add the scripts, copy `docs/gates/`
 and edit it to your repo, wire the fences. Fork and adapt; the trees and defaults are knobs, not
 law.
@@ -87,6 +89,7 @@ machine checks that an approval names a real, recorded decision.
 ```bash
 #!/bin/sh
 node tools/task-coverage.mjs --staged || exit 1
+node tools/detached-head-guard.mjs || exit 1
 ```
 
 Activate per clone: `git config core.hooksPath .githooks`. Agents that skip hooks (aider does,
@@ -166,24 +169,27 @@ concrete facts gets investigation.
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --edit \"$CLAUDE_FILE\" --session \"$CLAUDE_SESSION_ID\" || exit 2'" } ] },
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --bash \"$CLAUDE_COMMAND\" --session \"$CLAUDE_SESSION_ID\" || exit 2'" } ] }
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --stdin || exit 2'" } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "sh -c 'node tools/task-gate.mjs --stdin || exit 2'" } ] }
     ]
   }
 }
 ```
 
-(Adapt the env names to your agent's hook contract — including the session identifier, which
-keeps concurrent conversations from sharing gate state; the `|| exit 2` translation is the
-Claude Code blocking form — see §5. The Bash matcher is ALL commands, not git-only: the
+(`--stdin` reads Claude Code's PreToolUse payload — `tool_input.file_path` for an edit,
+`tool_input.command` for a command, and `session_id`, which keeps concurrent conversations from
+sharing gate state; an agent with another hook contract passes `--edit <file>` /
+`--bash <command>` / `--session <id>` instead; the `|| exit 2` translation is the Claude Code
+blocking form — see §5. The Bash matcher is ALL commands, not git-only: the
 destructive laws cover `rm`, `dd`, and SQL, and a compound like `cd pkg && git push --force`
 never starts with `git`.) Three laws: the FIRST edit of each file per session refuses with
 a fact demand (importers, affected surface, the user's instruction verbatim — the retry passes);
 gate-bypassing git commands (`--no-verify`, `commit -n`, `-c core.hooksPath=`) refuse ALWAYS;
 destructive commands (force push, hard reset, `rm -rf`, SQL drops) deny once per session with a
 rollback demand. Denials carry a strictly increasing session ordinal — never textually
-identical, condensing after the third — because identical repeated denials feed the repetition
-loops they refuse. Session state lives in `.stallion/gate-state-*.json` (repo-local, gitignored,
+identical, condensing after the third full demand shown (never the once-per-session rollback
+demand; bypass refusals carry the ordinal but never count toward condensing) — because identical
+repeated denials feed the repetition loops they refuse. Session state lives in `.stallion/gate-state-*.json` (repo-local, gitignored,
 30-minute TTL); the self-test runs in the `selftest` battery. The staged-content scan (secrets,
 `debugger`) rides in the commit-msg gate (§6) — same transport, no new wiring.
 
@@ -223,8 +229,12 @@ the staged, message, and push transports below are the control.
 
 ```bash
 #!/bin/sh
-node tools/task-coverage.mjs || exit 1
+node tools/task-coverage.mjs --pre-push || exit 1
 ```
+
+`--pre-push` also reads the refs git is pushing (stdin) and refuses any pushed tip outside the
+checked-out history — push another branch from its own checkout, where the fence judges it
+whole. CI and manual runs use the bare command.
 
 The base is resolved inside the tool, in order: an explicit `--base <rev>`, then
 `git config stallion.push-base <rev>` (local override), then the COMMITTED `.stallion-base`
@@ -233,8 +243,17 @@ then the current branch's remote-tracking ref. If nothing resolves, the check RE
 than skipping. Pin the adoption base once, when you wire up:
 
 ```bash
-git rev-parse HEAD > .stallion-base && git add .stallion-base && git commit -m "chore: pin the stallion adoption base"
+node tools/task-state.mjs new pin-adoption-base --risk-class protected
+node tools/task-state.mjs approve pin-adoption-base --decision "<full docs/decisions/DECISIONS.md entry heading>"
+node tools/task-state.mjs advance pin-adoption-base planned
+node tools/task-state.mjs scope pin-adoption-base --add .stallion-base
+node tools/task-state.mjs advance pin-adoption-base executing
+git rev-parse HEAD > .stallion-base && git add .stallion-base tasks/pin-adoption-base.json
+git commit -m "chore: pin the stallion adoption base" -m "task: pin-adoption-base"
 ```
+
+`.stallion-base` is fence surface, so the pin commit sits inside the range it opens and needs a
+protected, approved task's footer; every refusal that asks you to pin a base prints this flow.
 
 Everything before that revision is grandfathered; every code commit after it needs a task.
 The fence's own surface counts as code: `.stallion-base`, `.githooks/*`, and
@@ -336,8 +355,8 @@ caught — which is why this paragraph carries no count to go stale.
   from ever carrying a forged manifest. This is the tool behind §1's "superseded by
   re-vendoring, not by patching" — that sentence was prose until this gate shipped.
   `--freshness <path-to-upstream-clone>` is the WAVE-INTAKE half: it answers "has upstream
-  moved past our pin, and did anything vendored move with it" against a local clone (fetch it
-  first — the verdict is as current as the clone), and a moved vendored source refuses with the
+  moved past our pin, and did anything vendored move with it" against a local clone (fetch and
+  fast-forward it first — the verdict is as current as the clone, and a clone behind the pin refuses), and a moved vendored source refuses with the
   re-vendor remedy before the wave's own work lands on the stale pin. Run it at every wave's
   intake; the two batteries' wires carry only the `--self-test`/`--upstream` halves.
 - `path-obligations` — the incident list as an executable checklist, graduated from the vendor

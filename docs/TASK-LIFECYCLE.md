@@ -29,7 +29,9 @@ remembered.
 
 ## The law the machine enforces
 
-- Phases advance one at a time, in order. No skips, no backwards moves, nothing leaves `done`.
+- Phases advance one at a time, in order. No skips, no backwards moves, nothing leaves `done` —
+  and no command appends to a `done` or `retired` record (a pin or exemption recorded after the
+  done gate never faced it; `red-check` refuses before it runs its command).
 - **A task that will never execute retires**: `retire <id> --because "<why — name the successor
   or the fulfilled-by work>"` appends a terminal `retired` event. Lawful only from `intake` or
   `planned` — a task that has begun landing code must finish its lifecycle honestly (its commits
@@ -41,11 +43,13 @@ remembered.
   heading in the decisions register. A substring is not a decision.
 - `verified` runs the WHOLE selftest battery at the boundary (checks land once at the phase,
   not per edit — ECC's stop-time batching): a red tool blocks the phase with its failing lines.
-- `verified` requires a command pin: `red-check --command "<the failing check>"` RUNS the
-  command, refuses if it passes, and records the command, its nonzero exit, and an output
-  digest. Path evidence supplements but never substitutes; a task that cannot carry a runnable
-  pin records a justified `pin-exempt` — accountability, not absence of law.
-- A task's code commits are bound by its DECLARED SCOPE: `scope <id> --add "tools/**,docs/*"`
+- `verified` requires a command pin: `red-check --command "<the failing check>" --expect "<a regex
+  matching a line it prints only when it ran and failed>"` RUNS the command, refuses if it passes
+  or its output does not match (escape every regex metacharacter . * + ? ^ $ { } ( ) [ ] | \ in a
+  pasted line), and records the command, its nonzero exit, and an output digest. Path evidence
+  supplements but never substitutes; a task that cannot carry a runnable pin records a justified
+  `pin-exempt` — accountability, not absence of law.
+- A task's code commits are bound by its DECLARED SCOPE: `scope <id> --add "tools/**"`
   records the blast radius as append-only glob events (declared once the task is `planned`).
   The `commit-msg` gate refuses code staged outside it at commit time; the push fence re-judges
   the range against the record — and a FINISHED task never authorizes new code. The commit-msg
@@ -60,7 +64,8 @@ remembered.
   record's git history — no machine check reads event-vs-commit ordering.
 - `done` requires a findings register that a prepared adversarial pass minted (empty is not a
   pass), that aggregates clean: zero UNRESOLVED findings, whose resolve evidence still exists —
-  and every command pin re-runs GREEN. The full RED→GREEN arc is machine-verified at the gate.
+  and every command pin re-runs GREEN (a code task whose every pin was retired needs a recorded
+  `pin-exempt`). The full RED→GREEN arc is machine-verified at the gate.
 - The prepared register records the swept range (base, head, diff digest); `verdict` reports it,
   so a pass can never silently claim to have swept more than it did.
 - Records are event logs under `tasks/`. Phase is derived from the last transition, never
@@ -104,7 +109,7 @@ node tools/task-state.mjs retire fix-the-thing --because "superseded by <other-i
 node tools/task-state.mjs approve fix-the-thing --decision "<full DECISIONS.md heading>"
 node tools/task-state.mjs advance fix-the-thing executing
 # ...work; watch the pin fail against the broken code first, then record it...
-node tools/task-state.mjs red-check fix-the-thing --command "npm test -- the-pin.test.ts"
+node tools/task-state.mjs red-check fix-the-thing --command "npm test -- the-pin.test.ts" --expect "<a regex matching a line it prints only when it fails>"
 node tools/task-state.mjs advance fix-the-thing verified
 node tools/adversarial-runner.mjs prepare fix-the-thing
 # ...dispatch bundles to fresh-context reviewers, record findings...
