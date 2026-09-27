@@ -68,10 +68,12 @@
  * Run: node tools/guard-reach.mjs [--self-test]
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
+import { stripComments } from "./test-lint.mjs";
 
 // resolve() so ROOT carries NO trailing slash — validateEntry's inside-the-repo test is
 // `startsWith(ROOT + sep)`, and a URL-derived path would double the separator and refuse
@@ -95,97 +97,96 @@ const OUTCOME = {
   PROBE_MISCONFIGURED: "PROBE_MISCONFIGURED",
 };
 
+/** Printed under every registry refusal: the seam fails closed, like every other. */
+const REGISTRY_RULE = "a meta-guard that cannot read its registry proves nothing — this seam fails closed like every other";
+
 /**
- * Load + validate the registry. Every refusal prints the rule, the evidence, and an exact fix —
- * fail closed: a missing, unparseable, or almost-right registry proves nothing and must not pass.
- * Called by the REAL run only; the self-test never reads live config (a self-test that depends on
- * the config it guards certifies the config by reading it).
+ * Load + validate the registry: `{ guards, notRegistered }`, or `{ error }` naming the evidence and
+ * the fix (the gate-coverage loader's shape, so the self-test can drive every refusal) — fail
+ * closed: a missing, unparseable, or almost-right registry proves nothing and must not pass. The
+ * self-test feeds FIXTURE files and never reads live config (a self-test that depends on the config
+ * it guards certifies the config by reading it).
  */
 function loadRegistry(path) {
-  const die = (message) => {
-    console.error(`guard-reach: ✖ ${message}`);
-    console.error(`  rule: a meta-guard that cannot read its registry proves nothing — this seam fails closed like every other`);
-    process.exit(1);
-  };
   let text;
   try {
     text = readFileSync(path, "utf8");
   } catch {
-    die(`the guards registry is missing or unreadable: ${path}
-  fix: restore it, or recreate it — shape: {"guards":[{"name","script","args?","probe","content","expect?","why"}],"notRegistered":[{"name","reason"}]}`);
+    return { error: `the guards registry is missing or unreadable: ${path}
+  fix: restore it, or recreate it — shape: {"guards":[{"name","script","args?","probe","content","expect?","why"}],"notRegistered":[{"name","reason"}]}` };
   }
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch (e) {
-    die(`the guards registry at ${path} is not valid JSON: ${e.message}
-  fix: repair ${path} — the parse error above names the position`);
+    return { error: `the guards registry at ${path} is not valid JSON: ${e.message}
+  fix: repair ${path} — the parse error above names the position` };
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    die(`the guards registry at ${path} must be a JSON object
-  fix: {"guards":[...],"notRegistered":[...]}`);
+    return { error: `the guards registry at ${path} must be a JSON object
+  fix: {"guards":[...],"notRegistered":[...]}` };
   }
   for (const key of Object.keys(parsed)) {
     if (key !== "$comment" && key !== "guards" && key !== "notRegistered") {
-      die(`unknown key '${key}' in ${path} (known: guards, notRegistered, $comment) — a key the loader ignores is how a real registry goes vacant
-  fix: remove or rename it in ${path}`);
+      return { error: `unknown key '${key}' in ${path} (known: guards, notRegistered, $comment) — a key the loader ignores is how a real registry goes vacant
+  fix: remove or rename it in ${path}` };
     }
   }
   if (!Array.isArray(parsed.guards) || parsed.guards.length === 0) {
-    die(`${path} registers no guards — an empty registry certifies nothing while printing a clean zero
-  fix: add at least one {"name","script","probe","content","why"} entry, or record the guards you deliberately skip under notRegistered`);
+    return { error: `${path} registers no guards — an empty registry certifies nothing while printing a clean zero
+  fix: add at least one {"name","script","probe","content","why"} entry, or record the guards you deliberately skip under notRegistered` };
   }
   const guards = [];
   const names = new Set();
   const entryKeys = ["name", "script", "args", "probe", "content", "expect", "why"];
   for (const [i, g] of parsed.guards.entries()) {
     const where = `${path} guards[${i}]`;
-    if (g === null || typeof g !== "object" || Array.isArray(g)) die(`${where} must be an object`);
+    if (g === null || typeof g !== "object" || Array.isArray(g)) return { error: `${where} must be an object` };
     for (const key of Object.keys(g)) {
-      if (!entryKeys.includes(key)) die(`${where} carries unknown key '${key}' (known: ${entryKeys.join(", ")})`);
+      if (!entryKeys.includes(key)) return { error: `${where} carries unknown key '${key}' (known: ${entryKeys.join(", ")})` };
     }
-    if (typeof g.name !== "string" || g.name.length === 0) die(`${where} needs a non-empty "name"`);
-    if (names.has(g.name)) die(`${where}: duplicate guard name '${g.name}' — results are printed by name; an ambiguous name is drift`);
+    if (typeof g.name !== "string" || g.name.length === 0) return { error: `${where} needs a non-empty "name"` };
+    if (names.has(g.name)) return { error: `${where}: duplicate guard name '${g.name}' — results are printed by name; an ambiguous name is drift` };
     names.add(g.name);
     if (typeof g.script !== "string" || g.script.length === 0 || g.script.startsWith("/")) {
-      die(`${where} ('${g.name}') needs "script": a repo-relative path like tools/thing.mjs`);
+      return { error: `${where} ('${g.name}') needs "script": a repo-relative path like tools/thing.mjs` };
     }
     if (typeof g.probe !== "string" || g.probe.length === 0 || g.probe.startsWith("/") || g.probe.split("/").includes("..")) {
-      die(`${where} ('${g.name}') needs "probe": a repo-relative path inside the repository`);
+      return { error: `${where} ('${g.name}') needs "probe": a repo-relative path inside the repository` };
     }
     if (g.args !== undefined && (!Array.isArray(g.args) || g.args.some((a) => typeof a !== "string"))) {
-      die(`${where} ('${g.name}') "args" must be an array of strings`);
+      return { error: `${where} ('${g.name}') "args" must be an array of strings` };
     }
     if (g.expect !== undefined && (typeof g.expect !== "string" || g.expect.length === 0)) {
-      die(`${where} ('${g.name}') "expect" must be a non-empty string — the attribution this entry settles for`);
+      return { error: `${where} ('${g.name}') "expect" must be a non-empty string — the attribution this entry settles for` };
     }
     if (typeof g.why !== "string" || g.why.length === 0) {
-      die(`${where} ('${g.name}') needs a non-empty "why" — the violation the probe plants, in words`);
+      return { error: `${where} ('${g.name}') needs a non-empty "why" — the violation the probe plants, in words` };
     }
     // Content: an array of lines (the inline-list style the origin harness wrote) or one string.
     let content;
     if (Array.isArray(g.content)) {
-      if (g.content.length === 0 || g.content.some((l) => typeof l !== "string")) die(`${where} ('${g.name}') "content" as an array must be non-empty lines of strings`);
+      if (g.content.length === 0 || g.content.some((l) => typeof l !== "string")) return { error: `${where} ('${g.name}') "content" as an array must be non-empty lines of strings` };
       content = g.content.join("\n");
     } else if (typeof g.content === "string" && g.content.length > 0) {
       content = g.content;
     } else {
-      die(`${where} ('${g.name}') needs "content": the probe file body — a string or an array of lines`);
+      return { error: `${where} ('${g.name}') needs "content": the probe file body — a string or an array of lines` };
     }
     guards.push({ name: g.name, script: g.script, args: g.args ?? [], probe: g.probe, content, expect: g.expect, why: g.why });
   }
   const notRegistered = [];
   const list = parsed.notRegistered ?? [];
-  if (!Array.isArray(list)) die(`"notRegistered" in ${path} must be an array of {"name","reason"} entries`);
+  if (!Array.isArray(list)) return { error: `"notRegistered" in ${path} must be an array of {"name","reason"} entries` };
   for (const [i, e] of list.entries()) {
     const where = `${path} notRegistered[${i}]`;
-    if (e === null || typeof e !== "object" || Array.isArray(e)) die(`${where} must be an object`);
+    if (e === null || typeof e !== "object" || Array.isArray(e)) return { error: `${where} must be an object` };
     for (const key of Object.keys(e)) {
-      if (key !== "name" && key !== "reason") die(`${where} carries unknown key '${key}' (known: name, reason)`);
+      if (key !== "name" && key !== "reason") return { error: `${where} carries unknown key '${key}' (known: name, reason)` };
     }
-    if (typeof e.name !== "string" || e.name.length === 0) die(`${where} needs a non-empty "name"`);
+    if (typeof e.name !== "string" || e.name.length === 0) return { error: `${where} needs a non-empty "name"` };
     if (typeof e.reason !== "string" || e.reason.length === 0) {
-      die(`${where} needs a "reason" — an absence without a reason reads as an oversight, which is how registries rot`);
+      return { error: `${where} needs a "reason" — an absence without a reason reads as an oversight, which is how registries rot` };
     }
     notRegistered.push({ name: e.name, reason: e.reason });
   }
@@ -205,18 +206,32 @@ function loadRegistry(path) {
  * used to leave a probe that reddened the NEXT run permanently, with a message that named neither
  * the file nor the cause.
  */
-const LOCK = join(tmpdir(), "stallion-guard-reach.lock");
+/** Keyed by CHECKOUT: the contention is one repo's corpora, so two repositories on one machine
+ *  (vendored hosts, parallel clones, several agents' copies) must never refuse each other. */
+function lockPathFor(root) {
+  return join(tmpdir(), `stallion-guard-reach-${createHash("sha256").update(root).digest("hex").slice(0, 12)}.lock`);
+}
+const LOCK = lockPathFor(ROOT);
 
-function acquireLock(probeDirs) {
+export function acquireLock(probeDirs, lock = LOCK) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      writeFileSync(LOCK, `${process.pid}\n`, { flag: "wx" });
+      writeFileSync(lock, `${process.pid}\n`, { flag: "wx" });
+      // Released on EVERY exit, a failing run's process.exit included (the leak that left a dead
+      // pid holding the lock), and only by its owner: a refused run never registers this.
+      process.on("exit", () => {
+        try {
+          rmSync(lock, { force: true });
+        } catch {
+          // Best effort — a stale lock is reclaimed by the next run's dead-pid check.
+        }
+      });
       return true;
     } catch {
       // Held — but by a live process, or by a corpse?
       let holder = 0;
       try {
-        holder = Number.parseInt(readFileSync(LOCK, "utf8").trim(), 10);
+        holder = Number.parseInt(readFileSync(lock, "utf8").trim(), 10);
       } catch {
         holder = 0;
       }
@@ -230,11 +245,33 @@ function acquireLock(probeDirs) {
       if (alive) return false;
       // Stale: the holder is gone. Sweep its residue as well as its lock, because a killed run is
       // exactly the case that leaves probes behind.
-      rmSync(LOCK, { force: true });
+      rmSync(lock, { force: true });
       sweepResidue(probeDirs);
     }
   }
   return false;
+}
+
+/** Take the run lock, or refuse with the rule, the evidence (the path and its live holder), and the
+ *  fix — a reused pid would otherwise lock the tool out with nothing to act on. */
+function lockOrExit(probeDirs) {
+  if (acquireLock(probeDirs)) return;
+  let holder = "unknown";
+  try {
+    holder = readFileSync(LOCK, "utf8").trim();
+  } catch {
+    // Released between the attempt and this read — a re-run takes it.
+  }
+  console.error(`guard-reach: ✖ the run lock ${LOCK} is held by pid ${holder}, which is alive`);
+  console.error("  rule: one run per checkout at a time — every guard's corpus would hold the other run's probes");
+  console.error(`  fix: wait for that run to finish and re-run; if pid ${holder} is not a guard-reach run (a reused pid), rm ${LOCK} and re-run`);
+  process.exit(1);
+}
+
+/** Every directory a probe can land in: tools/ (the self-test's) plus each registered probe's. Both
+ *  entries lock with it, since whichever one reclaims a dead run's lock is the one that sweeps. */
+function probeDirsOf(guards) {
+  return [...new Set([join(ROOT, "tools"), ...guards.map((g) => dirname(resolve(ROOT, g.probe)))])];
 }
 
 /** Remove any `zz-guard-reach-*` probe left by a dead run, anywhere a registered probe can land. */
@@ -251,11 +288,8 @@ function sweepResidue(probeDirs) {
 const inFlight = new Set();
 
 function cleanupInFlight() {
-  try {
-    rmSync(LOCK, { force: true });
-  } catch {
-    // Best effort.
-  }
+  // The lock is not removed here: the signal handler's process.exit fires the owner's exit hook,
+  // and a refused run must never delete a live holder's lock.
   for (const path of inFlight) {
     try {
       rmSync(path, { force: true });
@@ -291,6 +325,10 @@ function pidPath(rel) {
   // without the prefix, and "./x" would never match the guard's own output.
   return dir === "." ? name : `${dir}/${name}`;
 }
+
+/** runGuard's call site joins the captured streams with a newline (the glue law) — exported so the
+ *  committed-bytes probe (zz-head-glue-probe) pins the same shape, defined once. */
+export const GLUE_SITE = /\$\{error\.stdout \?\? ""\}\\n\$\{error\.stderr \?\? ""\}/;
 
 /** Run a guard, capturing BOTH streams. The output is what lets us tell a catch from a crash. */
 function runGuard(script, env, args = []) {
@@ -330,13 +368,17 @@ function looksLikeCrash(output) {
 
 let counter = 0;
 
+const HEAD_INDEX_PREFIX = `guard-reach-head-index-${process.pid}-`;
+
 /** An env pointing GIT_INDEX_FILE at a fresh copy of HEAD's index — `git diff --cached` reads
- *  nothing (an EMPTY index would read as every-file-deleted against HEAD, the opposite of clean). */
-function emptyIndexEnv() {
-  const empty = join(tmpdir(), `guard-reach-empty-${process.pid}-${Date.now()}`);
-  execFileSync("git", ["read-tree", "HEAD", "--index-output", empty], { cwd: ROOT });
-  inFlight.add(empty);
-  return { GIT_INDEX_FILE: empty };
+ *  nothing (an EMPTY index would read as every-file-deleted against HEAD, the opposite of clean).
+ *  Seeded THROUGH GIT_INDEX_FILE: read-tree's index-output form locks the REAL .git/index while it
+ *  runs, colliding with the developer's own git and with any sibling run; this locks only the copy. */
+function headIndexEnv() {
+  const copy = join(tmpdir(), `${HEAD_INDEX_PREFIX}${Date.now()}`);
+  execFileSync("git", ["read-tree", "HEAD"], { cwd: ROOT, env: { ...process.env, GIT_INDEX_FILE: copy } });
+  inFlight.add(copy);
+  return { GIT_INDEX_FILE: copy };
 }
 
 /** Stage `rel` into a COPY of the index; the real index is never written. */
@@ -350,7 +392,7 @@ function stagedEnv(rel) {
     // layered on that buries itself under the refusal's three-file sample — the reach question
     // ("can the guard see a NEW file?") is asked against the clean tree, same as the baseline
     // (found live at the vendor repo's 2026-09-20 close-out; ported back with the fix).
-    execFileSync("git", ["read-tree", "HEAD", "--index-output", indexCopy], { cwd: ROOT });
+    execFileSync("git", ["read-tree", "HEAD"], { cwd: ROOT, env: { ...process.env, GIT_INDEX_FILE: indexCopy } });
     const env = { ...process.env, GIT_INDEX_FILE: indexCopy };
     // Staging writes a loose object into the REAL object store (the index itself is untouched). One
     // per distinct probe content, unreferenced, collected by gc. Noted so nobody re-derives it.
@@ -383,23 +425,25 @@ function checkReach(guard) {
   // developer's files instead of the probe (found live at the vendor repo, ported back).
   let baselineEnv;
   try {
-    baselineEnv = { ...process.env, ...emptyIndexEnv() };
+    baselineEnv = { ...process.env, ...headIndexEnv() };
   } catch (error) {
     return { outcome: OUTCOME.GATE_DEFECT, detail: `guard-reach itself threw building the HEAD-index baseline env: ${error.message}` };
-  }
-  const baseline = runGuard(guard.script, baselineEnv, args);
-  if (baseline.code !== 0) {
-    return {
-      outcome: OUTCOME.INCONCLUSIVE,
-      detail: `${guard.name} was ALREADY failing before any probe was planted (exit ${baseline.code}) — fix that first`,
-    };
   }
 
   const rel = pidPath(guard.probe);
   const abs = resolve(ROOT, rel);
   const dirExisted = existsSync(dirname(abs));
   let staged;
+  // The baseline runs INSIDE the try, so its early return still reaches the finally that removes
+  // the HEAD-index copy (a second pass caught the INCONCLUSIVE return leaking one per run).
   try {
+    const baseline = runGuard(guard.script, baselineEnv, args);
+    if (baseline.code !== 0) {
+      return {
+        outcome: OUTCOME.INCONCLUSIVE,
+        detail: `${guard.name} was ALREADY failing before any probe was planted (exit ${baseline.code}) — fix that first`,
+      };
+    }
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, guard.content.split(PATH_TOKEN).join(rel));
     inFlight.add(abs);
@@ -420,9 +464,10 @@ function checkReach(guard) {
     return { outcome: OUTCOME.GATE_DEFECT, detail: `guard-reach itself threw while probing: ${error.message}` };
   } finally {
     cleanup(abs, rel, dirExisted, staged);
-    // The HEAD-index copy is single-use: remove it on the normal path too, not only via the
-    // signal handler (an adversarial pass caught one leaked temp index per guard per run).
-    if (baselineEnv?.GIT_INDEX_FILE) rmSync(baselineEnv.GIT_INDEX_FILE, { force: true });
+    // The HEAD-index copy is single-use: remove it on every path, not only via the signal
+    // handler (an adversarial pass caught one leaked temp index per guard per run).
+    inFlight.delete(baselineEnv.GIT_INDEX_FILE);
+    rmSync(baselineEnv.GIT_INDEX_FILE, { force: true });
   }
 }
 
@@ -518,6 +563,114 @@ function clobberOutcome(probe, script, marker) {
   }
 }
 
+/** The run lock: keyed by checkout, refused while a live run holds it, reclaimed from a dead one,
+ *  and released on EVERY exit — a failing run included (driven in a child, which must exit). */
+function lockCases(dir) {
+  const held = join(dir, "held.lock");
+  writeFileSync(held, `${process.pid}\n`);
+  const stale = join(dir, "stale.lock");
+  writeFileSync(stale, `${spawnSync("node", ["-e", ""]).pid}\n`);
+  const leak = join(dir, "leak.lock");
+  const child = spawnSync("node", ["--input-type=module", "-e", `const m = await import(${JSON.stringify(import.meta.url)}); if (!m.acquireLock([], ${JSON.stringify(leak)})) process.exit(3); process.exit(7);`], { cwd: ROOT });
+  const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  return [
+    ["a lock held by a live process is refused and left in place", !acquireLock([], held) && existsSync(held), true],
+    ["a lock left by a dead process is reclaimed", acquireLock([], stale) && readFileSync(stale, "utf8").trim() === String(process.pid), true],
+    ["a lock taken by a run that then fails is released on exit", child.status === 7 && !existsSync(leak), true],
+    ["the run lock is keyed by checkout, so two repositories never refuse each other", lockPathFor("/x/one") !== lockPathFor("/x/two") && LOCK === lockPathFor(ROOT), true],
+    ["the self-test plants its probes only under the run lock (call-site pinned)",
+      /lockOrExit\([^\n]*\);\n\s*process\.exit\(selfTest\(\)/.test(src) && /lockOrExit\([^\n]*\);\n\s*if \(!selfTest\(\)\) process\.exit\(1\);/.test(src), true],
+    // Whichever entry reclaims a dead run's lock is the only one that sweeps its residue: the
+    // battery's --self-test runs first, so a tools/-only sweep there left a deploy/ probe to redden
+    // the bare run (which then found no stale lock and never swept).
+    ["the sweep scope is tools/ plus every registered probe's directory, deduplicated",
+      JSON.stringify(probeDirsOf([{ probe: "deploy/zz-a.sh" }, { probe: "tools/zz-b.mjs" }, { probe: "zz-c.mjs" }])), JSON.stringify([join(ROOT, "tools"), join(ROOT, "deploy"), ROOT])],
+    ["an unreadable registry still sweeps tools/", JSON.stringify(probeDirsOf([])), JSON.stringify([join(ROOT, "tools")])],
+    ["a stale lock reclaimed at either entry sweeps every registered probe dir (call-site pinned)",
+      /lockOrExit\(probeDirsOf\(loadRegistry\(CONFIG_PATH\)\.guards \?\? \[\]\)\);\n\s*process\.exit\(selfTest\(\)/.test(src) && /lockOrExit\(probeDirsOf\(guards\)\);\n\s*if \(!selfTest\(\)\)/.test(src), true],
+  ];
+}
+
+/** Every registry refusal, driven against FIXTURE files — each must refuse, and a well-shaped
+ *  registry must load. `null` body = the file is never written (the missing-registry arm). */
+function registryCases(dir) {
+  const g = { name: "g", script: "tools/x.mjs", probe: "tools/zz-x.mjs", content: "x", why: "w" };
+  const shapes = [
+    ["a missing registry", null],
+    ["an unparseable registry", "{ not json ]"],
+    ["a null registry", "null"],
+    ["a non-object registry", []],
+    ["an unknown top-level key", { guards: [g], gaurds: [] }],
+    ["an empty guards list", { guards: [] }],
+    ["a non-object entry", { guards: [null] }],
+    ["an unknown entry key", { guards: [{ ...g, walks: "disk" }] }],
+    ["an entry with no name", { guards: [{ ...g, name: "" }] }],
+    ["a duplicate guard name", { guards: [g, g] }],
+    ["an absolute script", { guards: [{ ...g, script: "/usr/bin/x.mjs" }] }],
+    ["an absolute probe", { guards: [{ ...g, probe: "/tmp/zz-x.mjs" }] }],
+    ["a probe climbing out of the repo", { guards: [{ ...g, probe: "tools/../../zz-x.mjs" }] }],
+    ["non-string args", { guards: [{ ...g, args: [1] }] }],
+    ["an empty expect", { guards: [{ ...g, expect: "" }] }],
+    ["an entry with no why", { guards: [{ ...g, why: "" }] }],
+    ["an entry with empty content lines", { guards: [{ ...g, content: [] }] }],
+    ["an entry with no content", { guards: [{ ...g, content: undefined }] }],
+    ["a non-array notRegistered", { guards: [g], notRegistered: {} }],
+    ["a non-object notRegistered entry", { guards: [g], notRegistered: [null] }],
+    ["an unknown notRegistered key", { guards: [g], notRegistered: [{ name: "n", reason: "r", why: "w" }] }],
+    ["a notRegistered entry with no name", { guards: [g], notRegistered: [{ reason: "r" }] }],
+    ["a notRegistered entry with no reason", { guards: [g], notRegistered: [{ name: "n" }] }],
+  ];
+  // A throw is not a refusal: it prints no rule and no fix.
+  const refuses = (path) => {
+    try {
+      return loadRegistry(path).error !== undefined;
+    } catch {
+      return false;
+    }
+  };
+  const cases = shapes.map(([name, body], i) => {
+    const path = join(dir, `registry-${i}.json`);
+    if (body !== null) writeFileSync(path, typeof body === "string" ? body : JSON.stringify(body));
+    return [`registry refusal: ${name}`, refuses(path), true];
+  });
+  const goodPath = join(dir, "registry-good.json");
+  writeFileSync(goodPath, JSON.stringify({ guards: [{ ...g, content: ["a", "b"] }], notRegistered: [{ name: "n", reason: "r" }] }));
+  const good = loadRegistry(goodPath);
+  cases.push(["a well-shaped registry loads, content lines joined", good.guards?.[0]?.content, "a\nb"]);
+  return cases;
+}
+
+/** The ratchet's reader and its law: unreadable history refuses, and only a disk->index narrowing
+ *  of a PROVEN guard is a downgrade. */
+function ratchetCases(dir) {
+  const modesAt = (name, body) => {
+    const path = join(dir, name);
+    if (body !== null) writeFileSync(path, typeof body === "string" ? body : JSON.stringify(body));
+    return readRecordedModes(path);
+  };
+  const r = (outcome, mode) => ({ guard: { name: "a" }, outcome, mode });
+  return [
+    ["a missing modes file refuses", modesAt("modes-absent.json", null).error !== undefined, true],
+    ["an unparseable modes file refuses", modesAt("modes-broken.json", '{"modes":').error !== undefined, true],
+    ["a well-shaped modes file reads its modes", modesAt("modes-good.json", { $comment: "c", modes: { a: "disk" } }).modes?.a, "disk"],
+    ["an empty modes map is an empty history, not a refusal", modesAt("modes-none.json", { modes: {} }).error, undefined],
+    ["a modes file with a typo'd top-level key refuses", modesAt("modes-typo.json", { mode: { a: "disk" } }).error !== undefined, true],
+    ["a modes file truncated to an empty object refuses", modesAt("modes-empty.json", {}).error !== undefined, true],
+    ["a modes file whose modes field is not an object refuses", modesAt("modes-array.json", { modes: ["disk"] }).error !== undefined, true],
+    ["a modes file with an unknown key beside modes refuses", modesAt("modes-extra.json", { modes: { a: "disk" }, mode: { a: "index" } }).error !== undefined, true],
+    ["a mode other than disk or index refuses", modesAt("modes-value.json", { modes: { a: "Disk" } }).error !== undefined, true],
+    ["a disk->index narrowing of a REACHABLE guard is a downgrade", downgradesOf({ a: "disk" }, [r(OUTCOME.REACHABLE, "index")]).length, 1],
+    ["an index->disk widening is not a downgrade", downgradesOf({ a: "index" }, [r(OUTCOME.REACHABLE, "disk")]).length, 0],
+    ["an unchanged disk mode is not a downgrade", downgradesOf({ a: "disk" }, [r(OUTCOME.REACHABLE, "disk")]).length, 0],
+    ["a guard with no recorded row is not a downgrade", downgradesOf({}, [r(OUTCOME.REACHABLE, "index")]).length, 0],
+    ["an unproven guard is reported by its outcome, not as a downgrade", downgradesOf({ a: "disk" }, [r(OUTCOME.UNREACHABLE, "index")]).length, 0],
+    ["the ratchet judges the run's own results against the recorded modes (call-site pinned)", (() => {
+      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      return /const recorded = orExit\(readRecordedModes\(MODES_PATH\)\)\.modes;\n\s*const downgrades = downgradesOf\(recorded, results\);/.test(src);
+    })(), true],
+  ];
+}
+
 function selfTest() {
   const dir = join(tmpdir(), `stallion-guard-reach-selftest-${process.pid}`);
   mkdirSync(dir, { recursive: true });
@@ -603,6 +756,9 @@ function selfTest() {
     ],
     ["a guard that crashes even at baseline is INCONCLUSIVE", checkReach(entry(alwaysCrashes)).outcome, OUTCOME.INCONCLUSIVE],
     ["a guard already red before the probe is INCONCLUSIVE", checkReach(entry(alwaysFails)).outcome, OUTCOME.INCONCLUSIVE],
+    // Every run above is over — the INCONCLUSIVE early returns included — so no HEAD-index copy of
+    // this process may remain: each one is single-use, and a leak accumulates per battery run.
+    ["the HEAD-index copy is removed even when the baseline is already red", readdirSync(tmpdir()).filter((f) => f.startsWith(HEAD_INDEX_PREFIX)).length, 0],
     // The crash law is SHAPE, not substring: honest refusal prose may quote an error code it is
     // describing, and quoting one must not reclassify a clean report as a crash (found live at the
     // vendor repo — a register's f1 claim mentioning ERR_MODULE_NOT_FOUND poisoned every probe run).
@@ -614,8 +770,7 @@ function selfTest() {
     // line glued onto stderr's first line can carry a banner (or an Error header) off line-start,
     // and both the banner clauses and the frames pair read line starts.
     ["runGuard separates stdout from stderr (the glue law, call-site pinned)", (() => {
-      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
-      return /\$\{error\.stdout \?\? ""\}\\n\$\{error\.stderr \?\? ""\}/.test(src);
+      return GLUE_SITE.test(stripComments(readFileSync(fileURLToPath(import.meta.url), "utf8")));
     })(), true],
     ["a REAL module-resolution crash after an unterminated stdout line is still a GATE_DEFECT", checkReach(entry(gluedCrash)).outcome, OUTCOME.GATE_DEFECT],
     [
@@ -640,8 +795,17 @@ function selfTest() {
     // case reads its own source for the CALL, not the name.
     ["the baseline and unstaged runs carry the HEAD-index env (the busy-tree law, call-site pinned)", (() => {
       const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
-      return /baselineEnv = \{ \.\.\.process\.env, \.\.\.emptyIndexEnv\(\) \};/.test(src) && /runGuard\(guard\.script, baselineEnv, args\)/.test(src);
+      return /baselineEnv = \{ \.\.\.process\.env, \.\.\.headIndexEnv\(\) \};/.test(src) && src.match(/runGuard\(guard\.script, baselineEnv, args\)/g)?.length === 2;
     })(), true],
+    // `read-tree --index-output` locks the REAL .git/index while it runs, colliding with the
+    // developer's own git and with a sibling run; GIT_INDEX_FILE locks only the copy.
+    ["HEAD-index copies are seeded through GIT_INDEX_FILE, never locking the real index (call-site pinned)", (() => {
+      const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      return src.match(/execFileSync\("git", \["read-tree", "HEAD"\], \{ cwd: ROOT, env: \{ \.\.\.process\.env, GIT_INDEX_FILE: \w+ \} \}\);/g)?.length;
+    })(), 2],
+    ...lockCases(dir),
+    ...registryCases(dir),
+    ...ratchetCases(dir),
   ];
 
   rmSync(dir, { recursive: true, force: true });
@@ -674,28 +838,58 @@ function selfTest() {
  * seeing more is never a regression. The mode stays an OBSERVATION; what is enforced is that the
  * observation never narrows silently.
  */
-/** The recorded disk/index mode per guard, or a loud refusal: unreadable ratchet state is a defect. */
-function readRecordedModes() {
+/** The recorded disk/index mode per guard as `{ modes }`, or `{ error }`: missing, unparseable, or
+ *  wrongly-shaped ratchet state is a defect, not an empty history — a truncated `{}` or a typo'd
+ *  `mode` key read as "no history" disarmed the downgrade law, and the green run then re-recorded
+ *  the narrowed mode as history. A guard with no row is fine: newly registered guards have none. */
+function readRecordedModes(path) {
+  let parsed;
   try {
-    return JSON.parse(readFileSync(MODES_PATH, "utf8")).modes ?? {};
+    parsed = JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
-    console.error(`guard-reach: cannot read the modes ratchet state at ${MODES_PATH} — ${String(error.message ?? error)}`);
-    console.error("  rule: a missing or unparseable ratchet history is a defect, not an empty history — the downgrade law cannot run blind");
-    console.error("  fix: restore the file from git (git checkout -- docs/gates/guard-reach-modes.json) and re-run");
-    process.exit(1);
+    return { error: modesRefusal(path, String(error.message ?? error)) };
   }
+  const shapeError = modesShapeError(parsed);
+  return shapeError === null ? { modes: parsed.modes } : { error: modesRefusal(path, shapeError) };
+}
+
+const RECORDED_MODES = new Set(["disk", "index"]);
+const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+function modesShapeError(parsed) {
+  if (!isPlainObject(parsed) || !isPlainObject(parsed.modes)) return 'wrongly shaped — expected {"$comment"?, "modes": {"<guard>": "disk" | "index"}}';
+  const extra = Object.keys(parsed).find((key) => key !== "$comment" && key !== "modes");
+  if (extra !== undefined) return `unknown key '${extra}' — a key the reader ignores is how the history goes vacant`;
+  const bad = Object.entries(parsed.modes).find(([, mode]) => !RECORDED_MODES.has(mode));
+  return bad === undefined ? null : `guard '${bad[0]}' records mode ${JSON.stringify(bad[1])} — only "disk" or "index"`;
+}
+
+function modesRefusal(path, evidence) {
+  return (
+    `cannot read the modes ratchet state at ${path} — ${evidence}\n` +
+    "  rule: a missing, unparseable, or wrongly-shaped ratchet history is a defect, not an empty history — the downgrade law cannot run blind\n" +
+    "  fix: restore the file from git (git checkout -- docs/gates/guard-reach-modes.json) and re-run"
+  );
+}
+
+/** Pure: the REACHABLE guards recorded as walking the disk that were observed walking only the index. */
+function downgradesOf(recorded, results) {
+  return results.filter((r) => r.outcome === OUTCOME.REACHABLE && recorded[r.guard.name] === "disk" && r.mode === "index");
+}
+
+/** A loader's `{ error }` is a refusal: print it (and its rule) and exit — the seam fails closed. */
+function orExit(result, rule) {
+  if (result.error === undefined) return result;
+  console.error(`guard-reach: ✖ ${result.error}`);
+  if (rule !== undefined) console.error(`  rule: ${rule}`);
+  process.exit(1);
 }
 
 function main() {
+  const { guards, notRegistered } = orExit(loadRegistry(CONFIG_PATH), REGISTRY_RULE);
+  // The self-test plants into tools/ too, so it runs under the lock like the real probes.
+  lockOrExit(probeDirsOf(guards));
   if (!selfTest()) process.exit(1);
-
-  const { guards, notRegistered } = loadRegistry(CONFIG_PATH);
-  const probeDirs = [...new Set(guards.map((g) => dirname(resolve(ROOT, g.probe))))];
-
-  if (!acquireLock(probeDirs)) {
-    console.error("guard-reach: another run holds the lock — the guards' corpora cannot be shared. Try again.");
-    process.exit(1);
-  }
 
   const results = guards.map((guard) => ({ guard, ...checkReach(guard) }));
   const bad = results.filter((r) => r.outcome !== OUTCOME.REACHABLE);
@@ -704,8 +898,8 @@ function main() {
   // lane replaying the merge wave): an empty-history fallback meant a truncated or deleted modes
   // file silently disarmed the downgrade detector and the tool then re-blessed the narrowed mode.
   // Every sibling gate fails closed on unreadable config; this state is not the exception.
-  const recorded = readRecordedModes();
-  const downgrades = results.filter((r) => r.outcome === OUTCOME.REACHABLE && recorded[r.guard.name] === "disk" && r.mode === "index");
+  const recorded = orExit(readRecordedModes(MODES_PATH)).modes;
+  const downgrades = downgradesOf(recorded, results);
   if (downgrades.length > 0) {
     console.error(`\nguard-reach — ${downgrades.length} guard(s) DOWNGRADED from walking the disk to the index only:\n`);
     for (const r of downgrades) {
@@ -746,11 +940,6 @@ function main() {
   } catch {
     // A read-only checkout is not a reason to fail the gate.
   }
-  try {
-    rmSync(LOCK, { force: true });
-  } catch {
-    // Best effort.
-  }
 
   console.log(`guard-reach — ${guards.length} guard(s) proven to reach a newly-added file in their corpus.`);
   console.log(`  reach mode OBSERVED, not declared: ${results.map((r) => `${r.guard.name}:${r.mode}`).join(" ")}`);
@@ -766,6 +955,8 @@ function main() {
 const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   if (process.argv.includes("--self-test")) {
+    // The registry only scopes the residue sweep; the self-test's verdicts never read live config.
+    lockOrExit(probeDirsOf(loadRegistry(CONFIG_PATH).guards ?? []));
     process.exit(selfTest() ? 0 : 1);
   }
   main();

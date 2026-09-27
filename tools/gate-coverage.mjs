@@ -39,22 +39,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { firstMatch, matches } from "./pathspec.mjs";
+import { isCodePath } from "./task-coverage.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CONFIG_PATH = fileURLToPath(new URL("../docs/gates/coverage.json", import.meta.url));
 
-/** Tracked-file extensions this census walks. Hook scripts carry no extension at all and the CI
- *  workflow is YAML, yet both ARE code in this repo's own law (task-coverage's isCodePath: "the
- *  committed hooks ARE the fence") — an extension filter alone would make the fence's own
- *  transport invisible to the census, the 2026-08-12 lesson in miniature. */
-const SOURCE_RE = /\.(ts|tsx|mjs|cjs|js)$/;
-const HOOKS_PREFIX = ".githooks/";
-const WORKFLOW_RE = /^\.github\/workflows\/.*\.(yml|yaml)$/;
+/** What this census walks: everything the fence calls code — task-coverage's isCodePath, the ONE
+ *  law, imported rather than re-typed (hooks carry no extension and the CI workflow is YAML, yet
+ *  both ARE code: "the committed hooks ARE the fence"; so are a deploy .sh, a .css, a Dockerfile
+ *  under the code trees) — plus JS-family sources anywhere. An extension filter alone made the
+ *  fence's own transport, and then every deploy script, invisible to the census: the 2026-08-12
+ *  lesson in miniature. Minus the gates' own config: docs/gates/** and .stallion-base are read BY
+ *  the gates, not source a gate must see. */
+const SOURCE_RE = /\.(ts|tsx|mts|cts|mjs|cjs|js)$/;
 
 /** Pure: does a tracked path count as a source file the census must place under a gate? */
 export function isSource(path) {
-  return path.startsWith(HOOKS_PREFIX) || WORKFLOW_RE.test(path) || SOURCE_RE.test(path);
+  return SOURCE_RE.test(path) || (isCodePath(path) && !path.startsWith("docs/gates/") && path !== ".stallion-base");
 }
+
+/** Generated trees skipped by the census — counted and printed, never dropped silently. */
+const isGenerated = (path) => path.includes("node_modules/") || path.includes("/dist/");
 
 /** A string-or-array-of-strings field, normalized to a validated array; null = malformed. */
 function globList(value) {
@@ -180,7 +185,8 @@ export function census(config, files) {
   return { orphans, exemptions, gateHits };
 }
 
-/** The tracked file list this census walks. A git failure is NOT an empty repo — fail closed. */
+/** The tracked file list this census walks, and how many generated paths it skipped. A git
+ *  failure is NOT an empty repo — fail closed. */
 function trackedSources() {
   let out;
   try {
@@ -191,11 +197,26 @@ function trackedSources() {
     console.error(`  fix: run from a git checkout of this repo (or repair git here), then retry`);
     process.exit(1);
   }
-  return out
-    .split("\n")
-    .filter(Boolean)
-    .filter(isSource)
-    .filter((f) => !f.includes("node_modules/") && !f.includes("/dist/"));
+  const sources = out.split("\n").filter(Boolean).filter(isSource);
+  return { files: sources.filter((f) => !isGenerated(f)), generated: sources.filter(isGenerated).length };
+}
+
+/** The census's source set, both directions: every class the fence calls code is walked (a new
+ *  deploy/*.sh outside every gate is the founding-incident shape), and the gates' own config is not. */
+function sourceSetChecks(ok) {
+  const sources = [
+    ["deploy/push.sh", true, "a deploy shell script is code"],
+    ["apps/api/Dockerfile", true, "a Dockerfile under a code tree is code"],
+    ["apps/api/Caddyfile", true, "a Caddyfile under a code tree is code"],
+    ["apps/web/style.css", true, "a stylesheet under a code tree is code"],
+    ["scripts/helper.mts", true, "a TypeScript module is source anywhere"],
+    ["tools/task-state.mjs", true, "a tool is source"],
+    [".githooks/pre-push", true, "the hooks ARE the fence"],
+    [".github/workflows/ci.yml", true, "a workflow carries the fence"],
+    ["docs/gates/coverage.json", false, "gate config is read BY the gates, not source they must see"],
+    ["README.md", false, "prose is not source"],
+  ];
+  for (const [file, expected, why] of sources) ok(isSource(file) === expected, `source set: ${why} — ${file} expected source=${expected}`);
 }
 
 /**
@@ -217,6 +238,8 @@ export function selfTest() {
       writeFileSync(p, typeof body === "string" ? body : JSON.stringify(body));
       return p;
     };
+
+    sourceSetChecks(ok);
 
     // The loader fails closed, NAMING THE PATH — the config seam is this port's new surface.
     const missingP = join(dir, "absent.json");
@@ -302,10 +325,10 @@ function main(argv) {
     return 1;
   }
 
-  const files = trackedSources();
+  const { files, generated } = trackedSources();
   const { orphans, exemptions, gateHits } = census(config, files);
 
-  console.log(`gate-coverage — ${files.length} tracked source file(s), ${exemptions.length} exempt, mode=fast.`);
+  console.log(`gate-coverage — ${files.length} tracked source file(s), ${exemptions.length} exempt, ${generated} generated (node_modules/, dist/) skipped, mode=fast.`);
   for (const e of exemptions) console.log(`  ~ exempt: ${e.file} — ${e.why}`);
   for (const g of config.gates) {
     if ((gateHits.get(g.name) ?? 0) === 0) {

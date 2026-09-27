@@ -1,0 +1,187 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-meta-gates",
+  "title": "2026-09-27 code-review sweep: the meta-gates group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:09.213Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "27d6d9aa768a01a1cad48b117ea70a9ec804585f914657303764c37517533af6"
+    },
+    {
+      "at": "2026-09-27T05:54:09.250Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "27d6d9aa768a01a1cad48b117ea70a9ec804585f914657303764c37517533af6",
+      "entry_hash": "a29a5a9754ec32b3fb030564659846fa1091b78da20102e6649d9377df44be8a"
+    },
+    {
+      "at": "2026-09-27T05:54:09.281Z",
+      "type": "scope",
+      "patterns": [
+        "tools/guard-reach.mjs",
+        "tools/gate-registry.mjs",
+        "tools/gate-coverage.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "a29a5a9754ec32b3fb030564659846fa1091b78da20102e6649d9377df44be8a",
+      "entry_hash": "bea512a11b725cc3d4f4c6ee24814974a24c2eb4fa498fb8920e1be51787bc62"
+    },
+    {
+      "at": "2026-09-27T05:54:09.313Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "bea512a11b725cc3d4f4c6ee24814974a24c2eb4fa498fb8920e1be51787bc62",
+      "entry_hash": "c319c51a4a698a1ef99a42d5127ef34a92347cefcce8611ecbaf5ecee70b0482"
+    },
+    {
+      "at": "2026-09-27T06:12:40.831Z",
+      "type": "red-check",
+      "expect": "a flag-carrying unregistered invocation was invisible to the shadow sweep",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "720667dc7ed8",
+      "seq": 4,
+      "parent_hash": "c319c51a4a698a1ef99a42d5127ef34a92347cefcce8611ecbaf5ecee70b0482",
+      "entry_hash": "8bb0c3a699907acdc4cf5fc6c83237b0ff5789c2a9ce259fc705f1d7670e98bd"
+    },
+    {
+      "at": "2026-09-27T06:12:40.887Z",
+      "type": "red-check",
+      "expect": "a commented-out invocation counted as carried",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "720667dc7ed8",
+      "seq": 5,
+      "parent_hash": "8bb0c3a699907acdc4cf5fc6c83237b0ff5789c2a9ce259fc705f1d7670e98bd",
+      "entry_hash": "e06ba223ea688b1d5e69999901889bc0ffab7f1c078f6de1f5b5e257a8654384"
+    },
+    {
+      "at": "2026-09-27T06:12:40.949Z",
+      "type": "red-check",
+      "expect": "shape refusal crashed instead of refusing: a null registry",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "720667dc7ed8",
+      "seq": 6,
+      "parent_hash": "e06ba223ea688b1d5e69999901889bc0ffab7f1c078f6de1f5b5e257a8654384",
+      "entry_hash": "dd10d57d37bc7fed2430fc20ef871443b5350946955d6c9c6d6a7a47255f3069"
+    },
+    {
+      "at": "2026-09-27T06:12:41.009Z",
+      "type": "red-check",
+      "expect": "shape refusal missing: a duplicated invocation",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "720667dc7ed8",
+      "seq": 7,
+      "parent_hash": "dd10d57d37bc7fed2430fc20ef871443b5350946955d6c9c6d6a7a47255f3069",
+      "entry_hash": "25940ec4013bea54a469946b59bd7bf0976da5b045e0c043c8cce1e1429a3a04"
+    },
+    {
+      "at": "2026-09-27T06:16:11.999Z",
+      "type": "red-check",
+      "expect": "source set: a deploy shell script is code",
+      "command": "node tools/gate-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1872fefcca83",
+      "seq": 8,
+      "parent_hash": "25940ec4013bea54a469946b59bd7bf0976da5b045e0c043c8cce1e1429a3a04",
+      "entry_hash": "7850b940ac6758edd2e4e30f637a237ea5c22fd9c220c94774a976082e7e657f"
+    },
+    {
+      "at": "2026-09-27T06:20:02.675Z",
+      "type": "red-check",
+      "expect": "the HEAD-index copy is removed even when the baseline is already red",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "85003fdef5d9",
+      "seq": 9,
+      "parent_hash": "7850b940ac6758edd2e4e30f637a237ea5c22fd9c220c94774a976082e7e657f",
+      "entry_hash": "91bd19fdb453127b24368b8bf75d0103aaaadf91ccd7649d65d4144e7deba317"
+    },
+    {
+      "at": "2026-09-27T06:20:03.097Z",
+      "type": "red-check",
+      "expect": "HEAD-index copies are seeded through GIT_INDEX_FILE, never locking the real index",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "85003fdef5d9",
+      "seq": 10,
+      "parent_hash": "91bd19fdb453127b24368b8bf75d0103aaaadf91ccd7649d65d4144e7deba317",
+      "entry_hash": "4a7146cb4548212c3a1873134e2d0e8a1cc34fcd48d74472f8f020d615ce5ea7"
+    },
+    {
+      "at": "2026-09-27T06:20:03.512Z",
+      "type": "red-check",
+      "expect": "a lock taken by a run that then fails is released on exit",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "85003fdef5d9",
+      "seq": 11,
+      "parent_hash": "4a7146cb4548212c3a1873134e2d0e8a1cc34fcd48d74472f8f020d615ce5ea7",
+      "entry_hash": "256dd905e695612236b5f9074cc824b54fe8bd227cd8c59e8756e31c58686f13"
+    },
+    {
+      "at": "2026-09-27T06:20:03.947Z",
+      "type": "red-check",
+      "expect": "the run lock is keyed by checkout, so two repositories never refuse each other",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "85003fdef5d9",
+      "seq": 12,
+      "parent_hash": "256dd905e695612236b5f9074cc824b54fe8bd227cd8c59e8756e31c58686f13",
+      "entry_hash": "b95a461e6950e782d3d4af9331f33db31a7c6b88ba9ddee58d4a35d41793457d"
+    },
+    {
+      "at": "2026-09-27T06:20:04.360Z",
+      "type": "red-check",
+      "expect": "the self-test plants its probes only under the run lock",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "85003fdef5d9",
+      "seq": 13,
+      "parent_hash": "b95a461e6950e782d3d4af9331f33db31a7c6b88ba9ddee58d4a35d41793457d",
+      "entry_hash": "f3cb735206041058ab22654727328612a13e283d5904b3dbb78aee0a0f38871f"
+    },
+    {
+      "at": "2026-09-27T06:20:04.787Z",
+      "type": "red-check",
+      "expect": "a modes file with a typo'd top-level key refuses",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "85003fdef5d9",
+      "seq": 14,
+      "parent_hash": "f3cb735206041058ab22654727328612a13e283d5904b3dbb78aee0a0f38871f",
+      "entry_hash": "986388e287dc46c936557b1603774e7ff5a8b40b18414ad0c5ca27881e6908f7"
+    },
+    {
+      "at": "2026-09-27T06:34:35.900Z",
+      "type": "red-check",
+      "expect": "escaped both shadow loops",
+      "command": "node tools/gate-registry.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "46c5375f5190",
+      "seq": 15,
+      "parent_hash": "986388e287dc46c936557b1603774e7ff5a8b40b18414ad0c5ca27881e6908f7",
+      "entry_hash": "adb98dd58d4e26a7169090c848fbdb319debf313d0732a02fc3aa7041c6ccafe"
+    },
+    {
+      "at": "2026-09-27T06:35:04.975Z",
+      "type": "red-check",
+      "expect": "sweeps every registered probe dir",
+      "command": "node tools/guard-reach.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "02db4aa4b0c4",
+      "seq": 16,
+      "parent_hash": "adb98dd58d4e26a7169090c848fbdb319debf313d0732a02fc3aa7041c6ccafe",
+      "entry_hash": "90a5f85697e3447579a2cd4416421efe8c283ca63b97ae1721ebe88e8cecaecb"
+    }
+  ]
+}
