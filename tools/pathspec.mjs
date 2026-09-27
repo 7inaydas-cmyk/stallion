@@ -32,6 +32,7 @@
  * one is wrong in a way that only shows up on the file nobody thought about.
  */
 
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 /** @typedef {string | RegExp | ((path: string) => boolean)} Spec */
@@ -205,7 +206,7 @@ export function selfTest() {
  * controls consistent. Caught because the guard printed pathspec's self-test line instead of its
  * own.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry && process.argv.includes("--self-test")) {
   process.exit(selfTest() ? 0 : 1);
 }

@@ -750,5 +750,5 @@ function main() {
   return runGate(loaded.config, { report: process.argv.includes("--report") });
 }
 
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) process.exit(main());

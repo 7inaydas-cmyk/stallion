@@ -1,0 +1,66 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-entry-realpath",
+  "title": "2026-09-27 code-review sweep: every battery member realpaths its entry (adversarial:standards:4 root cause)",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T06:44:15.857Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "9cd3df00c4e52519f7fb112ff8e641b69db9c72fc05ff728458a30cd04993278"
+    },
+    {
+      "at": "2026-09-27T06:44:15.887Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "9cd3df00c4e52519f7fb112ff8e641b69db9c72fc05ff728458a30cd04993278",
+      "entry_hash": "3115043eb1a72b627b94ce957b9dfb6e5c965eac87df287ae17c6a795035834e"
+    },
+    {
+      "at": "2026-09-27T06:44:15.916Z",
+      "type": "scope",
+      "patterns": [
+        "tools/gate-registry.mjs",
+        "tools/debt-gate.mjs",
+        "tools/reader-existence.mjs",
+        "tools/pathspec.mjs",
+        "tools/path-obligations.mjs",
+        "tools/test-lint.mjs",
+        "tools/doc-reconcile.mjs",
+        "tools/vendor-drift.mjs",
+        "tools/detached-head-guard.mjs",
+        "tools/gate-coverage.mjs",
+        "tools/remote-string-lint.mjs",
+        "tools/guard-reach.mjs",
+        "tools/zz-head-glue-probe.mjs",
+        "tools/complexity-gate.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "3115043eb1a72b627b94ce957b9dfb6e5c965eac87df287ae17c6a795035834e",
+      "entry_hash": "aca890a26a9067054c9eefefa8b5382d0350293a9acd29fef1f70ea4e5efae76"
+    },
+    {
+      "at": "2026-09-27T06:44:15.947Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "aca890a26a9067054c9eefefa8b5382d0350293a9acd29fef1f70ea4e5efae76",
+      "entry_hash": "97d9c2a78d0b2c161cc1f3e45817678fb5a0844db52efcec63a234f60d6f1758"
+    },
+    {
+      "at": "2026-09-27T06:44:21.136Z",
+      "type": "red-check",
+      "expect": "SILENT SYMLINKED ENTRY",
+      "command": "d=$(mktemp -d) && ln -s \"$PWD/tools\" \"$d/t\" && rc=0; for f in gate-registry debt-gate reader-existence pathspec path-obligations test-lint doc-reconcile vendor-drift detached-head-guard gate-coverage remote-string-lint guard-reach zz-head-glue-probe complexity-gate; do out=$(node \"$d/t/$f.mjs\" --self-test 2>&1); [ -n \"$out\" ] || { echo \"SILENT SYMLINKED ENTRY: $f\"; rc=1; }; done; rm -rf \"$d\"; exit $rc",
+      "exitCode": 1,
+      "outputDigest": "b5d1faa1234f",
+      "seq": 4,
+      "parent_hash": "97d9c2a78d0b2c161cc1f3e45817678fb5a0844db52efcec63a234f60d6f1758",
+      "entry_hash": "b1144835b49361bc0ef4f6161c1812978ce6e7838d9ee6b6fb48637338eb15b1"
+    }
+  ]
+}

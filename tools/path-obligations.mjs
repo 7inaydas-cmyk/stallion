@@ -17,6 +17,7 @@
  *
  * Usage:  node tools/path-obligations.mjs [--staged | <path>...]
  */
+import { realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { explain, matches } from "./pathspec.mjs";
 import { pathToFileURL } from "node:url";
@@ -232,7 +233,7 @@ function selfTestContextCases(fail) {
   return ctxCases.length;
 }
 
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 // The WHOLE CLI is entry-guarded (the pathspec lesson, paid for once already): an importer that
 // pulls in selectContext or changedPaths must not have obligations printed at it or its process
 // exited from under it (an adversarial pass proved the unguarded tail did exactly that).

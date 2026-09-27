@@ -34,7 +34,7 @@
  * own constants, never the repo's live gate list).
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -335,5 +335,5 @@ function main(argv) {
  * process.exit — on import, disabling the importer's own --self-test. Importers call
  * selfTest()/census()/loadConfig() directly.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) process.exit(main(process.argv.slice(2)));

@@ -27,7 +27,7 @@
  * decay this gate exists to catch.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -165,7 +165,7 @@ function runGate() {
  * the battery and any guard wanting `parseRegister`/`overdueRows` imports this module — and
  * `process.exit()`s before the importer's own self-test can run.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
   runGate();

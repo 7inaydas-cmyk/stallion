@@ -38,7 +38,7 @@
  * too (the exact bypass this repo's AGENTS.md forbids outright). One narrow opt-out vs. teaching
  * --no-verify is the whole trade.
  */
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -180,7 +180,7 @@ function runGuard() {
  * `process.exit()`ing before the importer's own self-test can run — a control disabled by the
  * very module added to make controls consistent. Same lesson pathspec carries.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
   runGuard();

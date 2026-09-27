@@ -67,7 +67,7 @@
  *
  * Run: node tools/guard-reach.mjs [--self-test]
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -763,7 +763,7 @@ function main() {
  * CLI, guarded by an entry-module check (tools/pathspec.mjs's law): a bare argv test fires on
  * IMPORT and exits before an importing tool's own --self-test can run.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   if (process.argv.includes("--self-test")) {
     process.exit(selfTest() ? 0 : 1);

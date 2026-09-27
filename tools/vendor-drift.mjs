@@ -42,7 +42,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -588,7 +588,7 @@ function runFreshness(manifestPath, upstreamPath) {
  * CLI, guarded by an entry-module check (the pathspec lesson: a bare argv check fires on import
  * and exits before an importer's own self-test can run).
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const manifestPath = flagValue("--manifest") ?? DEFAULT_MANIFEST;
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

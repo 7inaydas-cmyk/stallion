@@ -29,7 +29,7 @@
  *
  * Run: node tools/remote-string-lint.mjs [--self-test]
  */
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -559,7 +559,7 @@ function main() {
  * imports pathspec, so a bare argv test would fire the CLI on IMPORT — both this file's and
  * pathspec's — before any importer's own self-test could run.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   process.exit(main());
 }

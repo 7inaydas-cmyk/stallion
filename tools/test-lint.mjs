@@ -47,7 +47,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const TEST_RE = /\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/;
@@ -277,7 +277,7 @@ function main() {
  * may be imported by other tools, so a bare `process.argv.includes(...)` test would fire the CLI
  * on IMPORT and exit before the importer's own self-test could run.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 if (isEntry) {
   const verdict = main();
   process.exit(verdict === 0 && process.exitCode !== undefined ? process.exitCode : verdict);;
