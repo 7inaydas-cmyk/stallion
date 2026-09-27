@@ -86,3 +86,13 @@ reasons, and names the two literal producers the sweep added to the RISK_CLASSES
 row (gate-law newTaskFix, path-obligations SELF_SERVE); doc-claims.json and guard-reach.json
 correct two false reasons; the complexity baseline drops the two line-keyed anonymous rows
 whose functions were split under the threshold.
+
+**Additive correction (2026-09-27, same session).** The adversarial pass over this wave found the
+hook changes pinned only by text greps (review-sweep-fence f5/f6). Under the founder's second
+directive of the session (verbatim: "ensure all fixes are in place and update all sources of truth
+and make sure all clients that are using stallion are on the latest version"), this authorization
+extends to .github/workflows/selftest.yml for exactly two behavioural smoke steps — a pushed tip
+outside HEAD's history refuses at `--pre-push`, and a bare commit on a detached HEAD refuses at the
+guard — and to gate-registry.json rows declaring them and re-homing the npm-alias transport. The
+entry above stands as written for its first scope; this paragraph is the widening, recorded rather
+than rewritten.

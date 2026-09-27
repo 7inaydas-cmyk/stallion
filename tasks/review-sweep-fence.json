@@ -121,6 +121,46 @@
       "seq": 11,
       "parent_hash": "34601c24a84d21069b5fe4f0697688f1bc0e44f9b4067d1c4e55edd1dd1460af",
       "entry_hash": "15f384d5f9e5f29af2b941c6ca077a63f0db03256e99f0ab7e7553fd978af7ab"
+    },
+    {
+      "at": "2026-09-27T08:04:04.585Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 12,
+      "parent_hash": "15f384d5f9e5f29af2b941c6ca077a63f0db03256e99f0ab7e7553fd978af7ab",
+      "entry_hash": "8267bf7a7ff1b6340d495be1c1ecc6fa68b3f77b7a4eef5268350be286215286"
+    },
+    {
+      "at": "2026-09-27T11:14:39.345Z",
+      "type": "red-check",
+      "expect": "the declared gate list and the transports have parted",
+      "command": "node tools/gate-registry.mjs",
+      "exitCode": 1,
+      "outputDigest": "9d39fd5ac065",
+      "seq": 13,
+      "parent_hash": "8267bf7a7ff1b6340d495be1c1ecc6fa68b3f77b7a4eef5268350be286215286",
+      "entry_hash": "94b4f606e9616ccad90349a532f1753d65e020bc0fb2b9eb201ef6d1c8671a7d"
+    },
+    {
+      "at": "2026-09-27T11:38:33.775Z",
+      "type": "red-check",
+      "expect": "still exempts tools/retrospective\\.mjs bundleBlockCarriesAllRanked",
+      "command": "node tools/complexity-gate.mjs",
+      "exitCode": 1,
+      "outputDigest": "c899a65907c4",
+      "seq": 14,
+      "parent_hash": "94b4f606e9616ccad90349a532f1753d65e020bc0fb2b9eb201ef6d1c8671a7d",
+      "entry_hash": "c5ca9066a1bbecefd8b56d94ccdd428f440da00c6046f267868d96fe703a2eec"
+    },
+    {
+      "at": "2026-09-27T11:39:09.832Z",
+      "type": "scope",
+      "patterns": [
+        ".github/workflows/**"
+      ],
+      "seq": 15,
+      "parent_hash": "c5ca9066a1bbecefd8b56d94ccdd428f440da00c6046f267868d96fe703a2eec",
+      "entry_hash": "f10bd738538bbaa345f8b3cb7dbc20c32b458d14fcfc57440ad9692f0269b851"
     }
   ]
 }

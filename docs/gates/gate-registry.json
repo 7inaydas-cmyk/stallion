@@ -1,5 +1,5 @@
 {
-  "_readme": "Stallion's gate invocations, declared ONCE. Each gate names the invocation text and the transports that must carry it; tools/gate-registry.mjs greps the real transport files for both directions of drift \u2014 a declared gate missing from a transport, and a transport carrying an invocation the registry does not declare (a shadow gate). Vendors: this is the stallion seed; add your own gates honestly. The transport set (the three git hooks, every workflow under .github/workflows as ci, package.json's scripts as battery) is TRANSPORTS in tools/gate-registry.mjs; a new transport kind is a graft recorded at vendor time, not a config edit.",
+  "_readme": "Stallion's gate invocations, declared ONCE. Each gate names the invocation text and the transports that must carry it; tools/gate-registry.mjs greps the real transport files for both directions of drift \u2014 a declared gate missing from a transport, and a transport carrying an invocation the registry does not declare (a shadow gate). Vendors: this is the stallion seed; add your own gates honestly. The transport set (the three git hooks, every workflow under .github/workflows as ci, package.json's `selftest` script as battery (one clean && chain), and every other package.json script as npm-alias) is TRANSPORTS in tools/gate-registry.mjs; a new transport kind is a graft recorded at vendor time, not a config edit.",
   "gates": [
     {
       "id": "staged-gate",
@@ -23,15 +23,16 @@
       "invocation": "node tools/task-coverage.mjs",
       "transports": [
         "ci",
-        "battery"
+        "npm-alias"
       ],
-      "why": "every code commit in the push range carries an authorizing task record \u2014 the control clones cannot opt out of; the battery transport is the package.json `task-coverage` alias, a bare runnable spelling of the same command"
+      "why": "every code commit in the push range carries an authorizing task record \u2014 the control clones cannot opt out of; the npm-alias transport is the package.json `task-coverage` alias, a bare runnable spelling of the same command"
     },
     {
       "id": "push-fence-pre-push",
       "invocation": "node tools/task-coverage.mjs --pre-push",
       "transports": [
-        "pre-push"
+        "pre-push",
+        "ci"
       ],
       "why": "the push fence as the hook runs it: judges base..HEAD and refuses any pushed ref (git's stdin ref lines) outside HEAD's history \u2014 `git push origin other-branch` and `--all` no longer land unjudged"
     },
@@ -104,7 +105,8 @@
       "id": "detached-head-guard-live",
       "invocation": "node tools/detached-head-guard.mjs",
       "transports": [
-        "pre-commit"
+        "pre-commit",
+        "ci"
       ],
       "why": "a bare commit on a detached HEAD refuses loudly \u2014 at the commit it judges, not in the battery, where every detached checkout (pull_request CI, colocated jj) reddened it with no commit in sight"
     },
@@ -137,34 +139,35 @@
       "invocation": "node tools/task-state.mjs",
       "transports": [
         "battery",
+        "npm-alias",
         "ci"
       ],
-      "why": "the task lifecycle state machine; battery alias + CI's lifecycle smokes drive it end to end"
+      "why": "the task lifecycle state machine; the battery runs `task-state metrics` live, the npm alias spells it, and CI's lifecycle smokes drive it end to end"
     },
     {
       "id": "adversarial-runner-tool",
       "invocation": "node tools/adversarial-runner.mjs",
       "transports": [
-        "battery",
+        "npm-alias",
         "ci"
       ],
-      "why": "the eight-lane pass machinery; battery alias + CI's concurrent-record smokes"
+      "why": "the eight-lane pass machinery; npm alias + CI's concurrent-record smokes"
     },
     {
       "id": "workspace-tool",
       "invocation": "node tools/task-workspace.mjs",
       "transports": [
-        "battery"
+        "npm-alias"
       ],
-      "why": "jj workspace drafting law; battery alias"
+      "why": "jj workspace drafting law; npm alias"
     },
     {
       "id": "intervention-gate-tool",
       "invocation": "node tools/task-gate.mjs",
       "transports": [
-        "battery"
+        "npm-alias"
       ],
-      "why": "the intervention gate (refuse at the act); battery alias"
+      "why": "the intervention gate (refuse at the act); npm alias"
     },
     {
       "id": "head-glue-probe",

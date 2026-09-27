@@ -78,6 +78,30 @@ jobs:
           git reset -q -- tools/scratch-probe.mjs tools/task-coverage.mjs
           git checkout -q -- tools/task-coverage.mjs
           rm -f tools/scratch-probe.mjs /tmp/probe-msg tasks/smoke-bind.json
+      - name: Pre-push smoke (a pushed tip outside HEAD's history refuses; the checked-out tip passes)
+        run: |
+          set -e
+          TIP=$(git -c user.name=smoke -c user.email=smoke@localhost commit-tree "HEAD^{tree}" -p HEAD -m "smoke: a tip HEAD cannot reach")
+          printf 'refs/heads/smoke-tip %s refs/heads/smoke-tip %s\n' "$TIP" 0000000000000000000000000000000000000000 > /tmp/outside-refs
+          printf 'refs/heads/smoke-head %s refs/heads/smoke-head %s\n' "$(git rev-parse HEAD)" 0000000000000000000000000000000000000000 > /tmp/head-refs
+          if node tools/task-coverage.mjs --pre-push < /tmp/outside-refs; then
+            echo "the pre-push fence accepted a pushed tip outside HEAD's history: the transport is decoration"; exit 1
+          fi
+          echo "refusal fired: a pushed tip outside HEAD's history"
+          node tools/task-coverage.mjs --pre-push < /tmp/head-refs
+          echo "pass fired: the checked-out tip is judged whole"
+          rm -f /tmp/outside-refs /tmp/head-refs
+      - name: Detached-head smoke (a bare commit on a detached HEAD refuses at pre-commit's guard)
+        run: |
+          set -e
+          BACK=$(git symbolic-ref -q --short HEAD || git rev-parse HEAD)
+          git checkout -q --detach
+          if node tools/detached-head-guard.mjs; then
+            echo "the detached-head guard let a bare commit on a detached HEAD through: the guard is decoration"; exit 1
+          fi
+          echo "refusal fired: a bare commit on a detached HEAD"
+          git checkout -q "$BACK"
+          if git symbolic-ref -q HEAD >/dev/null; then node tools/detached-head-guard.mjs; echo "pass fired: an attached HEAD commits"; fi
       - name: Committed adoption base resolves with no --base and no local config
         run: node tools/task-coverage.mjs
       - name: Wiring doctor (the fence checks itself)

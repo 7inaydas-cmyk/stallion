@@ -130,6 +130,54 @@
           "spec": "tools/task-coverage.mjs:checklistLaneCount\\(checklist\\) === 8"
         }
       ]
+    },
+    {
+      "id": "adoption-pin-flow-is-the-printed-one",
+      "doc": "docs/WIRING.md",
+      "anchor": "every refusal that asks you to pin a base prints this flow",
+      "why": "The pin commit sits inside the range it opens and .stallion-base is fence surface: only a protected, approved, scoped task's footered commit passes the staged gate, commit-msg and the fence. pinBaseFix prints that flow for every base refusal; WIRING \u00a78 once taught the bare footerless commit the code already refused, and nothing failed on the gap.",
+      "verified": {
+        "at": "2026-09-27",
+        "whyHash": "b761d0a6c32e2734"
+      },
+      "evidence": [
+        {
+          "kind": "symbol",
+          "spec": "tools/task-coverage.mjs:pinBaseFix"
+        },
+        {
+          "kind": "grep",
+          "spec": "tools/task-coverage.mjs:--risk-class protected && \\$\\{t\\} approve <pin-id>"
+        },
+        {
+          "kind": "grep",
+          "spec": "tools/task-coverage.mjs:-m \"task: <pin-id>\""
+        },
+        {
+          "kind": "absent",
+          "spec": "tools/task-coverage.mjs:git add .stallion-base && git commit"
+        }
+      ]
+    },
+    {
+      "id": "task-gate-reads-the-hook-payload",
+      "doc": "docs/WIRING.md",
+      "anchor": "sh -c 'node tools/task-gate.mjs --stdin || exit 2'",
+      "why": "WIRING \u00a77 prints the hook command an adopter pastes, and task-gate's CLI is what that command runs. They drifted once: the wave that added --stdin (Claude Code sets no env var carrying the file or the command) left \u00a77 wiring $CLAUDE_FILE / $CLAUDE_COMMAND, and with an empty --bash now refusing, the documented hook blocked every command until 952b7b2 rewrote \u00a77 by attention alone (adversarial finding review-sweep-act-gates#7). The evidence pins both halves the command relies on: the payload mapper and the --stdin dispatch.",
+      "verified": {
+        "at": "2026-09-27",
+        "whyHash": "b427843af9b16e45"
+      },
+      "evidence": [
+        {
+          "kind": "symbol",
+          "spec": "tools/task-gate.mjs:export function argsFromHookPayload"
+        },
+        {
+          "kind": "grep",
+          "spec": "tools/task-gate.mjs:if \\(args\\.stdin\\)"
+        }
+      ]
     }
   ]
 }

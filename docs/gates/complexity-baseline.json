@@ -168,11 +168,6 @@
       "complexity": 9
     },
     {
-      "file": "tools/retrospective.mjs",
-      "name": "bundleBlockCarriesAllRanked",
-      "complexity": 9
-    },
-    {
       "file": "tools/task-coverage.mjs",
       "name": "resolvePushBase",
       "complexity": 9
