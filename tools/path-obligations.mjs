@@ -17,15 +17,24 @@
  *
  * Usage:  node tools/path-obligations.mjs [--staged | <path>...]
  */
-import { realpathSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { explain, matches } from "./pathspec.mjs";
-import { pathToFileURL } from "node:url";
+import { fenceSurfaceRefusal } from "./task-state.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+/** The tier law's own question asked of one path: would a runtime-code self-serve scope over it
+ *  refuse? DERIVED from task-state, never re-typed — the hand-typed roots drifted twice (blind to
+ *  docs/gates until 2026-09-20, then to .stallion-base, the adoption base). */
+const SELF_SERVE = { riskClass: "runtime-code", events: [] };
+const fenceSurface = (p) => fenceSurfaceRefusal(SELF_SERVE, [p]) !== null;
 
 /** Each rule: which paths arm it, and the obligation that follows — traceable to the incident. */
 const RULES = [
   {
-    spec: (p) => p.startsWith(".githooks/") || p.startsWith(".github/") || p.startsWith("docs/gates/"),
+    spec: fenceSurface,
     obligation:
       "PROTECTED-TIER FENCE SURFACE — you touched the fence's own law. This is protected blast radius: open a protected task with a recorded DECISIONS.md approval BEFORE declaring the scope (the tier law refuses the self-serve amendment; it was blind to docs/gates until the halves reunified, 2026-09-20).",
   },
@@ -35,9 +44,9 @@ const RULES = [
       "APPEND-ONLY CHAIN — task records are event logs; the tool appends, hands never do. Post-cutover records are hash-chained and a broken chain refuses at every gate. The git history of the record file IS the tamper evidence — edit events and the diff is the confession.",
   },
   {
-    spec: (p) => p === "tools/task-state.mjs" || p === "tools/task-coverage.mjs",
+    spec: (p) => p === "tools/task-state.mjs" || p === "tools/task-coverage.mjs" || p === "tools/zcode-plugin/lib/gate-law.mjs",
     obligation:
-      "ONE LAW, TWO TRANSPORTS — the commit-msg gate and the push fence share the citation/scope seams by import. A change to either file must hold both transports in agreement; a drifted copy of the law in one transport is an adversarial finding that has SHIPPED here before. Run both self-tests; add the case to the seam that owns the law.",
+      "ONE LAW, THREE TRANSPORTS — the staged gate, the citation seam (commit-msg gate + push fence) and the authoring gate (the plugin's gate-law) judge one law through seams shared by import. A change to the law or to any transport must hold all three in agreement; a drifted copy of the law in one transport is an adversarial finding that has SHIPPED here before. Run task-state's, task-coverage's and agreement-check's self-tests (the agreement matrix); add the case to the seam that owns the law.",
   },
   {
     spec: (p) => p === "docs/gates/guard-reach.json" || p === "docs/gates/guard-reach-modes.json",
@@ -77,7 +86,7 @@ const CONTEXT_CLASSES = [
   },
   {
     class: "Fence transports",
-    specs: [".githooks/**", ".github/workflows/**", "tools/task-coverage.mjs"],
+    specs: [".githooks/**", ".github/workflows/**", ".stallion-base", "tools/task-coverage.mjs"],
     docs: ["docs/WIRING.md"],
     gates: ["commit-msg gate against a fixture message", "push fence against the settled anchor"],
     forbidden: ["--no-verify (the push fence re-judges what slips past)", "weaken one transport's copy of a shared seam"],
@@ -132,12 +141,6 @@ function gitLines(args) {
   }
 }
 
-/**
- * The paths this change set touches. `--staged` means the changes about to be committed: under
- * git that is the index; an empty index falls through to the working copy against HEAD (the
- * colocated-jj shape, where `git diff --cached` is always empty and silence once read as
- * "no obligations armed" — the vendor-repo incident this fallthrough cures).
- */
 /** The working-change-set half: tracked changes plus untracked files — silence about a
  *  brand-new file is the false-empty this tool exists to refuse. */
 function workingPaths() {
@@ -148,22 +151,25 @@ function workingPaths() {
   return { paths, untracked: untracked.ok ? untracked.lines.length : 0 };
 }
 
+/**
+ * The paths this change set touches. `--staged` means the changes about to be committed: under
+ * git that is the index; an empty index falls through to the SAME working change set a bare run
+ * reads, untracked included (the colocated-jj shape, where `git diff --cached` is always empty
+ * and silence once read as "no obligations armed" — the vendor-repo incident this fallthrough
+ * cures; a hand-rolled copy of the fallthrough dropped the untracked half and went silent again).
+ */
 export function changedPaths(argv) {
   const explicit = argv.filter((a) => !a.startsWith("--"));
   if (explicit.length > 0) return { paths: explicit, source: "arguments" };
-  if (!argv.includes("--staged")) {
-    const wt = workingPaths();
-    if (wt.paths === null) return { paths: [], source: null, why: wt.why };
-    return { paths: wt.paths, source: wt.untracked > 0 ? "working copy vs HEAD + untracked" : "working copy vs HEAD" };
+  const stagedMode = argv.includes("--staged");
+  if (stagedMode) {
+    const staged = gitLines(["diff", "--cached", "--name-only"]);
+    if (staged.ok && staged.lines.length > 0) return { paths: staged.lines, source: "git index" };
   }
-  const staged = gitLines(["diff", "--cached", "--name-only"]);
-  if (staged.ok && staged.lines.length > 0) return { paths: staged.lines, source: "git index" };
-  // Nothing staged: the working copy against HEAD is the honest fallthrough (under colocated jj
-  // the git index is ALWAYS empty and this is the normal state; under git it means the caller
-  // has not staged yet — either way the changes are real and the obligations are owed).
-  const wt = gitLines(["diff", "--name-only", "HEAD"]);
-  if (wt.ok) return { paths: wt.lines, source: "working copy vs HEAD (nothing staged)" };
-  return { paths: [], source: null, why: wt.why };
+  const wt = workingPaths();
+  if (wt.paths === null) return { paths: [], source: null, why: wt.why };
+  const source = wt.untracked > 0 ? "working copy vs HEAD + untracked" : "working copy vs HEAD";
+  return { paths: wt.paths, source: stagedMode ? `${source} (nothing staged)` : source };
 }
 
 /**
@@ -179,7 +185,9 @@ export function selfTest() {
   };
   const obligationCount = selfTestObligationCases(fail);
   const contextCount = selfTestContextCases(fail);
-  console.log(ok ? `path-obligations self-test: OK (${obligationCount} obligation + ${contextCount} context cases)` : "path-obligations self-test: FAILED");
+  const { result: changeSetCount, leftovers } = inHostHook(() => selfTestChangeSetCases(fail));
+  if (leftovers.length > 0) fail(`SELF-TEST FAIL (hook env): the change-set fixture escaped into the host repo a hook names (${leftovers.join(", ")})`);
+  console.log(ok ? `path-obligations self-test: OK (${obligationCount} obligation + ${contextCount} context + ${changeSetCount} change-set cases)` : "path-obligations self-test: FAILED");
   return ok;
 }
 
@@ -187,15 +195,18 @@ export function selfTest() {
 function selfTestObligationCases(fail) {
   const cases = [
     [".githooks/pre-push", "PROTECTED-TIER", true],
+    [".stallion-base", "PROTECTED-TIER", true],
+    [".stallion-base.bak", "PROTECTED-TIER", false],
     ["docs/gates/guard-reach.json", "PROTECTED-TIER", true],
     ["docs/gates/reader-existence.json", "PROTECTED-TIER", true],
     ["docs/TASK-LIFECYCLE.md", "PROTECTED-TIER", false],
     ["tasks/retire-law.json", "APPEND-ONLY", true],
     ["tasks/harness-merge-wave1.calibration.json", "APPEND-ONLY", true],
     ["package.json", "APPEND-ONLY", false],
-    ["tools/task-state.mjs", "ONE LAW, TWO TRANSPORTS", true],
-    ["tools/task-coverage.mjs", "ONE LAW, TWO TRANSPORTS", true],
-    ["tools/pathspec.mjs", "ONE LAW, TWO TRANSPORTS", false],
+    ["tools/task-state.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    ["tools/task-coverage.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    ["tools/zcode-plugin/lib/gate-law.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    ["tools/pathspec.mjs", "ONE LAW, THREE TRANSPORTS", false],
     ["docs/gates/complexity-baseline.json", "CEILING", true],
     ["package.json", "BATTERY COMPLETENESS", true],
     ["tools/vendor-drift.mjs", "RED→GREEN PIN", true],
@@ -219,6 +230,7 @@ function selfTestContextCases(fail) {
     ["tools/vendor-drift.mjs", "docs/WIRING.md §1", true],
     ["docs/gates/complexity-baseline.json", "the gate that owns the config must run green in the same commit", true],
     [".githooks/pre-push", "docs/WIRING.md", true],
+    [".stallion-base", "docs/WIRING.md", true],
     ["tasks/x.json", "docs/TASK-LIFECYCLE.md", true],
   ];
   for (const [path, item, expected] of ctxCases) {
@@ -231,6 +243,63 @@ function selfTestContextCases(fail) {
     fail(`SELF-TEST FAIL (context): an unclassified path selected ${none.docs.length} doc(s)`);
   }
   return ctxCases.length;
+}
+
+/** The caller's env minus GIT_*, read at call time: inside a hook GIT_DIR / GIT_INDEX_FILE name the
+ *  HOST repo, so a fixture that inherits them writes the host's index. Fixtures only — the real
+ *  `--staged` must honour GIT_INDEX_FILE (a partial commit's index). */
+function fixtureEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+}
+
+/** Runs `family` inside a simulated git hook — GIT_DIR and GIT_INDEX_FILE name a HOST repo (a
+ *  linked worktree's hook; `commit -a`), and a global core.hooksPath holds a pre-commit hook —
+ *  and returns its result plus whatever it left in that host. Anything left there is a fixture
+ *  that wrote the host's refs or index, or re-fired its hook; a crash under the hook's env is
+ *  reported the same way, never as a stack trace. */
+function inHostHook(family) {
+  const host = mkdtempSync(join(tmpdir(), "path-obligations-host-"));
+  writeFileSync(join(host, "pre-commit"), `#!/bin/sh\ntouch "${join(host, "hook-fired")}"\n`, { mode: 0o755 });
+  writeFileSync(join(host, ".gitconfig"), `[core]\n\thooksPath = ${host}\n`);
+  const hookEnv = { HOME: host, GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index.lock") };
+  const saved = Object.keys(hookEnv).map((k) => [k, process.env[k]]);
+  const leftovers = () => ["git", "index.lock", "hook-fired"].filter((f) => existsSync(join(host, f)));
+  Object.assign(process.env, hookEnv);
+  try {
+    const result = family();
+    return { result, leftovers: leftovers() };
+  } catch (error) {
+    return { result: 0, leftovers: [...leftovers(), `a crash: ${`${error.message}`.split("\n")[0]}`] };
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(host, { recursive: true, force: true });
+  }
+}
+
+/** The change-set family, against a real throwaway repo: `--staged` with nothing staged falls
+ *  through to the WHOLE working change set — untracked included — or a brand-new tool owes a pin
+ *  while the tool reports nothing armed (the false-empty this module exists to refuse). */
+function selfTestChangeSetCases(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "path-obligations-"));
+  const git = (...args) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, stdio: ["ignore", "pipe", "pipe"], env: fixtureEnv() });
+  try {
+    git("init", "-q");
+    writeFileSync(join(dir, "README.md"), "seed\n");
+    git("add", "README.md");
+    git("commit", "-q", "-m", "seed");
+    mkdirSync(join(dir, "tools"));
+    writeFileSync(join(dir, "tools", "new-gate.mjs"), "export {};\n");
+    const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--staged"], { cwd: dir, encoding: "utf8", env: fixtureEnv() });
+    if (!`${run.stdout}`.includes("armed by: tools/new-gate.mjs")) {
+      fail(`SELF-TEST FAIL (change set): --staged with nothing staged is silent about an untracked new file — got: ${`${run.stdout}${run.stderr}`.trim().split("\n")[0]}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return 1;
 }
 
 const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;

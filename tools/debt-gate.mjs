@@ -20,9 +20,10 @@
  *
  * PARSING LAW — PER-LINE, NEVER DOTALL. A lazy `.*?` across `gms` bleeds one row into the next
  * and swallows the documented `SHIPPED (<date>: <citation>)` annotation form — the gate would
- * misread the register it exists to read. Cells are split literally; status matches by PREFIX so
- * citations ride along. And a gate that parses FEWER rows than exist reads green for the wrong
- * reason: the parsed-row count must equal the row-line count, and a register with ZERO rows is a
+ * misread the register it exists to read. Cells are split literally and read by POSITION (id
+ * first, due-by and status last); status matches by PREFIX so citations ride along. And a gate
+ * that parses FEWER rows than exist reads green for the wrong reason: the parsed-row count must
+ * equal the row-line count, and a register with ZERO rows is a
  * GATE_DEFECT, not an all-clear — an empty register means nobody maintains it, which is the exact
  * decay this gate exists to catch.
  */
@@ -46,25 +47,30 @@ export function parseRegister(text) {
   }
   const baseline = baselineMatch[1];
 
-  const lines = text.split("\n");
-  const rowLines = lines.filter((line) => /^\|\s*PD-\d+\s*\|/.test(line));
+  // Candidates are WIDER than the row shape: any table line (indented or not) naming a PD id. Each
+  // must parse or the register is a defect, so the parsed count equals the row-line count by
+  // construction — a row the parser cannot read never silently drops out of the count.
+  const rowLines = text.split("\n").filter((line) => /^\s*\|/.test(line) && /\bPD-\d+\b/.test(line));
   const rows = [];
   for (const line of rowLines) {
-    const cells = line.split("|").map((cell) => cell.trim());
-    const id = cells.find((cell) => /^PD-\d+$/.test(cell));
-    const budgetCell = cells.find((cell) => /^next \d+ commits$/.test(cell));
-    const statusCell = cells.find((cell) => /^(OPEN|SHIPPED|DROPPED)\b/.test(cell));
-    if (id === undefined || budgetCell === undefined || statusCell === undefined) {
-      return { defect: `unparseable register row: ${line.slice(0, 120)}` };
-    }
-    rows.push({ id, budget: Number(/\d+/.exec(budgetCell)?.[0]), status: /^(OPEN|SHIPPED|DROPPED)/.exec(statusCell)[1] });
+    const row = parseRow(line);
+    if (row === null) return { defect: `unparseable register row: ${line.trim().slice(0, 120)}` };
+    rows.push(row);
   }
-  // A gate that parses FEWER rows than exist reads green for the wrong reason; zero rows is an
-  // unmaintained register, not an all-clear one.
-  if (rows.length === 0 || rows.length !== rowLines.length) {
-    return { defect: `parsed ${rows.length} of ${rowLines.length} register rows` };
-  }
+  // Zero rows is an unmaintained register, not an all-clear one.
+  if (rows.length === 0) return { defect: "parsed 0 register rows" };
   return { baseline, rows };
+}
+
+/** Pure: one row, read by POSITION — id first, due-by second to last, status last (the register's
+ *  fixed shape). A first-match scan let an item cell opening "DROPPED …" pose as the status, so an
+ *  OPEN row read closed and never went overdue. null = unparseable. */
+function parseRow(line) {
+  const cells = line.trim().split("|").slice(1).map((cell) => cell.trim());
+  if (cells.at(-1) === "") cells.pop();
+  const [id, budgetCell, statusCell] = [cells[0], cells.at(-2), cells.at(-1)];
+  if (!/^PD-\d+$/.test(id) || !/^next \d+ commits$/.test(budgetCell) || !/^(OPEN|SHIPPED|DROPPED)\b/.test(statusCell)) return null;
+  return { id, budget: Number(/\d+/.exec(budgetCell)[0]), status: /^(OPEN|SHIPPED|DROPPED)/.exec(statusCell)[1] };
 }
 
 /** Pure: OPEN rows past their commit budget. The budget is a floor — commit N of "next N" is
@@ -72,6 +78,18 @@ export function parseRegister(text) {
  *  clock the honest way. */
 export function overdueRows(rows, commitsSince) {
   return rows.filter((row) => row.status === "OPEN" && commitsSince > row.budget);
+}
+
+/** Row-shape cases: cells are read by POSITION, and every table line naming a PD id is counted.
+ *  The status is the LAST cell, never the first cell that happens to start with a keyword — an
+ *  item reading "DROPPED events…" once posed as the status, and the OPEN row never went overdue. */
+function rowShapeCases() {
+  const register = (...rows) => parseRegister(["gate-baseline: af4fd70dec9d", ...rows, ""].join("\n"));
+  return [
+    ["an OPEN row whose item starts with DROPPED still reads OPEN and goes overdue", overdueRows(register("| PD-1 | DROPPED events are never retried | audit | P1 | next 5 commits | OPEN |").rows ?? [], 6).map((r) => r.id).join() === "PD-1"],
+    ["an indented table row is still a row, counted and parsed", register("  | PD-1 | x | next 5 commits | OPEN |").rows?.length === 1],
+    ["a table line naming a PD id outside a clean id cell is a defect, never a silently skipped row", register("| PD-1 | x | next 5 commits | OPEN |", "| **PD-2** | x | next 5 commits | OPEN |").defect !== undefined],
+  ];
 }
 
 /** Self-test where the refusals are the feature: most cases assert the gate BREAKS on a register
@@ -105,6 +123,7 @@ export function selfTest() {
     ["a row missing a status is a defect", parseRegister("gate-baseline: af4fd70dec9d\n| PD-1 | x | next 5 commits | status forgotten |\n").defect !== undefined],
     ["budget is a floor: commit 10 of 'next 10' is NOT overdue", overdueRows(parsed.rows ?? [], 10).length === 0],
     ["one commit past the budget IS overdue — and only the OPEN row", overdueRows(parsed.rows ?? [], 11).map((r) => r.id).join() === "PD-1"],
+    ...rowShapeCases(),
   ];
 
   // The gate is config-driven, so the config itself is under test: the vendored register must parse.

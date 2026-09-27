@@ -1,0 +1,233 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-lineage-gates",
+  "title": "2026-09-27 code-review sweep: the lineage-gates group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:09.583Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "be1aa335b592da9aa2affe99ae01c3bbb61eefc3a87c6bcefce103ef85f080a6"
+    },
+    {
+      "at": "2026-09-27T05:54:09.616Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "be1aa335b592da9aa2affe99ae01c3bbb61eefc3a87c6bcefce103ef85f080a6",
+      "entry_hash": "42b2fcfcd089bed4985f8d81784f2ed08a4f645ac1815df3fbfb15c80620fb7e"
+    },
+    {
+      "at": "2026-09-27T05:54:09.645Z",
+      "type": "scope",
+      "patterns": [
+        "tools/vendor-drift.mjs",
+        "tools/debt-gate.mjs",
+        "tools/detached-head-guard.mjs",
+        "tools/path-obligations.mjs",
+        "tools/zz-head-glue-probe.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "42b2fcfcd089bed4985f8d81784f2ed08a4f645ac1815df3fbfb15c80620fb7e",
+      "entry_hash": "93fd08def3196635168e86f14db38917340b0005fc1f3d753bf8faf8bb090de2"
+    },
+    {
+      "at": "2026-09-27T05:54:09.674Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "93fd08def3196635168e86f14db38917340b0005fc1f3d753bf8faf8bb090de2",
+      "entry_hash": "e0917857b6ae819fb76275dde48e231d15fe063396d53f5c355937237add5f90"
+    },
+    {
+      "at": "2026-09-27T06:11:26.819Z",
+      "type": "red-check",
+      "expect": "an OPEN row whose item starts with DROPPED still reads OPEN",
+      "command": "node tools/debt-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f9c23f6ab1cd",
+      "seq": 4,
+      "parent_hash": "e0917857b6ae819fb76275dde48e231d15fe063396d53f5c355937237add5f90",
+      "entry_hash": "fe2bc8c84ae8b30f82a715727096c1a867532df89ed5e18fa29425c5e386023b"
+    },
+    {
+      "at": "2026-09-27T06:11:26.877Z",
+      "type": "red-check",
+      "expect": "an indented table row is still a row",
+      "command": "node tools/debt-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f9c23f6ab1cd",
+      "seq": 5,
+      "parent_hash": "fe2bc8c84ae8b30f82a715727096c1a867532df89ed5e18fa29425c5e386023b",
+      "entry_hash": "fa9554091e7e940eca9cb0489141f14c3ddadb1c9dd0056d4d9d9ee52cf26801"
+    },
+    {
+      "at": "2026-09-27T06:11:26.931Z",
+      "type": "red-check",
+      "expect": "a table line naming a PD id outside a clean id cell is a defect",
+      "command": "node tools/debt-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f9c23f6ab1cd",
+      "seq": 6,
+      "parent_hash": "fa9554091e7e940eca9cb0489141f14c3ddadb1c9dd0056d4d9d9ee52cf26801",
+      "entry_hash": "ed91178c270826023fa91bc690410216cb3715767e33de09e4ba0e453cf91458"
+    },
+    {
+      "at": "2026-09-27T06:12:11.166Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: \\.stallion-base vs",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5eb971941a0e",
+      "seq": 7,
+      "parent_hash": "ed91178c270826023fa91bc690410216cb3715767e33de09e4ba0e453cf91458",
+      "entry_hash": "48aaf2fe98b8b6f5dc631808991a511ba1ff1085874841d39a02bbdc26734491"
+    },
+    {
+      "at": "2026-09-27T06:12:11.259Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL \\(context\\): \\.stallion-base",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5eb971941a0e",
+      "seq": 8,
+      "parent_hash": "48aaf2fe98b8b6f5dc631808991a511ba1ff1085874841d39a02bbdc26734491",
+      "entry_hash": "92d0ab32a66b2feda7e94a9bd0b7a35f1b9419d77681584d2ec0a04744a7a801"
+    },
+    {
+      "at": "2026-09-27T06:12:11.353Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL \\(change set\\)",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5eb971941a0e",
+      "seq": 9,
+      "parent_hash": "92d0ab32a66b2feda7e94a9bd0b7a35f1b9419d77681584d2ec0a04744a7a801",
+      "entry_hash": "560385b9b3015ab26a8dfaa9eed9a7c666de7eab540bd005e71c7579c1e10141"
+    },
+    {
+      "at": "2026-09-27T06:13:29.882Z",
+      "type": "red-check",
+      "expect": "shape — entry missing source misjudged",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f99959f1926c",
+      "seq": 10,
+      "parent_hash": "560385b9b3015ab26a8dfaa9eed9a7c666de7eab540bd005e71c7579c1e10141",
+      "entry_hash": "86b30db890d7033948a0cd1f2294c6e798d445ddff0313e7d76c3252381411a4"
+    },
+    {
+      "at": "2026-09-27T06:13:30.129Z",
+      "type": "red-check",
+      "expect": "shape — null entry misjudged",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f99959f1926c",
+      "seq": 11,
+      "parent_hash": "86b30db890d7033948a0cd1f2294c6e798d445ddff0313e7d76c3252381411a4",
+      "entry_hash": "5a90871f2efb4a1d4e8e9dd2accd56ce9ddf1cfeeb7d0dc1b13148ce1cbaecf4"
+    },
+    {
+      "at": "2026-09-27T06:13:30.372Z",
+      "type": "red-check",
+      "expect": "cli — --upstream run from a subdirectory must still see",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f99959f1926c",
+      "seq": 12,
+      "parent_hash": "5a90871f2efb4a1d4e8e9dd2accd56ce9ddf1cfeeb7d0dc1b13148ce1cbaecf4",
+      "entry_hash": "61b9a9cf73e7d312e8ea7a416ac039aa415f722ed2d3e8cbd7c4bb81fd06052a"
+    },
+    {
+      "at": "2026-09-27T06:13:30.617Z",
+      "type": "red-check",
+      "expect": "cli — --freshness on an absent manifest must print",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f99959f1926c",
+      "seq": 13,
+      "parent_hash": "61b9a9cf73e7d312e8ea7a416ac039aa415f722ed2d3e8cbd7c4bb81fd06052a",
+      "entry_hash": "ab264e05b97e620c62849d4bd1e9224da5ed204657d74a571613b41d903211df"
+    },
+    {
+      "at": "2026-09-27T06:13:30.864Z",
+      "type": "red-check",
+      "expect": "cli — --freshness must refuse a clone whose HEAD is BEHIND the pin",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f99959f1926c",
+      "seq": 14,
+      "parent_hash": "ab264e05b97e620c62849d4bd1e9224da5ed204657d74a571613b41d903211df",
+      "entry_hash": "313e717bafe0378200624740441315a161c89080283dfdd9ca598a3f6fed31e0"
+    },
+    {
+      "at": "2026-09-27T06:15:56.309Z",
+      "type": "red-check",
+      "expect": "live git — the refusal names the trunk origin/HEAD resolves to",
+      "command": "node tools/detached-head-guard.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "eb76ad5cb2f8",
+      "seq": 15,
+      "parent_hash": "313e717bafe0378200624740441315a161c89080283dfdd9ca598a3f6fed31e0",
+      "entry_hash": "0f43cf97b46c74fc76288f62a93e6345586d763f1ef80e46da39d4427f4630ce"
+    },
+    {
+      "at": "2026-09-27T06:17:33.146Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: a spliced call site lacks the law even when a comment quotes",
+      "command": "node tools/zz-head-glue-probe.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "0433c58455c1",
+      "seq": 16,
+      "parent_hash": "0f43cf97b46c74fc76288f62a93e6345586d763f1ef80e46da39d4427f4630ce",
+      "entry_hash": "5af9f08b3f0b8fbdb8f5190272fc4051c7783b9b6780cced22b57fcd67933ac2"
+    },
+    {
+      "at": "2026-09-27T06:17:33.203Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: a separated call site carries the law whatever the self-test label says",
+      "command": "node tools/zz-head-glue-probe.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "0433c58455c1",
+      "seq": 17,
+      "parent_hash": "5af9f08b3f0b8fbdb8f5190272fc4051c7783b9b6780cced22b57fcd67933ac2",
+      "entry_hash": "09fefc29b78f379788db57e8af3d02a7647e7ac8fe8893a644f939289d3d6cd5"
+    },
+    {
+      "at": "2026-09-27T06:35:31.623Z",
+      "type": "red-check",
+      "expect": "hook env — the live-git fixture escaped into the host repo",
+      "command": "node tools/detached-head-guard.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "7678266fdee2",
+      "seq": 18,
+      "parent_hash": "09fefc29b78f379788db57e8af3d02a7647e7ac8fe8893a644f939289d3d6cd5",
+      "entry_hash": "7f47e4524f6f9794d60a3ec3f915d3d21fbf81e0b485455dc625ef4d2ed7652d"
+    },
+    {
+      "at": "2026-09-27T06:36:01.511Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL \\(hook env\\)",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d1b7f42cd117",
+      "seq": 19,
+      "parent_hash": "7f47e4524f6f9794d60a3ec3f915d3d21fbf81e0b485455dc625ef4d2ed7652d",
+      "entry_hash": "afd36c82f0dbb4db19e30a754a806b8ccbf38b58772167d1c6f1397b834cb006"
+    },
+    {
+      "at": "2026-09-27T06:36:27.233Z",
+      "type": "red-check",
+      "expect": "hook env — the cli fixtures escaped into the host repo",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d1f0af9b0c20",
+      "seq": 20,
+      "parent_hash": "afd36c82f0dbb4db19e30a754a806b8ccbf38b58772167d1c6f1397b834cb006",
+      "entry_hash": "91fc034933574f5da16e29cdf11dbcc1763ecda7ca572762e86854d2b328b196"
+    }
+  ]
+}

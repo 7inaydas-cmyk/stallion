@@ -41,7 +41,7 @@
  * anchor (the gate must ship in the tree it polices) is the part that IS machine-checked.
  */
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
@@ -49,6 +49,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEFAULT_MANIFEST = "tools/harness/VENDOR.json";
 const SCHEMA = "stallion/vendor-manifest@1";
+/** loadManifestFacts' absence verdict — host and freshness modes both render it through refuseMissingManifest. */
+const MISSING_MANIFEST = "missing-manifest";
 
 /** sha256 of bytes as hex. The empty-input digest is pinned by the self-test below. */
 export function digestOf(bytes) {
@@ -80,7 +82,14 @@ export function corpusShapeRefusal(manifest) {
   if (Object.keys(manifest.files).length === 0) {
     return "manifest.files is empty — a vendoring with no files is a manifest that forgot its tree";
   }
-  return null;
+  return Object.entries(manifest.files).map(([path, entry]) => entryShapeRefusal(path, entry)).find((r) => r !== null) ?? null;
+}
+
+/** Entry clauses: every declared file is { source, sha256, adapted } — an entry without a source
+ *  is never counted as moved (freshness failed OPEN through it), and a null entry crashed the verdict. */
+function entryShapeRefusal(path, entry) {
+  const ok = entry !== null && typeof entry === "object" && typeof entry.source === "string" && entry.source.length > 0 && typeof entry.sha256 === "string" && typeof entry.adapted === "boolean";
+  return ok ? null : `manifest.files[${JSON.stringify(path)}] must be { source: string, sha256: string, adapted: boolean }, got ${JSON.stringify(entry)}`;
 }
 
 /**
@@ -211,6 +220,9 @@ function selfTestShape(upstream, good) {
     [good({ upstream: "short" }), "malformed sha"],
     [good({ vendored: "" }), "empty corpus"],
     [good({ files: {} }), "empty files"],
+    [good({ files: { x: { sha256: "aa", adapted: false } } }), "entry missing source"],
+    [good({ files: { x: { source: "tools/x.mjs", adapted: false } } }), "entry missing sha256"],
+    [good({ files: { x: null } }), "null entry"],
     [good(), null],
   ];
   let failures = 0;
@@ -365,7 +377,12 @@ export function selfTest() {
   const scope = selfTestScope(good, corpus, digests, docs);
   const e2e = selfTestEndToEnd();
   const freshness = selfTestFreshness(good);
-  let failures = shape.failures + drift.failures + scope.failures + e2e.failures + freshness.failures;
+  const { result: cli, leftovers } = inHostHook(selfTestCli);
+  let failures = shape.failures + drift.failures + scope.failures + e2e.failures + freshness.failures + cli.failures;
+  if (leftovers.length > 0) {
+    failures += 1;
+    console.error(`vendor-drift SELF-TEST FAIL: hook env — the cli fixtures escaped into the host repo a hook names (${leftovers.join(", ")})`);
+  }
   // The hasher is pinned to a known vector: sha256("") — if this ever changes, every manifest digest silently stops comparing.
   const empty = digestOf(new Uint8Array(0));
   if (empty !== "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
@@ -375,7 +392,7 @@ export function selfTest() {
 
   console.log(
     failures === 0
-      ? `vendor-drift self-test: OK (${shape.count} shape + ${drift.count} drift + ${scope.count} scope + ${e2e.count} e2e + ${freshness.count} freshness cases + remedy + hasher)`
+      ? `vendor-drift self-test: OK (${shape.count} shape + ${drift.count} drift + ${scope.count} scope + ${e2e.count} e2e + ${freshness.count} freshness + ${cli.count} cli cases + remedy + hasher)`
       : `vendor-drift self-test: FAILED (${failures} failure(s))`,
   );
   return failures === 0;
@@ -418,6 +435,108 @@ function selfTestFreshness(good) {
   return { failures, count: cases.length };
 }
 
+/** The caller's env minus GIT_*, read at call time: inside a hook GIT_DIR / GIT_INDEX_FILE name the
+ *  HOST repo, so a fixture that inherits them writes the host's index. */
+function fixtureEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+}
+
+/** Runs `family` inside a simulated git hook — GIT_DIR and GIT_INDEX_FILE name a HOST repo (a
+ *  linked worktree's hook; `commit -a`), and a global core.hooksPath holds a pre-commit hook —
+ *  and returns its result plus whatever it left in that host. Anything left there is a fixture
+ *  that wrote the host's refs or index, or re-fired its hook; a crash under the hook's env is
+ *  reported the same way, never as a stack trace. */
+function inHostHook(family) {
+  const host = mkdtempSync(join(tmpdir(), "vendor-drift-host-"));
+  writeFileSync(join(host, "pre-commit"), `#!/bin/sh\ntouch "${join(host, "hook-fired")}"\n`, { mode: 0o755 });
+  writeFileSync(join(host, ".gitconfig"), `[core]\n\thooksPath = ${host}\n`);
+  const hookEnv = { HOME: host, GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index.lock") };
+  const saved = Object.keys(hookEnv).map((k) => [k, process.env[k]]);
+  const leftovers = () => ["git", "index.lock", "hook-fired"].filter((f) => existsSync(join(host, f)));
+  Object.assign(process.env, hookEnv);
+  try {
+    const result = family();
+    return { result, leftovers: leftovers() };
+  } catch (error) {
+    return { result: { failures: 0, count: 0 }, leftovers: [...leftovers(), `a crash: ${`${error.message}`.split("\n")[0]}`] };
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(host, { recursive: true, force: true });
+  }
+}
+
+/** git in a throwaway fixture repo, identity pinned so the commit never depends on the caller's config. */
+function fixtureGit(cwd, ...args) {
+  return execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: fixtureEnv() }).trim();
+}
+
+/** Commit one file into a fixture repo; returns the new HEAD sha. */
+function commitFile(repo, path, body) {
+  mkdirSync(dirname(join(repo, path)), { recursive: true });
+  writeFileSync(join(repo, path), body);
+  fixtureGit(repo, "add", path);
+  fixtureGit(repo, "commit", "-q", "-m", `touch ${path}`);
+  return fixtureGit(repo, "rev-parse", "HEAD");
+}
+
+/** This gate as a subprocess — the CLI's own refusals only exist past process.exit. */
+function runCli(cwd, ...args) {
+  const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...args], { cwd, encoding: "utf8", env: fixtureEnv() });
+  return { code: run.status, out: `${run.stdout}\n${run.stderr}` };
+}
+
+/**
+ * The CLI end to end, against real git repos in a temp dir: the refusals that live past the pure
+ * verdicts — the upstream sweep run from a SUBDIRECTORY, the freshness answer for an ABSENT
+ * manifest, and a clone whose HEAD sits BEHIND the pin (fetched, never fast-forwarded) — plus the
+ * allowance that an ancestor pin still answers.
+ */
+function selfTestCli() {
+  const tmp = mkdtempSync(join(tmpdir(), "vendor-drift-cli-"));
+  let failures = 0;
+  const check = (label, ok) => {
+    if (ok) return;
+    failures += 1;
+    console.error(`vendor-drift SELF-TEST FAIL: cli — ${label}`);
+  };
+  try {
+    const forged = join(tmp, "forged");
+    mkdirSync(forged);
+    fixtureGit(forged, "init", "-q");
+    commitFile(forged, "docs/x.md", "doc");
+    commitFile(forged, DEFAULT_MANIFEST, "{}");
+    check("--upstream run from a subdirectory must still see a tracked forged manifest", runCli(join(forged, "docs"), "--upstream").code === 1);
+
+    const absent = runCli(tmp, "--freshness", forged, "--manifest", join(tmp, "absent.json"));
+    check("--freshness on an absent manifest must print the commit-a-manifest remedy, not a raw token", absent.code === 1 && absent.out.includes("Commit a manifest") && !absent.out.includes("missing-manifest"));
+
+    const upstream = join(tmp, "upstream");
+    mkdirSync(upstream);
+    fixtureGit(upstream, "init", "-q");
+    const first = commitFile(upstream, "tools/x.mjs", "v1");
+    const middle = commitFile(upstream, "README.md", "readme");
+    const last = commitFile(upstream, "tools/x.mjs", "v2");
+    const host = join(tmp, "host");
+    mkdirSync(host);
+    const manifestAt = (pin) => {
+      writeFileSync(join(host, "VENDOR.json"), JSON.stringify({ schema: SCHEMA, upstream: pin, vendored: host, files: { "x.mjs": { source: "tools/x.mjs", sha256: "aa", adapted: false } } }));
+      return join(host, "VENDOR.json");
+    };
+    fixtureGit(upstream, "checkout", "-q", "--detach", first);
+    const behind = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(last));
+    check("--freshness must refuse a clone whose HEAD is BEHIND the pin, never print a downgrade as the re-vendor", behind.code === 1 && behind.out.includes("behind") && !behind.out.includes("past the pin"));
+    fixtureGit(upstream, "checkout", "-q", "--detach", middle);
+    const ahead = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(first));
+    check("--freshness with the pin an ancestor of HEAD must still answer (fresh for the wave)", ahead.code === 0 && ahead.out.includes("FRESH FOR THIS WAVE"));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  return { failures, count: 4 };
+}
+
 function flagValue(name) {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : null;
@@ -449,7 +568,7 @@ function gateInside(corpus, gateUrl) {
  */
 function loadManifestFacts(manifestPath, gateUrl = import.meta.url) {
   if (!existsSync(manifestPath)) {
-    return { refusal: "missing-manifest", manifest: null, corpusFiles: [], digests: {}, existingDocs: [], gateInsideCorpus: false };
+    return { refusal: MISSING_MANIFEST, manifest: null, corpusFiles: [], digests: {}, existingDocs: [], gateInsideCorpus: false };
   }
   let manifest;
   try {
@@ -474,18 +593,22 @@ function loadManifestFacts(manifestPath, gateUrl = import.meta.url) {
   };
 }
 
+/** The absent-manifest refusal, ONE rendering for every mode: freshness once printed the bare
+ *  sentinel token, naming no rule and no remedy. */
+function refuseMissingManifest(manifestPath) {
+  process.stderr.write(
+    `\x1b[31m✖ vendor-drift: no vendor manifest at ${manifestPath}.\x1b[0m\n\n` +
+      `  A vendored harness tree must carry its lineage. Deleting the manifest is not an escape —\n` +
+      `  host and freshness modes fail closed on absence. Commit a manifest (schema "${SCHEMA}", see WIRING §1)\n` +
+      `  or point --manifest at it.\n\n`,
+  );
+  process.exit(1);
+}
+
 /** Host mode: the manifest is law. Fails closed on a missing manifest — deleting it is not an escape. */
 function runHost(manifestPath) {
   const facts = loadManifestFacts(manifestPath);
-  if (facts.refusal === "missing-manifest") {
-    process.stderr.write(
-      `\x1b[31m✖ vendor-drift: no vendor manifest at ${manifestPath}.\x1b[0m\n\n` +
-        `  A vendored harness tree must carry its lineage. Deleting the manifest is not an escape —\n` +
-        `  bare mode fails closed on absence. Commit a manifest (schema "${SCHEMA}", see WIRING §1)\n` +
-        `  or point --manifest at it.\n\n`,
-    );
-    process.exit(1);
-  }
+  if (facts.refusal === MISSING_MANIFEST) refuseMissingManifest(manifestPath);
   const verdict = facts.refusal !== null
     ? { refuse: true, reasons: [facts.refusal] }
     : driftVerdict(facts);
@@ -510,12 +633,15 @@ function runHost(manifestPath) {
  * Upstream mode, for stallion's own battery: this tree must NOT carry a vendor manifest —
  * anywhere. The default path is checked directly, and tracked *VENDOR.json files are swept
  * repo-wide, because the claim "stallion never carries a forged manifest" must not rest on
- * one existsSync. Falls back to the path check alone where git is unavailable.
- */function runUpstream(manifestPath) {
+ * one existsSync. Repo-wide from ANY cwd: a bare pathspec sweeps only the cwd's subtree, so a
+ * run from docs/ read a tracked forged manifest green — `:(top)` anchors it at the root. Falls
+ * back to the path check alone where git is unavailable.
+ */
+function runUpstream(manifestPath) {
   const offenders = [];
   if (existsSync(manifestPath)) offenders.push(manifestPath);
   try {
-    for (const tracked of execFileSync("git", ["ls-files", "*VENDOR.json"], { encoding: "utf8" }).split("\n")) {
+    for (const tracked of execFileSync("git", ["ls-files", "--full-name", ":(top)*VENDOR.json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\n")) {
       if (tracked.trim() !== "") offenders.push(tracked.trim());
     }
   } catch {
@@ -541,30 +667,16 @@ function runHost(manifestPath) {
  */
 function runFreshness(manifestPath, upstreamPath) {
   const facts = loadManifestFacts(manifestPath);
+  if (facts.refusal === MISSING_MANIFEST) refuseMissingManifest(manifestPath);
   if (facts.refusal !== null) {
-    process.stderr.write(`\x1b[31m✖ vendor-drift: the manifest cannot be read for a freshness answer.\x1b[0m\n\n  ✖ ${facts.refusal}\n\n`);
-    process.exit(1);
-  }
-  const git = (args) => execFileSync("git", ["-C", upstreamPath, ...args], { encoding: "utf8" }).trim();
-  let head;
-  let changed;
-  try {
-    git(["rev-parse", "--verify", `${facts.manifest.upstream}^{commit}`]);
-    head = git(["rev-parse", "HEAD"]);
-    // --no-renames: under default rename detection a renamed vendored source lists only its NEW
-    // path, the old source matches nothing, and the wave reads FRESH-FOR-WAVE through a rename
-    // (an adversarial pass proved it end-to-end). Both sides of a rename are owed.
-    changed = git(["diff", "--name-only", "--no-renames", `${facts.manifest.upstream}..HEAD`]).split("\n").map((l) => l.trim()).filter(Boolean);
-  } catch (error) {
     process.stderr.write(
-      `\x1b[31m✖ vendor-drift: the upstream repo at ${upstreamPath} could not answer the pin.\x1b[0m\n\n` +
-        `  ${String(error.message ?? error).split("\n")[0]}\n` +
-        `  rule: the pin commit must exist in that clone and HEAD must resolve — a freshness verdict\n` +
-        `        computed against a tree that cannot see the pin is a guess, not a verdict\n` +
-        `  fix: point --freshness at a current clone of the upstream (fetch first if the pin is new)\n\n`,
+      `\x1b[31m✖ vendor-drift: the manifest cannot be read for a freshness answer.\x1b[0m\n\n  ✖ ${facts.refusal}\n` +
+        `  fix: repair or re-vendor ${manifestPath} (schema "${SCHEMA}", WIRING §1), or point --manifest at the right file\n\n`,
     );
     process.exit(1);
   }
+  const { head, changed } = readUpstreamSincePin(upstreamPath, facts.manifest.upstream);
+  if (!pinIsAncestor(upstreamPath, facts.manifest.upstream)) refuseBehindPin(upstreamPath, facts.manifest.upstream, head);
   const verdict = freshnessVerdict({ manifest: facts.manifest, upstreamHead: head, upstreamChanged: changed });
   if (verdict.fresh) {
     console.log(`vendor-drift: FRESH — the manifest pin is the upstream HEAD (${head.slice(0, 10)}) as of the LOCAL clone at ${upstreamPath}; fetch before trusting recency`);
@@ -580,6 +692,51 @@ function runFreshness(manifestPath, upstreamPath) {
       `\n\n  pin ${verdict.pin.slice(0, 10)} -> upstream HEAD ${head.slice(0, 10)}\n` +
       `  fix: re-vendor from stallion at ${head.slice(0, 10)} and regenerate ${manifestPath} in the same\n` +
       `       commit (WIRING §1), before this wave's own work lands on the stale pin\n\n`,
+  );
+  process.exit(1);
+}
+
+/** The upstream clone's HEAD and every path changed from the pin to it — or the refusal when the
+ *  clone cannot see the pin. */
+function readUpstreamSincePin(upstreamPath, pin) {
+  const git = (args) => execFileSync("git", ["-C", upstreamPath, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  try {
+    git(["rev-parse", "--verify", `${pin}^{commit}`]);
+    const head = git(["rev-parse", "HEAD"]);
+    // --no-renames: under default rename detection a renamed vendored source lists only its NEW
+    // path, the old source matches nothing, and the wave reads FRESH-FOR-WAVE through a rename
+    // (an adversarial pass proved it end-to-end). Both sides of a rename are owed.
+    const changed = git(["diff", "--name-only", "--no-renames", `${pin}..HEAD`]).split("\n").map((l) => l.trim()).filter(Boolean);
+    return { head, changed };
+  } catch (error) {
+    process.stderr.write(
+      `\x1b[31m✖ vendor-drift: the upstream repo at ${upstreamPath} could not answer the pin.\x1b[0m\n\n` +
+        `  ${String(error.stderr || error.message || error).trim().split("\n")[0]}\n` +
+        `  rule: the pin commit must exist in that clone and HEAD must resolve — a freshness verdict\n` +
+        `        computed against a tree that cannot see the pin is a guess, not a verdict\n` +
+        `  fix: point --freshness at a current clone of the upstream (fetch and fast-forward it first —\n` +
+        `       git -C ${upstreamPath} pull --ff-only — if the pin is new)\n\n`,
+    );
+    process.exit(1);
+  }
+}
+
+/** Direction law: a two-dot diff has no direction. A clone BEHIND the pin (fetched, never
+ *  fast-forwarded — the state the pin refusal's own remedy used to produce) listed the pin's own
+ *  changes as upstream's and named its older HEAD as the re-vendor target: a downgrade. Only a
+ *  HEAD that descends from the pin (or is the pin) can answer. Any git failure reads as NOT. */
+function pinIsAncestor(upstreamPath, pin) {
+  return spawnSync("git", ["-C", upstreamPath, "merge-base", "--is-ancestor", pin, "HEAD"], { stdio: "ignore" }).status === 0;
+}
+
+function refuseBehindPin(upstreamPath, pin, head) {
+  process.stderr.write(
+    `\x1b[31m✖ vendor-drift: the clone at ${upstreamPath} is behind (or diverged from) the manifest pin.\x1b[0m\n\n` +
+      `  pin ${pin.slice(0, 10)} is not an ancestor of the clone's HEAD ${head.slice(0, 10)}\n` +
+      `  rule: only a HEAD that descends from the pin can say what upstream changed since it — a diff\n` +
+      `        against an older HEAD reads the pin's own changes as upstream's, and names a downgrade\n` +
+      `        as the re-vendor\n` +
+      `  fix: git -C ${upstreamPath} pull --ff-only   (or check out the upstream branch tip), then re-run\n\n`,
   );
   process.exit(1);
 }

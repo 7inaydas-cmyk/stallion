@@ -38,10 +38,11 @@
  * too (the exact bypass this repo's AGENTS.md forbids outright). One narrow opt-out vs. teaching
  * --no-verify is the whole trade.
  */
-import { existsSync, realpathSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Git operations during which a detached HEAD is expected and a commit is legitimate. */
 const IN_PROGRESS_MARKERS = [
@@ -128,8 +129,106 @@ export function selfTest() {
       console.error(`detached-head-guard SELF-TEST FAIL: ${label} (expected refuse=${expectRefuse}, got ${actual})`);
     }
   }
-  console.log(failures === 0 ? `detached-head-guard self-test: OK (${cases.length} cases)` : `detached-head-guard self-test: FAILED (${failures} failure(s))`);
+  const { result: live, leftovers } = inHostHook(selfTestLiveGit);
+  failures += live.failures;
+  if (leftovers.length > 0) {
+    failures += 1;
+    console.error(`detached-head-guard SELF-TEST FAIL: hook env — the live-git fixture escaped into the host repo a hook names (${leftovers.join(", ")})`);
+  }
+  console.log(failures === 0 ? `detached-head-guard self-test: OK (${cases.length} verdict + ${live.count} live-git cases)` : `detached-head-guard self-test: FAILED (${failures} failure(s))`);
   return failures === 0;
+}
+
+/** The caller's env minus GIT_*, read at call time: inside a hook GIT_DIR / GIT_INDEX_FILE name the
+ *  HOST repo, so a fixture that inherits them writes the host's refs and index. Fixtures only —
+ *  the real guard (readHeadState) must honour GIT_DIR. */
+function fixtureEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+}
+
+/** Runs `family` inside a simulated git hook — GIT_DIR and GIT_INDEX_FILE name a HOST repo (a
+ *  linked worktree's hook; `commit -a`), and a global core.hooksPath holds a pre-commit hook —
+ *  and returns its result plus whatever it left in that host. Anything left there is a fixture
+ *  that wrote the host's refs or index, or re-fired its hook (pre-commit recursing without bound);
+ *  a crash under the hook's env is reported the same way, never as a stack trace. */
+function inHostHook(family) {
+  const host = mkdtempSync(join(tmpdir(), "detached-head-guard-host-"));
+  writeFileSync(join(host, "pre-commit"), `#!/bin/sh\ntouch "${join(host, "hook-fired")}"\n`, { mode: 0o755 });
+  writeFileSync(join(host, ".gitconfig"), `[core]\n\thooksPath = ${host}\n`);
+  const hookEnv = { HOME: host, GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index.lock") };
+  const saved = Object.keys(hookEnv).map((k) => [k, process.env[k]]);
+  const leftovers = () => ["git", "index.lock", "hook-fired"].filter((f) => existsSync(join(host, f)));
+  Object.assign(process.env, hookEnv);
+  try {
+    const result = family();
+    return { result, leftovers: leftovers() };
+  } catch (error) {
+    return { result: { failures: 0, count: 0 }, leftovers: [...leftovers(), `a crash: ${`${error.message}`.split("\n")[0]}`] };
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(host, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The git-state adapter, driven against a REAL throwaway repo — the pure verdict above cannot see
+ * the reader (readHeadState) or the refusal's own evidence and fix lines. The trunk here is
+ * `trunk`, named by origin/HEAD, then a local-only `master`: a refusal that hard-codes `main`
+ * prints "(no main)" and a fix command that fails in any host whose trunk is not main.
+ */
+function selfTestLiveGit() {
+  const dir = mkdtempSync(join(tmpdir(), "detached-head-guard-"));
+  const git = (...args) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: fixtureEnv() });
+  const guard = (env = {}) => spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { cwd: dir, encoding: "utf8", env: { ...fixtureEnv(), ALLOW_DETACHED_HEAD: "", ...env } });
+  let failures = 0;
+  const check = (label, ok) => {
+    if (ok) return;
+    failures += 1;
+    console.error(`detached-head-guard SELF-TEST FAIL: live git — ${label}`);
+  };
+  try {
+    git("init", "-q");
+    git("symbolic-ref", "HEAD", "refs/heads/trunk"); // not `init -b`: the adapter's own git floor is older
+    git("commit", "-q", "--allow-empty", "-m", "seed");
+    git("update-ref", "refs/remotes/origin/trunk", "HEAD");
+    git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk");
+    check("an attached HEAD passes", guard().status === 0);
+    git("checkout", "-q", "--detach");
+    const refused = guard();
+    check("a detached HEAD with no operation refuses", refused.status === 1);
+    check("the refusal names the trunk origin/HEAD resolves to (git checkout trunk), not a hard-coded main", refused.stderr.includes("git checkout trunk") && !refused.stderr.includes("main"));
+    git("symbolic-ref", "--delete", "refs/remotes/origin/HEAD");
+    git("branch", "-m", "trunk", "master");
+    check("with no origin/HEAD the refusal names a local master (git's default), not a missing main", guard().stderr.includes("git checkout master"));
+    check("ALLOW_DETACHED_HEAD=1 passes a detached HEAD", guard({ ALLOW_DETACHED_HEAD: "1" }).status === 0);
+    writeFileSync(join(git("rev-parse", "--absolute-git-dir").trim(), "MERGE_HEAD"), "");
+    check("a detached HEAD mid-merge (MERGE_HEAD) passes", guard().status === 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return { failures, count: 6 };
+}
+
+/** git's stdout, or null when git refuses — the refusal's evidence lines never throw. */
+function gitOut(args) {
+  try {
+    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** The trunk a detached commit should have landed on: the branch origin/HEAD names (the same
+ *  resolution task-coverage's push fence uses), else a local main or master (git's own default).
+ *  A hard-coded main printed "(no main)" and a fix command that fails in any host whose trunk is
+ *  not main. */
+function trunkBranch() {
+  const remote = gitOut(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]) ?? "";
+  if (remote.startsWith("origin/")) return remote.slice("origin/".length);
+  return ["main", "master"].find((b) => gitOut(["rev-parse", "--verify", "--quiet", `refs/heads/${b}`]) !== null) ?? "main";
 }
 
 /**
@@ -146,22 +245,18 @@ function runGuard() {
   }
 
   const head = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
-  let branchTip = "";
-  try {
-    branchTip = execFileSync("git", ["rev-parse", "--short", "main"], { encoding: "utf8" }).trim();
-  } catch {
-    branchTip = "(no main)";
-  }
+  const trunk = trunkBranch();
+  const trunkTip = gitOut(["rev-parse", "--short", trunk]) ?? `(no ${trunk})`;
 
   process.stderr.write(
     `\n\x1b[31m✖ pre-commit: HEAD is DETACHED — refusing this commit.\x1b[0m\n\n` +
-      `  HEAD is at ${head}; main is at ${branchTip}.\n` +
-      `  A commit made here advances NO branch. It would not be on main, and a later\n` +
-      "  `git push origin main` would report success having pushed none of it.\n\n" +
+      `  HEAD is at ${head}; ${trunk} is at ${trunkTip}.\n` +
+      `  A commit made here advances NO branch. It would not be on ${trunk}, and a later\n` +
+      `  \`git push origin ${trunk}\` would report success having pushed none of it.\n\n` +
       "  This is what a colocated Jujutsu working copy leaves behind: `jj new`, `jj commit`\n" +
       "  and `jj squash` all detach git's HEAD.\n\n" +
       "  \x1b[1mPick one:\x1b[0m\n" +
-      "    • back to git      \x1b[36mgit checkout main\x1b[0m   then commit as usual\n" +
+      `    • back to git      \x1b[36mgit checkout ${trunk}\x1b[0m   then commit as usual\n` +
       `    • stay in jj       \x1b[36mjj commit -m "…"\x1b[0m  or  \x1b[36mjj describe -m "…"\x1b[0m\n` +
       "                       then push through the repo's gated push path — never a bare\n" +
       "                       `jj git push`, which fires none of the git hooks\n" +
