@@ -531,6 +531,72 @@
       "seq": 48,
       "parent_hash": "7eda46747d25b39f0ce61a56f21eb666c3e8643a2f18b3337ee24e00d5cd79c1",
       "entry_hash": "1453f70f49da2ee16d8bb6bfd3cc443edaf60857b611b322656b1407ccbebc86"
+    },
+    {
+      "at": "2026-09-27T11:17:15.550Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: quoted-path-invisible",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "17bae38f5cce",
+      "seq": 49,
+      "parent_hash": "1453f70f49da2ee16d8bb6bfd3cc443edaf60857b611b322656b1407ccbebc86",
+      "entry_hash": "52e8343fd9fd623ef079300ff25f4e9ce74403c5084de056a193526602d5dc60"
+    },
+    {
+      "at": "2026-09-27T11:17:16.192Z",
+      "type": "red-check",
+      "expect": "self-test FAILED: quoted-test-path-invisible",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2ed7f1b471c7",
+      "seq": 50,
+      "parent_hash": "52e8343fd9fd623ef079300ff25f4e9ce74403c5084de056a193526602d5dc60",
+      "entry_hash": "d8d28073945b4808ec1e905f57c233d7cd1a46dda0f70a093344bf13e53c7cbf"
+    },
+    {
+      "at": "2026-09-27T11:19:43.517Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: vendored-alarm-dead",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "66b9b3aadcbf",
+      "seq": 51,
+      "parent_hash": "d8d28073945b4808ec1e905f57c233d7cd1a46dda0f70a093344bf13e53c7cbf",
+      "entry_hash": "c2696891c31a2829382891898f405927ea1e4f82bb04c97d172cc4c848017030"
+    },
+    {
+      "at": "2026-09-27T11:19:44.385Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: vendored-fix-not-runnable",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "66b9b3aadcbf",
+      "seq": 52,
+      "parent_hash": "c2696891c31a2829382891898f405927ea1e4f82bb04c97d172cc4c848017030",
+      "entry_hash": "a54daa4be99aaaebbbba1218392682ac041a874fb1f0401897ca2cb4ee59b553"
+    },
+    {
+      "at": "2026-09-27T11:19:45.274Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: vendored-optout-blind",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "66b9b3aadcbf",
+      "seq": 53,
+      "parent_hash": "a54daa4be99aaaebbbba1218392682ac041a874fb1f0401897ca2cb4ee59b553",
+      "entry_hash": "ba93f07b495be6ca1f0597594618bc46493953566c07c050882914cd45c9c586"
+    },
+    {
+      "at": "2026-09-27T11:33:40.233Z",
+      "type": "red-check",
+      "expect": "self-test FAILED: template-brace-opens-regex",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "49f311da0766",
+      "seq": 54,
+      "parent_hash": "ba93f07b495be6ca1f0597594618bc46493953566c07c050882914cd45c9c586",
+      "entry_hash": "744cf1d3d5b0188b5230e73bb2a626d29534f0a40763e4fdf55be88126b93e6a"
     }
   ]
 }

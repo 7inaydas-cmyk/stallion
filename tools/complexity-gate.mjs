@@ -53,13 +53,19 @@
  *   node tools/complexity-gate.mjs --self-test        # proves the analyser discriminates
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
+// This gate's own repo-relative path, derived — never hand-written: every self-reference keys on it.
+// The literal "tools/complexity-gate.mjs" matched no copy vendored elsewhere (tools/harness/ in the
+// Antitube harness), so the self-exemption alarm filtered for a file that did not exist and stayed
+// green there. Defined before the compiler import: its refusal (noCompilerFix) reads it.
+const SELF_REL = relative(ROOT, fileURLToPath(import.meta.url)).replaceAll("\\", "/");
 // The compiler is the OPTIONAL peer dependency (see package.json): a missing typescript must
 // refuse with a fix line naming the two honest exits, not crash the battery with a bare
 // ERR_MODULE_NOT_FOUND (an adversarial finding: the static import made the battery unrunnable
@@ -80,18 +86,18 @@ import { matches } from "./pathspec.mjs";
  * vendoring host those files are the host's own: a hardcoded list of ours turned the host's honest
  * registration of this gate into a red self-test it could clear only by patching vendored code.
  */
-function noCompilerFix(gatesDir = `${ROOT}docs/gates`) {
+export function noCompilerFix(gatesDir = `${ROOT}docs/gates`) {
   const named = registrations(gatesDir);
   const entries = named.length > 0 ? `, and every entry naming it in ${named.join(", ")}` : "";
   const modes = named.includes("docs/gates/guard-reach.json") ? " (guard-reach rewrites guard-reach-modes.json itself)" : "";
-  return `npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate: delete tools/complexity-gate.mjs and drop its battery line, docs/gates/complexity*.json${entries}${modes}`;
+  return `npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate: delete ${SELF_REL} and drop its battery line, docs/gates/complexity*.json${entries}${modes}`;
 }
 
 /** The gate files (`docs/gates/*.json`, this gate's own complexity* aside) that name this tool. */
 function registrations(gatesDir) {
   return (existsSync(gatesDir) ? readdirSync(gatesDir) : [])
     .filter((file) => file.endsWith(".json") && !file.startsWith("complexity"))
-    .filter((file) => readFileSync(join(gatesDir, file), "utf8").includes("tools/complexity-gate.mjs"))
+    .filter((file) => readFileSync(join(gatesDir, file), "utf8").includes(SELF_REL))
     .map((file) => `docs/gates/${file}`);
 }
 
@@ -101,7 +107,7 @@ const CONFIG_SHAPE = '{"threshold": 8, "includes": ["tools/**/*.mjs"], "excludes
 // --update-baseline cannot recreate a missing CONFIG (it needs one to run, and writes only the
 // baseline), so the config's fix is a restore; the baseline's is a restore or a deliberate re-record.
 const RESTORE_CONFIG = `git checkout -- ${CONFIG_PATH} (or copy it from the vendor template at docs/gates/) — shape: ${CONFIG_SHAPE}`;
-const RESTORE_BASELINE = `git checkout -- ${BASELINE_PATH} (or resolve its merge conflict); a deliberate re-record is node tools/complexity-gate.mjs --update-baseline`;
+const RESTORE_BASELINE = `git checkout -- ${BASELINE_PATH} (or resolve its merge conflict); a deliberate re-record is node ${SELF_REL} --update-baseline`;
 
 /**
  * Config: threshold, includes, excludes, testGlobs — all repo data, none in this file. Fail
@@ -156,10 +162,12 @@ function die(message) {
  * between both sweeps once made the "does a test name this?" hatch search 2 files out of 168 —
  * the gate failed closed (nothing shipped wrong) but its header claimed a check the code did not
  * perform, found only by a falsification sweep because the output was green and correct-looking.
+ *
+ * `-z`, split on NUL: without it git C-quotes a non-ASCII path and the quoted name matches no glob.
  */
-function trackedFiles(globs, excludes) {
-  return execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT })
-    .split("\n")
+function trackedFiles(globs, excludes, cwd = ROOT, env = process.env) {
+  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd, env })
+    .split("\0")
     .filter(Boolean)
     .filter((f) => globs.some((g) => matches(f, g)) && !excludes.some((g) => matches(f, g)));
 }
@@ -362,7 +370,7 @@ const hatchOpenOf = (config) => config.testGlobs.length > 0;
 function bornRemedy(threshold, hatchOpen) {
   const split = `split it until each piece is at or under ${threshold}`;
   if (hatchOpen) return `${split}, or name it in a test under testGlobs (${CONFIG_PATH}) that exercises its branches`;
-  return `${split} — the test-names hatch is CLOSED here (testGlobs in ${CONFIG_PATH} is empty); a deliberate exemption is node tools/complexity-gate.mjs --update-baseline, landed under a protected task (${BASELINE_PATH} is fence surface)`;
+  return `${split} — the test-names hatch is CLOSED here (testGlobs in ${CONFIG_PATH} is empty); a deliberate exemption is node ${SELF_REL} --update-baseline, landed under a protected task (${BASELINE_PATH} is fence surface)`;
 }
 
 /**
@@ -386,7 +394,7 @@ function staleBaselineErrors(baseline, seen, threshold) {
   for (const row of baseline.functions) {
     if (!seen.has(`${row.file}::${row.name}`)) {
       errors.push(
-        `${BASELINE_PATH} still exempts ${row.file} ${row.name} (${row.complexity}), which is gone or now under ${threshold}.\n  fix: node tools/complexity-gate.mjs --update-baseline (it writes fence surface: land it under a protected task)`,
+        `${BASELINE_PATH} still exempts ${row.file} ${row.name} (${row.complexity}), which is gone or now under ${threshold}.\n  fix: node ${SELF_REL} --update-baseline (it writes fence surface: land it under a protected task)`,
       );
     }
   }
@@ -518,7 +526,7 @@ function selfTestRemedies(fail) {
   const [rose] = judge([{ ...big, complexity: 13 }], base, new Set(), 8);
   if (!rose.includes("\n  fix: ")) fail("rise-without-fix: the ratchet refusal names no fix");
   const [stale] = judge([], base, new Set(), 8);
-  if (!stale.includes("\n  fix: node tools/complexity-gate.mjs --update-baseline")) fail("stale-fix-not-a-command: the stale-row refusal does not print the runnable refresh command");
+  if (!stale.includes(`\n  fix: node ${SELF_REL} --update-baseline`)) fail("stale-fix-not-a-command: the stale-row refusal does not print the runnable refresh command");
 }
 
 /**
@@ -529,19 +537,43 @@ function selfTestRemedies(fail) {
 function selfTestOptOut(fail) {
   const dir = mkdtempSync(join(tmpdir(), "complexity-gate-gates-"));
   try {
-    writeFileSync(join(dir, "gate-registry.json"), '{"gates": [{"id": "complexity-ratchet", "invocation": "node tools/complexity-gate.mjs"}]}');
-    writeFileSync(join(dir, "guard-reach.json"), '{"entries": [{"script": "tools/complexity-gate.mjs"}]}');
-    writeFileSync(join(dir, "complexity.json"), '{"_comment": "read by tools/complexity-gate.mjs"}');
+    writeFileSync(join(dir, "gate-registry.json"), `{"gates": [{"id": "complexity-ratchet", "invocation": "node ${SELF_REL}"}]}`);
+    writeFileSync(join(dir, "guard-reach.json"), `{"entries": [{"script": "${SELF_REL}"}]}`);
+    writeFileSync(join(dir, "complexity.json"), `{"_comment": "read by ${SELF_REL}"}`);
     writeFileSync(join(dir, "unrelated.json"), "{}");
     const fix = noCompilerFix(dir);
-    if (!fix.includes("docs/gates/gate-registry.json")) fail("opt-out-fix-host-registration: a host gate file that registers tools/complexity-gate.mjs is not named in the missing-compiler fix");
+    if (!fix.includes("docs/gates/gate-registry.json")) fail(`opt-out-fix-host-registration: a host gate file that registers ${SELF_REL} is not named in the missing-compiler fix`);
     for (const rel of ["docs/gates/gate-registry.json", "docs/gates/guard-reach.json"]) {
-      if (!fix.includes(rel)) fail(`opt-out-fix-incomplete: ${rel} registers tools/complexity-gate.mjs, but the missing-compiler fix does not say to drop it`);
+      if (!fix.includes(rel)) fail(`opt-out-fix-incomplete: ${rel} registers ${SELF_REL}, but the missing-compiler fix does not say to drop it`);
     }
     if (/docs\/gates\/(?:complexity|unrelated)\.json/.test(fix)) fail(`opt-out-fix-overreach: the missing-compiler fix names a gate file that does not register this tool: ${fix}`);
     // task-coverage --doctor requires every self-testing tool in tools/ to ride the battery, so
     // dropping the battery line while the file stays leaves the doctor red.
-    if (!fix.includes("delete tools/complexity-gate.mjs")) fail("opt-out-keeps-tool: the missing-compiler fix drops the battery line but keeps tools/complexity-gate.mjs, which task-coverage --doctor then refuses");
+    if (!fix.includes(`delete ${SELF_REL}`)) fail(`opt-out-keeps-tool: the missing-compiler fix drops the battery line but keeps ${SELF_REL}, which task-coverage --doctor then refuses`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The listing, run for real: git C-quotes a non-ASCII, `"` or `\` path in plain `ls-files`
+ *  output (`"tools/caf\303\251.mjs"`), which no include glob matches — the file fell out of the
+ *  scan with nothing printed. Driven in a scratch repo with the inherited GIT_* env removed: inside
+ *  a hook GIT_DIR / GIT_INDEX_FILE name the HOST repo. core.quotePath is forced back on: under a
+ *  user's `quotepath = false` git prints the name raw and a listing without -z passed this case. */
+function selfTestTrackedNames(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-ls-"));
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))),
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.quotePath",
+    GIT_CONFIG_VALUE_0: "true",
+  };
+  try {
+    mkdirSync(join(dir, "tools"));
+    writeFileSync(join(dir, "tools", "café.mjs"), "x\n");
+    execFileSync("git", ["init", "-q"], { cwd: dir, env, stdio: "ignore" });
+    const seen = trackedFiles(["tools/**/*.mjs"], [], dir, env);
+    if (!seen.includes("tools/café.mjs")) fail(`quoted-path-invisible: a non-ASCII source path never reaches the scan (saw: ${seen.join(", ")})`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -554,6 +586,77 @@ function selfTestJudgeCollisions(fail) {
   const judged = judge([dupBig, dupSmall], dupBase, new Set(), 8);
   if (judged.length !== 2) fail("same-named functions sharing one baseline ceiling were not both refused");
   if (!judged.every((e) => e.includes("share this name"))) fail("a collision error did not say what it was");
+}
+
+/**
+ * THE GATE MUST NOT NEED TO EXEMPT ITSELF. A ratchet whose own author is in the baseline is an
+ * argument for the threshold being wrong, made by the one file that cannot claim it did not know.
+ * selfTest feeds this the live scan; selfTestSelfAlarm and selfTestVendoredSelf feed it canary rows.
+ */
+export function selfExemptionAlarm(fail, rows) {
+  const own = rows.filter((f) => f.file === SELF_REL);
+  if (own.length !== 0) fail(`this gate exempts ${own.length} of its own function(s): ${own.map((f) => `${f.name}(${f.complexity})`).join(", ")}`);
+}
+
+/** Canary rows through the alarm: one for this gate, one for a foreign file — only the first may fire. */
+function selfTestSelfAlarm(fail) {
+  const raised = [];
+  selfExemptionAlarm((msg) => raised.push(msg), [{ file: SELF_REL, name: "canary", line: 1, complexity: 99 }]);
+  selfExemptionAlarm((msg) => raised.push(msg), [{ file: "elsewhere/x.mjs", name: "foreign", line: 1, complexity: 99 }]);
+  if (raised.length !== 1 || !raised[0].includes("canary(99)")) fail(`self-alarm-miskeyed: the self-exemption alarm must fire for ${SELF_REL} alone; it raised: ${JSON.stringify(raised)}`);
+}
+
+/** Run in a child: imports the relocated copy at `url` and reports what its self-references key on. */
+const vendorProbe = (url) => `
+const gate = await import(${JSON.stringify(url)});
+const raised = [];
+for (const file of ["vendor/complexity-gate.mjs", "tools/complexity-gate.mjs"]) gate.selfExemptionAlarm((msg) => raised.push(msg), [{ file, name: file.split("/")[0], line: 1, complexity: 99 }]);
+const [born, stale] = gate.judge([{ file: "b.mjs", name: "g", line: 1, complexity: 9 }], { functions: [{ file: "a.mjs", name: "f", complexity: 9 }] }, new Set(), 8);
+console.log(JSON.stringify({ raised, born, stale, optOut: gate.noCompilerFix() }));
+`;
+
+const runModule = (source) => spawnSync(process.execPath, ["--input-type=module", "-e", source], { encoding: "utf8" });
+
+/**
+ * A scratch host with this gate and pathspec.mjs copied into `vendor/`, typescript linked beside
+ * them, a host gate file registering the copy and a merge-conflicted baseline. Returns the copy's URL.
+ */
+function vendoredHost(dir) {
+  for (const sub of ["vendor", "node_modules", "docs/gates"]) mkdirSync(join(dir, sub), { recursive: true });
+  const copy = join(dir, "vendor", "complexity-gate.mjs");
+  copyFileSync(fileURLToPath(import.meta.url), copy);
+  copyFileSync(fileURLToPath(new URL("./pathspec.mjs", import.meta.url)), join(dir, "vendor", "pathspec.mjs"));
+  symlinkSync(dirname(createRequire(import.meta.url).resolve("typescript/package.json")), join(dir, "node_modules", "typescript"), "junction");
+  writeFileSync(join(dir, "docs", "gates", "gate-registry.json"), '{"gates": [{"invocation": "node vendor/complexity-gate.mjs"}]}');
+  writeFileSync(join(dir, BASELINE_PATH), "<<<<<<< HEAD\n{");
+  return pathToFileURL(copy).href;
+}
+
+/**
+ * A VENDORED COPY MUST KNOW ITSELF. The self-references once keyed on the literal
+ * "tools/complexity-gate.mjs", which no copy vendored elsewhere matches (tools/harness/ in the
+ * Antitube harness): its self-exemption alarm filtered for a file that did not exist and stayed
+ * green, its opt-out fix missed the host's registrations, and its fixes named a script that was not
+ * there. Driven for real: a copy imported from a scratch `vendor/` must alarm on its own row alone
+ * and name `vendor/complexity-gate.mjs` in every fix — stale row, birth, baseline restore, opt-out.
+ */
+function selfTestVendoredSelf(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-vendor-"));
+  try {
+    const url = vendoredHost(dir);
+    const run = runModule(vendorProbe(url));
+    if (run.status !== 0) return fail(`vendored-probe-crashed: a copy of this gate imported from vendor/ exited ${run.status}: ${run.stderr.trim()}`);
+    const { raised, born, stale, optOut } = JSON.parse(run.stdout);
+    // readBaseline dies on the conflicted baseline, so its refusal is read off a second child's stderr.
+    const restore = runModule(`await (await import(${JSON.stringify(url)})).readBaseline();`).stderr;
+    if (raised.length !== 1 || !raised[0].includes("vendor(99)")) fail(`vendored-alarm-dead: a copy at vendor/complexity-gate.mjs must alarm on its own row alone; it raised: ${JSON.stringify(raised)}`);
+    for (const [what, text] of [["stale-row", stale], ["birth", born], ["baseline-restore", restore]]) {
+      if (!text.includes("node vendor/complexity-gate.mjs --update-baseline")) fail(`vendored-fix-not-runnable: a vendored copy's ${what} fix names a script that is not there: ${text}`);
+    }
+    if (!optOut.includes("delete vendor/complexity-gate.mjs") || !optOut.includes("docs/gates/gate-registry.json")) fail(`vendored-optout-blind: a vendored copy's missing-compiler fix misses itself or its host registration: ${optOut}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 export function selfTest() {
@@ -569,16 +672,16 @@ export function selfTest() {
   selfTestLoaders(fail);
   selfTestRemedies(fail);
   selfTestOptOut(fail);
+  selfTestTrackedNames(fail);
+  selfTestSelfAlarm(fail);
+  selfTestVendoredSelf(fail);
 
   // And the repo's own config + baseline must be honest right now, or the gate ships pre-broken.
   const config = orDie(loadConfig(), "config");
   const live = judge(scan(config), readBaseline(), testMentions(config), config.threshold, hatchOpenOf(config));
   if (live.length !== 0) fail(`the committed baseline does not describe this tree:\n    ${live.join("\n    ")}`);
 
-  // THE GATE MUST NOT NEED TO EXEMPT ITSELF. A ratchet whose own author is in the baseline is an
-  // argument for the threshold being wrong, made by the one file that cannot claim it did not know.
-  const own = scan(config).filter((f) => f.file === "tools/complexity-gate.mjs");
-  if (own.length !== 0) fail(`this gate exempts ${own.length} of its own function(s): ${own.map((f) => `${f.name}(${f.complexity})`).join(", ")}`);
+  selfExemptionAlarm(fail, scan(config));
 
   console.log(ok ? `complexity-gate self-test: OK (threshold ${config.threshold})` : "complexity-gate self-test: FAILED");
   return ok;
@@ -612,7 +715,7 @@ if (isEntry) {
   if (argv.includes("--update-baseline")) {
     const payload = {
       threshold: config.threshold,
-      note: "Functions permitted above the threshold, at exactly the complexity they had when recorded. The ratchet lets these fall, never rise. Regenerate with `node tools/complexity-gate.mjs --update-baseline` — a deliberate act, reviewable in the diff.",
+      note: `Functions permitted above the threshold, at exactly the complexity they had when recorded. The ratchet lets these fall, never rise. Regenerate with \`node ${SELF_REL} --update-baseline\` — a deliberate act, reviewable in the diff.`,
       functions: current.map((f) => ({ file: f.file, name: f.name, complexity: f.complexity })),
     };
     writeFileSync(`${ROOT}${BASELINE_PATH}`, `${JSON.stringify(payload, null, 2)}\n`);

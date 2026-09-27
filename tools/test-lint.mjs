@@ -47,15 +47,19 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TEST_RE = /\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/;
 const LINTABLE_RE = /\.(ts|tsx|mjs|js|cjs)$/;
 
-function discoverTestFiles() {
-  return execFileSync("git", ["ls-files"], { encoding: "utf8" })
-    .split("\n")
+/** Tracked `*.test.*` / `*.spec.*` files. `-z`, split on NUL: without it git C-quotes a non-ASCII
+ *  path and the quoted name never matches TEST_RE. */
+function discoverTestFiles(cwd = process.cwd(), env = process.env) {
+  return execFileSync("git", ["ls-files", "-z"], { cwd, env, encoding: "utf8" })
+    .split("\0")
     .filter((f) => TEST_RE.test(f));
 }
 
@@ -105,14 +109,39 @@ function walk(dir, prefix = dir) {
  * `return`, or a line start), so a quote or backtick inside one opens nothing. A line start counts
  * only when the line before does not end an expression (a word, `)` or `]`): `total\n  / count` is
  * division, as JS reads it, and taking it for a regex swallowed a backtick and blanked every line
- * to the next one.
+ * to the next one. A template is matched with its `${}` balanced (see `template`), so a template
+ * nested in one does not end the outer: cut at the inner backtick, the `}/` closing the `${}` read
+ * as a regex opening and a template ran on over the comment below.
  * ponytail: a heuristic, not a parser — a regex right after `)`, a regex opening a line after a
- * comment that ends in a word, a backtick nested inside a template's `${}`, and a glob in JSX text
- * (`<p>src/*.ts</p>` opens a block comment) still misread; bring in a real tokenizer if any shows
- * up in a test.
+ * comment that ends in a word, a `${}` nested past TEMPLATE_DEPTH or holding a regex or comment
+ * with a quote, brace or backtick in it (the plain backtick-to-backtick span then applies), and a
+ * glob in JSX text (`<p>src/*.ts</p>` opens a block comment) still misread, and a template that
+ * never closes costs time quadratic in the templates nested in it; bring in a real tokenizer if
+ * any shows up in a test.
  */
-const TOKENS =
-  /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^\\`])*`|(?<=(?:(?<![\w$)\]]\s*)^|[(,=:[!&|?{};>]|\breturn)\s*)\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[a-z]*)|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/gm;
+const STRING = String.raw`"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'`;
+const TEMPLATE_DEPTH = 3;
+
+/**
+ * A template literal whose `${}` holds code — strings, balanced braces, further templates —
+ * `depth` levels deep; at 0, the plain backtick-to-backtick span. A `$` before `{` must open a
+ * substitution, so a template parses one way only and a failed match costs no backtracking blow-up.
+ */
+function template(depth) {
+  if (depth === 0) return String.raw`\`(?:\\.|[^\\\`])*\``;
+  return String.raw`\`(?:\\.|\$\{${code(depth)}\}|\$(?!\{)|[^\\\`$])*\``;
+}
+
+/** The code between a `${` or `{` and its `}`, `depth` levels deep. */
+function code(depth) {
+  const nested = depth === 0 ? "" : String.raw`|\{${code(depth - 1)}\}|${template(depth - 1)}`;
+  return String.raw`(?:[^{}\`"']|${STRING}${nested})*`;
+}
+
+const TOKENS = new RegExp(
+  String.raw`(${STRING}|${template(TEMPLATE_DEPTH)}|${template(0)}|(?<=(?:(?<![\w$)\]]\s*)^|[(,=:[!&|?{};>]|\breturn)\s*)\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[a-z]*)|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)`,
+  "gm",
+);
 
 const blank = (text) => text.replace(/[^\n]/g, " ");
 
@@ -223,6 +252,29 @@ export function findEchoedExpectations(raw) {
   return out;
 }
 
+/** Discovery, run for real: git C-quotes a non-ASCII, `"` or `\` path in plain `ls-files` output
+ *  (`"caf\303\251.test.mjs"`), which TEST_RE never matches — the test file went unlinted with nothing
+ *  printed. Driven in a scratch repo with the inherited GIT_* env removed: inside a hook GIT_DIR /
+ *  GIT_INDEX_FILE name the HOST repo. core.quotePath is forced back on: under a user's
+ *  `quotepath = false` git prints the name raw and a listing without -z passed this case. */
+function discoversNonAsciiTest() {
+  const dir = mkdtempSync(join(tmpdir(), "test-lint-ls-"));
+  const env = {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))),
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.quotePath",
+    GIT_CONFIG_VALUE_0: "true",
+  };
+  try {
+    writeFileSync(join(dir, "café.test.mjs"), "x\n");
+    execFileSync("git", ["init", "-q"], { cwd: dir, env, stdio: "ignore" });
+    execFileSync("git", ["add", "café.test.mjs"], { cwd: dir, env, stdio: "ignore" });
+    return discoverTestFiles(dir, env).includes("café.test.mjs");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const lineOf = (text, index) => text.slice(0, index).split("\n").length;
 
 function selfTest() {
@@ -288,6 +340,11 @@ function selfTest() {
   // ...and a line that OPENS with `/` after an expression is division, as JS reads it: taken for a
   // regex it swallowed a backtick and blanked every line to the next one.
   t("leading-division: a line opening with / after an expression is division, not a regex", taut("const avg = total\n  / count; const label = `a/b`;\nexpect(true).toBe(true);\nconst z = `end`;").length === 1);
+  // A template nested in a template's `${}` must not end the outer one: cut at the inner backtick,
+  // the `}/` that closes the `${}` read as a regex opening, swallowed the next backtick, and a
+  // template ran on over the comment below — kept as code for doc-reconcile's grep evidence.
+  const nested = stripComments("die(`pins: ${xs.map((p) => ` /${p}/`).join(\", \")} fix: tools/x`);\n// onlyInAComment\nconsole.log(`done`);\n");
+  t("template-brace-opens-regex: a `}/` closing a template's ${} leaves the next comment blanked", !nested.includes("onlyInAComment") && nested.includes("console.log(`done`)"));
   const templateMention = "const note = `call stripComments first`;\n" + sibling;
   t("exempt-by-template: a template naming stripComments does not excuse the read", findUnstrippedSourceReads(strip(templateMention), templateMention).length === 1);
   const regexMention = "expect(src).toMatch(/stripComments\\(readFileSync/);\n" + sibling;
@@ -308,6 +365,8 @@ function selfTest() {
     findEchoedExpectations('const seed = { caption: "hello world" };\nexpect(row.caption).toBe("hello world");').length === 1,
   );
   t("advisory ignores an unseeded expectation", findEchoedExpectations('expect(row.caption).toBe("hello world");').length === 0);
+  // Discovery must see every tracked test file byte for byte, not git's C-quoted rendering of it.
+  t("quoted-test-path-invisible: a non-ASCII test file is discovered", discoversNonAsciiTest());
 
   let ok = true;
   for (const [name, pass] of cases) {
