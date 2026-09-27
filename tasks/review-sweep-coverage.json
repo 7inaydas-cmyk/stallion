@@ -225,6 +225,146 @@
       "seq": 20,
       "parent_hash": "d63751317ad94dd8cae48d6a285d04e81ca0ec2450183b558cfdfc8069220bc5",
       "entry_hash": "054d1b1e18a8cc6ed4a356a6621596dd3ad38e9d9a5171443322749b6b316601"
+    },
+    {
+      "at": "2026-09-27T08:02:33.424Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 21,
+      "parent_hash": "054d1b1e18a8cc6ed4a356a6621596dd3ad38e9d9a5171443322749b6b316601",
+      "entry_hash": "54a0e1b1ffc17eba30e6945368f26fbfc6987aec6b8e64e69e7e04da9e8acd0d"
+    },
+    {
+      "at": "2026-09-27T09:54:58.594Z",
+      "type": "red-check",
+      "expect": "task-coverage: a merge that takes a stale side's copy over the mainline's fix refuses at commit-msg and the fence",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 22,
+      "parent_hash": "54a0e1b1ffc17eba30e6945368f26fbfc6987aec6b8e64e69e7e04da9e8acd0d",
+      "entry_hash": "5ad213b120b44f251dad950486ca65d021a7401dc4738cf32d29e8b9387d8c37"
+    },
+    {
+      "at": "2026-09-27T09:54:59.781Z",
+      "type": "red-check",
+      "expect": "task-coverage: a hand-written MERGE_HEAD parent git will reduce away narrows nothing at commit-msg",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 23,
+      "parent_hash": "5ad213b120b44f251dad950486ca65d021a7401dc4738cf32d29e8b9387d8c37",
+      "entry_hash": "60440600e10757ec2416aaab13f259b9dbaa31f29fc5731607b9a823df61474f"
+    },
+    {
+      "at": "2026-09-27T09:55:01.048Z",
+      "type": "red-check",
+      "expect": "task-coverage: a code path git C-quotes, non-ASCII, is code at the staged gate, commit-msg, and the fence",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 24,
+      "parent_hash": "60440600e10757ec2416aaab13f259b9dbaa31f29fc5731607b9a823df61474f",
+      "entry_hash": "d10886cedec5a21b700aff368b25ddc9710737e0c81f28141db7210ddb1af918"
+    },
+    {
+      "at": "2026-09-27T09:55:02.193Z",
+      "type": "red-check",
+      "expect": "task-coverage: a rename out of the code trees is judged as the code deletion it is at the staged gate and commit-msg",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 25,
+      "parent_hash": "d10886cedec5a21b700aff368b25ddc9710737e0c81f28141db7210ddb1af918",
+      "entry_hash": "388da44e3d09fc26904ce0fca22fece985c739d33cbc91690c585cbca719fa8e"
+    },
+    {
+      "at": "2026-09-27T09:55:03.372Z",
+      "type": "red-check",
+      "expect": "task-coverage: commit-msg reads the message git will commit: no editor keeps '#' lines, commit\\.cleanup=strip drops them",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 26,
+      "parent_hash": "388da44e3d09fc26904ce0fca22fece985c739d33cbc91690c585cbca719fa8e",
+      "entry_hash": "28eb9be230764a1059a2519d6676bed4b262c2d519b7a898082bcc6f6333b933"
+    },
+    {
+      "at": "2026-09-27T09:55:04.637Z",
+      "type": "red-check",
+      "expect": "task-coverage: a bare fence hook does not certify the pre-push transport — the pushed-refs law runs only under --pre-push",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 27,
+      "parent_hash": "28eb9be230764a1059a2519d6676bed4b262c2d519b7a898082bcc6f6333b933",
+      "entry_hash": "704af2296f494512accb223d6b2396799605e9a40ea83b7cef870b0540aa3e37"
+    },
+    {
+      "at": "2026-09-27T09:55:06.005Z",
+      "type": "red-check",
+      "expect": "task-coverage: the detached-head guard's hook line certifies the guard and no task-coverage line does",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 28,
+      "parent_hash": "704af2296f494512accb223d6b2396799605e9a40ea83b7cef870b0540aa3e37",
+      "entry_hash": "4cd9a44c0dd7ef4319a5475b4f4f64c466c64bf4731ced1676886dcaef057681"
+    },
+    {
+      "at": "2026-09-27T09:55:07.228Z",
+      "type": "red-check",
+      "expect": "task-coverage: a verdict the shell throws away certifies nothing",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 29,
+      "parent_hash": "4cd9a44c0dd7ef4319a5475b4f4f64c466c64bf4731ced1676886dcaef057681",
+      "entry_hash": "0202045c8a32ab14e692e5648e191163245f22f2c47d3bf68b1c5ef564b51d78"
+    },
+    {
+      "at": "2026-09-27T09:55:08.455Z",
+      "type": "red-check",
+      "expect": "task-coverage: a spaced refspec source cannot steer the sha the pre-push fence checks, and a line it cannot parse refuses",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "26572b0836e7",
+      "seq": 30,
+      "parent_hash": "0202045c8a32ab14e692e5648e191163245f22f2c47d3bf68b1c5ef564b51d78",
+      "entry_hash": "961c8e786a0c76c49ead73cb5a9599984df0e110d2396f7d8b130560e0ae3829"
+    },
+    {
+      "at": "2026-09-27T10:25:33.481Z",
+      "type": "red-check",
+      "expect": "task-coverage: a clean merge whose side change the mainline already holds \\(a cherry-pick\\) is not the merge's own at commit-msg or the fence",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ce57418b196e",
+      "seq": 31,
+      "parent_hash": "961c8e786a0c76c49ead73cb5a9599984df0e110d2396f7d8b130560e0ae3829",
+      "entry_hash": "0d108464a6a7a1c068ed9d85b1e2fff2cb179e885fbbaf978da68262cf988686"
+    },
+    {
+      "at": "2026-09-27T10:25:58.944Z",
+      "type": "red-check",
+      "expect": "task-coverage: commit\\.cleanup=scissors with an editor cuts git's template at the scissors line and keeps the '#' lines above it",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "c9b2f598315b",
+      "seq": 32,
+      "parent_hash": "0d108464a6a7a1c068ed9d85b1e2fff2cb179e885fbbaf978da68262cf988686",
+      "entry_hash": "0bec7e65686bde1bdb854d7d56bc7ce027ee5c48d2c55f5e729de81887373a6e"
+    },
+    {
+      "at": "2026-09-27T10:26:01.329Z",
+      "type": "red-check",
+      "expect": "task-coverage: a verdict sh never hands git certifies nothing — '\\|\\| exit 0', '\\|\\| exit 256' \\(sh folds it to 0\\), a non-final sh -c wrapper, set -e undone by set \\+e",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "c9b2f598315b",
+      "seq": 33,
+      "parent_hash": "0bec7e65686bde1bdb854d7d56bc7ce027ee5c48d2c55f5e729de81887373a6e",
+      "entry_hash": "e52483c098823a05b88b00028f918bd8dd96dceef383e68e73c36a0cb63612da"
     }
   ]
 }

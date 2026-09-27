@@ -33,8 +33,8 @@
  * and a single commit that both widens a scope and lands the excusing code is that history's
  * plainest tell (registered future work).
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
@@ -157,50 +157,80 @@ export function checklistLaneCount(text) {
   return typeof text === "string" ? lanesFromChecklist(text).length : 0;
 }
 
-/** Pure: a live (non-comment) line actually INVOKES task-coverage in the given MODE — the
+/** Pure: a live (non-comment) line actually INVOKES a harness hook tool in the given MODE — the
  *  invocation must start the command (an `echo` mentioning the tool wires nothing), and the
  *  doctor must not certify itself (an adversarial finding: its own step line satisfied the
- *  CI-fence check, and a --staged-only hook passed as a pre-push fence). */
+ *  CI-fence check, and a --staged-only hook passed as a pre-push fence). A hook mode also needs
+ *  the verdict to REACH git: a hook without `set -e` runs on past a failed line and exits with its
+ *  last command's status, so a bare line certifies only as that last command or while `set -e`
+ *  is in force (a review finding: a pre-push whose fence line lost `|| exit 1` pushed while the fence printed
+ *  'nothing was pushed', the doctor certifying it). "fence" is the CI mode: Actions runs a
+ *  `run:` step under bash -e. An unknown mode certifies nothing — it once fell through to the
+ *  bare fence, which is how a pre-push hook without --pre-push passed as wired (a review finding). */
 export function invokesMode(text, mode) {
-  if (typeof text !== "string") return false;
-  return text.split("\n").some((line) => lineInvokesMode(line, mode));
+  const test = MODE_TESTS.get(mode);
+  if (typeof text !== "string" || typeof test !== "function") return false;
+  const live = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith("#"));
+  const errexit = errexitBefore(live);
+  const reachesGit = (inv, i) => mode === "fence" || inv.blocking || i === live.length - 1 || errexit[i];
+  return live.some((line, i) => {
+    const inv = hookInvocation(line);
+    return inv !== null && test(inv) && reachesGit(inv, i);
+  });
 }
 
-/** One hook or CI line, normalized to its task-coverage invocation — or null when the line wires
- *  nothing: blank, a comment, another command, a swallowed verdict, or a self-test run. */
-function fenceInvocation(line) {
-  let t = line.trim();
-  if (t.length === 0 || t.startsWith("#")) return null;
-  t = t.replace(/^run:\s*/, "").replace(/^sh\s+-c\s+['"]/, "").replace(/'\s*$/, "");
-  if (!/^node\s+tools\/task-coverage\.mjs(\s|$)/.test(t)) return null;
-  // A hook that swallows the tool's verdict wires nothing, whatever mode it names — the
-  // doctor must not certify its own decoy (an adversarial finding: '|| exit 0' and
-  // '|| true' both passed every wiring check). '|| exit 2' (the Claude Code translation)
-  // is a BLOCKING outcome and stays certified. A --self-test line judges nothing either: it
-  // exits before any mode dispatch, so a fence swapped for one passed every push while the
-  // doctor certified it — matched in any spelling (`--self-test||exit 1`, a quoted flag), since
-  // a boundary-bound arm let those through (two review findings).
-  if (/\|\|\s*(?:true|:|exit\s+0)\b|--self-test/.test(t)) return null;
-  return t;
+/** Pure: per live hook line, whether `set -e` is in force as it runs. A later `set +e` (or
+ *  `set +o errexit`) undoes it — an earlier set -e alone once certified a bare line that ran after
+ *  set +e and lost its verdict (a review finding). */
+function errexitBefore(live) {
+  let on = false;
+  return live.map((line) => {
+    const before = on;
+    if (/^set\s/.test(line)) on = !/\s\+[a-zA-Z]*e|\s\+o\s+errexit/.test(line) && (on || /\s-[a-zA-Z]*e|\s-o\s+errexit/.test(line));
+    return before;
+  });
 }
 
-/** Each mode's test over a line's flags; any other mode is "fence": the bare range check, with
- *  or without --base. The commit-msg hook's ARGUMENT is the validated surface: git hands the
- *  message file as $1, and a decoy path (a committed file with a compliant footer) certifies
- *  nothing. */
+/** A harness hook tool's invocation: its arguments (words or quoted strings, `$VAR` included),
+ *  then at most `|| exit N`. An ALLOWLIST — anything else after the arguments (`; exit 0`,
+ *  `|| echo`, `&&`, a trailing `&`) runs past the verdict; the denylist of three swallow
+ *  spellings it replaced certified those decoys (a review finding). */
+const INVOCATION = /^node\s+tools\/(task-coverage|detached-head-guard)\.mjs((?:\s+(?:"[^"]*"|'[^']*'|[^\s"'`;&|<>()\\]+))*)\s*(?:\|\|\s*exit\s+(\d+))?$/;
+
+/** One hook or CI line, normalized to the invocation it runs and its flags — or null when the
+ *  line wires nothing: another command, a swallowed verdict, or a self-test run. `|| exit 0`
+ *  swallows (an adversarial finding: it passed every wiring check), and so does any N sh folds to
+ *  0 (`|| exit 256`); '|| exit 2' (the Claude Code translation) is a BLOCKING outcome and stays
+ *  certified. An `sh -c '…'` wrapper's inner exit only sets the WRAPPER's status — in a hook file
+ *  that line still has to be the last command or follow set -e (a review finding: a non-final
+ *  wrapper certified as blocking while the hook ran on to exit 0). A --self-test line judges nothing
+ *  either: it exits before any mode dispatch, so a fence swapped for one passed every push while
+ *  the doctor certified it — matched in any spelling (`--self-test||exit 1`, a quoted flag),
+ *  since a boundary-bound arm let those through (two review findings). */
+function hookInvocation(line) {
+  const step = line.replace(/^run:\s*/, "");
+  const wrapped = /^sh\s+-c\s+(['"])(.*)\1$/.exec(step);
+  const t = wrapped ? wrapped[2] : step;
+  const m = INVOCATION.exec(t);
+  if (m === null || /--self-test/.test(t) || Number(m[3]) % 256 === 0) return null;
+  const args = m[2];
+  return { tool: m[1], blocking: m[3] !== undefined && !wrapped, doctor: args.includes("--doctor"), staged: args.includes("--staged"), commitMsg: args.includes("--commit-msg"), prePush: /--pre-push(?![-\w])/.test(args), passesMessageFile: /\$1/.test(args) };
+}
+
+/** Each mode's test over a line's invocation. "fence" is the bare range check, with or without
+ *  --base; "pre-push" is that check reading the pushed refs, which only --pre-push does. The
+ *  commit-msg hook's ARGUMENT is the validated surface: git hands the message file as $1, and a
+ *  decoy path (a committed file with a compliant footer) certifies nothing. */
+const isCoverage = (f) => f.tool === "task-coverage";
+const isBareFence = (f) => isCoverage(f) && !f.doctor && !f.staged && !f.commitMsg;
 const MODE_TESTS = new Map([
-  ["doctor", (f) => f.doctor],
-  ["staged", (f) => f.staged && !f.doctor],
-  ["commit-msg", (f) => f.commitMsg && !f.doctor && !f.staged && f.passesMessageFile],
+  ["fence", isBareFence],
+  ["pre-push", (f) => isBareFence(f) && f.prePush],
+  ["doctor", (f) => isCoverage(f) && f.doctor],
+  ["staged", (f) => isCoverage(f) && f.staged && !f.doctor],
+  ["commit-msg", (f) => isCoverage(f) && f.commitMsg && !f.doctor && !f.staged && f.passesMessageFile],
+  ["detached-head-guard", (f) => f.tool === "detached-head-guard"],
 ]);
-const isBareFence = (f) => !f.doctor && !f.staged && !f.commitMsg;
-
-function lineInvokesMode(line, mode) {
-  const t = fenceInvocation(line);
-  if (t === null) return false;
-  const flags = { doctor: t.includes("--doctor"), staged: t.includes("--staged"), commitMsg: t.includes("--commit-msg"), passesMessageFile: /\$1/.test(t) };
-  return (MODE_TESTS.get(mode) ?? isBareFence)(flags);
-}
 
 /** Pure: count '## ' entry headings in the decisions register. */
 export function registerHeadingCount(text) {
@@ -567,6 +597,78 @@ function gitOut(...args) {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
 }
 
+/** A git path listing, read NUL-separated. Without -z git C-quotes any path holding a non-ASCII
+ *  byte, '"', '\' or a control character ("tools/gat\303\251.mjs"), a spelling no code tree
+ *  matched — footerless code crossed every transport (two review findings). core.quotePath=false
+ *  alone still quotes the rest; -z is the one unambiguous form, placed before any pathspec. */
+function gitPaths(subcommand, ...args) {
+  return gitOut(subcommand, "-z", ...args).split("\0").filter(Boolean);
+}
+
+/** The staged paths as the fence will judge them — against HEAD, or `against` a merge parent.
+ *  --no-renames: porcelain diff detects renames and lists only the destination, so moving code
+ *  out of the code trees read as "no code staged" while the fence's plumbing saw the deletion (a
+ *  review finding). */
+function stagedPaths(...against) {
+  return gitPaths("diff", "--cached", "--name-only", "--no-renames", ...against);
+}
+
+/** A commit's (or the index's) paths judged against each parent: `diffVs(rev)` lists where the tree
+ *  differs from rev. A two-parent merge also carries `clean` — where it differs from git's own
+ *  clean merge of the parents, plus every conflicted path — and, for the fallback law when git
+ *  cannot merge them (before 2.38), each parent's changes since the merge base(s). No base (unrelated
+ *  histories, a shallow clone) leaves changes null: every differing path is judged, the stricter
+ *  reading. */
+function mergeFacts(parents, diffVs) {
+  const diffs = parents.map(diffVs);
+  if (parents.length !== 2) return { diffs, changes: [], clean: null };
+  let bases = [];
+  try {
+    bases = gitOut("merge-base", "--all", ...parents).split("\n").map((l) => l.trim()).filter(Boolean);
+  } catch {
+    // no common ancestor git can see — every differing path is judged
+  }
+  if (bases.length === 0) return { diffs, changes: [null, null], clean: null };
+  const merged = cleanMergeOf(parents);
+  if (merged !== null) return { diffs, changes: [], clean: [...diffVs(merged.tree), ...merged.conflicted] };
+  const since = (p) => [...new Set(bases.flatMap((b) => gitPaths("diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", b, p)))];
+  return { diffs, changes: parents.map(since), clean: null };
+}
+
+/** git's own merge of two parents: { tree, conflicted } — the tree it writes (conflict markers
+ *  and all) and the paths it could not resolve — or null when git cannot say (no `merge-tree
+ *  --write-tree` before 2.38): the caller falls back to the since-the-base law. */
+function cleanMergeOf(parents) {
+  const r = spawnSync("git", ["merge-tree", "--write-tree", "-z", "--name-only", "--no-messages", ...parents], { cwd: ROOT, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+  const [tree = "", ...conflicted] = String(r.stdout ?? "").split("\0").filter(Boolean);
+  return (r.status === 0 || r.status === 1) && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(tree) ? { tree, conflicted } : null;
+}
+
+/**
+ * Pure: the paths a commit ITSELF authors — one law for the fence and commit-msg. `parentDiffs[i]`:
+ * where its tree differs from parent i. One parent: every differing path. A merge: a path
+ * differing from EVERY parent (new content), plus `clean` when git could merge the two parents —
+ * where the tree departs from git's own clean merge, and every conflicted path. What git merged
+ * by itself is incoming, judged as each side's own commits; a side's STALE copy chosen over the
+ * other side's change (a review finding: a footerless merge reverted fixed code through every
+ * transport) departs from git's merge, and so does a side's change dropped. The fallback, with no
+ * `clean`: `parentChanges[i]` — what parent i changed since the merge base(s), null when no base
+ * resolves (every path counts as changed) — judges a path that DROPS such a change; it also
+ * judged a side's change the other side already held (a cherry-pick), refusing a merge git wrote
+ * untouched (a review finding), so it serves only where git cannot merge. An OCTOPUS answers for
+ * everything it brings to its first parent: one base for three sides can predate a change one
+ * side made after another forked, and a stale copy then passed as "unchanged since the base".
+ */
+export function mergeOwnFiles(parentDiffs, parentChanges, clean = null) {
+  if (parentDiffs.length > 2) return [...new Set(parentDiffs[0])];
+  const diffs = parentDiffs.map((d) => new Set(d));
+  const differsFromEvery = (f) => diffs.every((d) => d.has(f));
+  if (Array.isArray(clean)) return [...new Set([...parentDiffs.flat().filter(differsFromEvery), ...clean])];
+  const changes = diffs.map((_, i) => (Array.isArray(parentChanges?.[i]) ? new Set(parentChanges[i]) : null));
+  const dropsAChange = (f) => diffs.some((d, i) => d.has(f) && (changes[i] === null || changes[i].has(f)));
+  return [...new Set(parentDiffs.flat())].filter((f) => differsFromEvery(f) || dropsAChange(f));
+}
+
 function revParseOk(rev) {
   try {
     execFileSync("git", ["rev-parse", "--verify", `${rev}^{commit}`], { cwd: ROOT, stdio: "ignore" });
@@ -713,19 +815,16 @@ function anchorRecordPhase(id, anchorRef) {
 /** The files a commit ITSELF introduces, as a list — one law for every commit shape:
  *  a ROOT answers against the empty tree (--root: plain diff-tree prints nothing for roots, so
  *  an orphan branch could land code no transport ever judged); a commit with ONE parent answers
- *  against it; a MERGE answers for exactly the files that differ from EVERY parent — content
- *  arriving from either side is judged as its own commits inside the range, so the intersection
- *  is the merge's own smuggle surface (the crafted evil merge). Note: `-m --first-parent`
- *  proved to emit EACH-parent diffs, not the first-parent diff this code long claimed (git
- *  2.43, isolated repro in issue #17) — it flagged every ordinary merge for the union of both
- *  sides' files, refusing legal merges of already-footered branches. */
+ *  against it; a MERGE answers through mergeOwnFiles — what differs from every parent, plus where
+ *  it departs from git's own merge of them (the stale-side reversion). Note: `-m
+ *  --first-parent` proved to emit EACH-parent diffs, not the first-parent diff this code long
+ *  claimed (git 2.43, isolated repro in issue #17) — it flagged every ordinary merge for the
+ *  union of both sides' files, refusing legal merges of already-footered branches. */
 function filesIntroducedBy(sha) {
-  const parentList = gitOut("show", "-s", "--format=%P", sha).trim().split(/\s+/).filter(Boolean);
-  const diffVs = (rev) => gitOut("diff-tree", "--no-commit-id", "--name-only", "-r", rev, sha).trim().split("\n").filter(Boolean);
-  if (parentList.length === 0) return gitOut("diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha).trim().split("\n").filter(Boolean);
-  if (parentList.length === 1) return diffVs(parentList[0]);
-  const lists = parentList.map((p) => new Set(diffVs(p)));
-  return [...lists[0]].filter((f) => lists.every((s) => s.has(f)));
+  const parents = gitOut("show", "-s", "--format=%P", sha).trim().split(/\s+/).filter(Boolean);
+  if (parents.length === 0) return gitPaths("diff-tree", "--no-commit-id", "--name-only", "-r", "--root", sha);
+  const { diffs, changes, clean } = mergeFacts(parents, (p) => gitPaths("diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", p, sha));
+  return mergeOwnFiles(diffs, changes, clean);
 }
 
 /** The range check: every code commit in base..HEAD must carry an authorizing task footer. */
@@ -781,15 +880,21 @@ function checkRange(base, anchorRef = null) {
  * Pure: the refs a push carries that the HEAD-range fence cannot see. git hands the pre-push hook
  * one `<local-ref> <local-sha> <remote-ref> <remote-sha>` line per ref, and the range check judges
  * base..HEAD — so a pushed tip outside HEAD's history (`git push origin other-branch`, `--all`)
- * landed unjudged (a review finding). Deletions (an all-zero local sha) push no commits. Returns
- * the local refs to refuse; `inHeadHistory(sha)` is the caller's git fact. Honest boundary:
- * refusing is the whole remedy — re-deriving each ref's own base and anchor is not attempted;
- * push another branch from its own checkout, where this fence judges it whole.
+ * landed unjudged (a review finding). Deletions (an all-zero local sha) push no commits. The line
+ * is parsed from the RIGHT: the local ref is the refspec's source expression verbatim, and git
+ * allows spaces in it (`other^{/fix main bug}`), so a whitespace split read a word the pusher
+ * chose as the sha — `main`, or `0` for a deletion — and the real tip went unjudged (a review
+ * finding). A line that does not parse refuses, labelled as it arrived. Returns the refs to
+ * refuse; `inHeadHistory(sha)` is the caller's git fact. Honest boundary: refusing is the whole
+ * remedy — re-deriving each ref's own base and anchor is not attempted; push another branch
+ * from its own checkout, where this fence judges it whole.
  */
 export function unfencedPushTips(prePushInput, inHeadHistory) {
-  return String(prePushInput ?? "").split("\n").map((line) => line.trim().split(/\s+/))
-    .filter(([, sha]) => sha && !/^0+$/.test(sha) && !inHeadHistory(sha))
-    .map(([ref]) => ref);
+  return String(prePushInput ?? "").split("\n").filter((line) => line.trim().length > 0).flatMap((line) => {
+    const m = /^(.+) ([0-9a-f]{40}|[0-9a-f]{64}) \S+ (?:[0-9a-f]{40}|[0-9a-f]{64})$/.exec(line);
+    if (m === null) return [`unparseable ref line ${JSON.stringify(line)}`];
+    return /^0+$/.test(m[2]) || inHeadHistory(m[2]) ? [] : [m[1]];
+  });
 }
 
 /** The pre-push transport's extra fact: git's ref lines on stdin. Only the hook passes
@@ -797,7 +902,7 @@ export function unfencedPushTips(prePushInput, inHeadHistory) {
 function fencePushedRefs() {
   const outside = unfencedPushTips(readFileSync(0, "utf8"), (sha) => isAncestorOrSelf(sha, "HEAD"));
   if (outside.length > 0) {
-    die(`✖ REFUSED — this push carries ref(s) outside the checked-out history: ${outside.join(", ")}\n  rule: the push fence judges base..HEAD — a pushed tip HEAD cannot reach would land unjudged\n  fix: git checkout <branch> && git push origin <branch>   (one branch per push, from its own checkout, so the fence judges it whole)`);
+    die(`✖ REFUSED — this push carries ref(s) outside the checked-out history: ${outside.join(", ")}\n  rule: the push fence judges base..HEAD — a pushed tip HEAD cannot reach would land unjudged, and a ref line it cannot parse refuses rather than guess\n  fix: git checkout <branch> && git push origin <branch>   (one branch per push, from its own checkout, so the fence judges it whole)`);
   }
 }
 
@@ -812,13 +917,12 @@ function die(message) {
  * with the exit-code translation that vendor's contract requires (see docs/WIRING.md).
  */
 function cmdStaged() {
-  let staged;
+  let files;
   try {
-    staged = gitOut("diff", "--cached", "--name-only");
+    files = stagedPaths();
   } catch (e) {
     die(`cannot read the staged file list — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass — this seam fails closed like every other\n  fix: make git work in this environment (PATH, safe.directory, readable index), then retry the commit`);
   }
-  const files = staged.trim().split("\n").filter(Boolean);
   const records = [];
   if (existsSync(STATE_DIR)) {
     for (const f of readdirSync(STATE_DIR).filter((x) => x.endsWith(".json") && !x.includes(".findings."))) {
@@ -919,39 +1023,58 @@ export function addedDiffLines(diffText) {
  * lines here, and the fence re-judges the committed message (fail closed, never open).
  */
 export function cleanCommitMessage(message) {
-  const scissors = message.search(/^# -+ >8 -+$/m);
-  const kept = scissors === -1 ? message : message.slice(0, scissors);
-  return kept.split("\n").filter((line) => !line.startsWith("#")).join("\n");
+  return cutAtScissors(message).split("\n").filter((line) => !line.startsWith("#")).join("\n");
 }
 
-/** Pure: the files a MERGE itself introduces — those differing from EVERY parent, the fence's
- *  filesIntroducedBy law. `parentFiles` holds, per MERGE_HEAD parent, the staged paths that differ
- *  from it; outside a merge it is empty and every staged file stands. Incoming content was judged
- *  as its own commits (a review finding: commit-msg refused ordinary merges of already-footered
- *  branches that the fence passes). */
-export function mergeOwnFiles(files, parentFiles) {
-  return files.filter((f) => (parentFiles ?? []).every((list) => list.includes(f)));
+/** Pure: the message above git's scissors line — everything below it git never commits. */
+function cutAtScissors(message) {
+  const scissors = message.search(/^# -+ >8 -+$/m);
+  return scissors === -1 ? message : message.slice(0, scissors);
 }
+
+/** Pure: the cleanup git will apply to the message it commits — "strip" (cut at the scissors line,
+ *  drop '#' lines), "scissors" (cut, KEEP '#' lines), or "raw". Its default is 'strip' only when
+ *  an editor ran — for -m/-F it is 'whitespace', which keeps '#' lines (git tells the hook by
+ *  setting GIT_EDITOR=:) — and commit.cleanup overrides both; 'scissors' without an editor is
+ *  'whitespace'. Stripping regardless passed a footer followed by a '#…' paragraph that the fence,
+ *  reading the committed message, refused; reading scissors raw made git's template the last
+ *  paragraph and refused every editor-written footer (two review findings). Honest boundary: a
+ *  `--cleanup=` on the command line never reaches the hook — with an editor, `--cleanup=whitespace`
+ *  or `verbatim` is read stripped here while git keeps its '#' template, and only the fence, which
+ *  judges the committed message, refuses it. */
+export function gitCleanupMode(editorUsed, cleanup) {
+  if (cleanup === "strip") return "strip";
+  if (cleanup === "scissors") return editorUsed === true ? "scissors" : "raw";
+  if (cleanup && cleanup !== "default") return "raw";
+  return editorUsed === true ? "strip" : "raw";
+}
+
+/** Pure: the message as git will commit it, under `gitCleanupMode`'s reading. */
+const CLEANUPS = { strip: cleanCommitMessage, scissors: cutAtScissors, raw: (message) => message };
 
 /** The refused commit was never made: its fix re-runs it from the message git saved. -v makes git
  *  cut that message at a verbose editor's scissors line — strip alone kept the diff tail, whose
- *  last paragraph the fence then read as footerless (a review finding). */
+ *  last paragraph the fence then read as footerless (a review finding). The strip cleanup rides
+ *  in as `-c commit.cleanup=strip`, config git hands down to this hook, so the hook reads the
+ *  re-run exactly as git will clean it (a --cleanup flag never reaches the hook). */
 function reRunCommit(messageFile) {
-  return `git commit -F ${messageFile} --cleanup=strip -v`;
+  return `git -c commit.cleanup=strip commit -F ${messageFile} -v`;
 }
 
 /**
  * Pure: the commit-msg law, one seam the self-test drives end to end — the transport only
- * gathers git's facts. `facts`: { message, messageFile, files, mergeParentFiles, addedLines,
- * load }. Returns { refusal } (evidence, rule, fix) or { ok } (the pass line). The staged scan
- * runs FIRST, on every commit: a footerless commit staging only .env or a config file is exactly
- * where keys land (a review finding: the scan once ran only after a footer had passed).
+ * gathers git's facts. `facts`: { message, messageFile, files, mergeParents, editorUsed, cleanup,
+ * addedLines, load } — `mergeParents` is null outside a merge, else mergeFacts over the parents
+ * git will record, so a merge is judged by the fence's own law. Returns { refusal } (evidence,
+ * rule, fix) or { ok } (the pass line). The staged scan runs FIRST, on every commit: a footerless
+ * commit staging only .env or a config file is exactly where keys land (a review finding: the
+ * scan once ran only after a footer had passed).
  */
 export function commitMsgVerdict(facts) {
   const scan = stagedScanRefusal(facts.addedLines);
   if (scan) return { refusal: `✖ REFUSED — ${scan.reason}\n  rule: secrets and debugger statements do not land in git — every commit's staged diff is scanned\n  fix: remove the named line, git add the file, then re-run the commit: ${reRunCommit(facts.messageFile)}` };
-  const codeFiles = mergeOwnFiles(facts.files, facts.mergeParentFiles).filter(isCodePath);
-  const footer = taskFooterOf(cleanCommitMessage(facts.message));
+  const codeFiles = (facts.mergeParents ? mergeOwnFiles(facts.mergeParents.diffs, facts.mergeParents.changes, facts.mergeParents.clean) : facts.files).filter(isCodePath);
+  const footer = taskFooterOf(CLEANUPS[gitCleanupMode(facts.editorUsed, facts.cleanup)](facts.message));
   if (!footer) return footerlessVerdict(codeFiles, facts.messageFile);
   const { record, error } = facts.load(footer);
   if (error) {
@@ -981,18 +1104,34 @@ function citedVerdict(record, footer, codeFiles) {
     : `task-coverage (commit-msg): ${codeFiles.length} code file(s) bound to in-flight task '${footer}' within its declared scope.` };
 }
 
-/** The staged paths that differ from each parent a merge is concluding (MERGE_HEAD holds one sha
- *  per line; several for an octopus) — [] outside a merge. A git failure narrows nothing: every
- *  staged file is then judged, the stricter reading. */
-function mergeParentFileLists() {
+/** A file in the git dir (MERGE_HEAD, MERGE_MODE), as an absolute path. */
+function gitDirFile(name) {
+  const path = gitOut("rev-parse", "--git-path", name).trim();
+  return path.startsWith("/") ? path : `${ROOT}${path}`;
+}
+
+/** The parents git will record for the commit being made — HEAD, then MERGE_HEAD's shas (one per
+ *  line; several for an octopus), REDUCED as git reduces them (a parent another parent contains
+ *  is dropped) unless MERGE_MODE is exactly 'no-ff'; null outside a merge. Taking MERGE_HEAD at
+ *  its word judged a hand-written ancestor as a parent while git recorded an ordinary commit the
+ *  fence then refused (a review finding). */
+function pendingParents() {
+  const mergeHead = gitDirFile("MERGE_HEAD");
+  if (!existsSync(mergeHead)) return null;
+  const heads = [gitOut("rev-parse", "HEAD").trim(), ...readFileSync(mergeHead, "utf8").split("\n").map((l) => l.trim()).filter(Boolean)];
+  const mergeMode = gitDirFile("MERGE_MODE");
+  if (existsSync(mergeMode) && readFileSync(mergeMode, "utf8") === "no-ff") return heads;
+  return gitOut("merge-base", "--independent", ...heads).split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+/** The merge law's facts for the commit being made — null outside a merge. A git failure narrows
+ *  nothing: null again, and every staged file is judged, the stricter reading. */
+function pendingMergeFacts() {
   try {
-    const path = gitOut("rev-parse", "--git-path", "MERGE_HEAD").trim();
-    const mergeHead = path.startsWith("/") ? path : `${ROOT}${path}`;
-    if (!existsSync(mergeHead)) return [];
-    const parents = readFileSync(mergeHead, "utf8").split("\n").map((l) => l.trim()).filter(Boolean);
-    return parents.map((sha) => gitOut("diff", "--cached", "--name-only", sha).trim().split("\n").filter(Boolean));
+    const parents = pendingParents();
+    return parents === null ? null : mergeFacts(parents, (p) => stagedPaths(p));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -1011,9 +1150,9 @@ function cmdCommitMsg(messageFile) {
     die(`cannot read the commit message file: ${messageFile}\n  rule: a gate that cannot read state must not pass\n  fix: this runs as a commit-msg hook — check core.hooksPath (.githooks) and that the hook passes "$1" through`);
   }
   const message = readFileSync(existsSync(messageFile) ? messageFile : `${ROOT}${messageFile.replace(/^\//, "")}`, "utf8");
-  let staged;
+  let files;
   try {
-    staged = gitOut("diff", "--cached", "--name-only");
+    files = stagedPaths();
   } catch (e) {
     die(`cannot read the staged file list — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass\n  fix: make git work in this environment (PATH, safe.directory, readable index), then retry the commit`);
   }
@@ -1026,8 +1165,8 @@ function cmdCommitMsg(messageFile) {
   } catch (e) {
     die(`cannot read the staged diff — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass`);
   }
-  const files = staged.trim().split("\n").filter(Boolean);
-  const verdict = commitMsgVerdict({ message, messageFile, files, mergeParentFiles: mergeParentFileLists(), addedLines: addedDiffLines(cachedDiff), load: loadRecord });
+  // git sets GIT_EDITOR=: for the hook when no editor ran — the fact its cleanup default turns on.
+  const verdict = commitMsgVerdict({ message, messageFile, files, mergeParents: pendingMergeFacts(), editorUsed: process.env.GIT_EDITOR !== ":", cleanup: gitConfig("commit.cleanup"), addedLines: addedDiffLines(cachedDiff), load: loadRecord });
   if (verdict.refusal) die(verdict.refusal);
   console.log(verdict.ok);
 }
@@ -1068,15 +1207,17 @@ function cmdDoctor() {
   const results = [];
   const check = (name, ok, fix, evidence = null) => results.push({ name, ok, fix, evidence });
 
-  // Wiring checks read the COMMITTED tree and demand the right MODE per transport: the fence
-  // for CI and pre-push, the staged gate for pre-commit — the doctor's own step line must not
-  // be able to certify the doctor.
+  // Wiring checks read the COMMITTED tree and demand the right MODE per transport: the bare
+  // fence for CI, --pre-push for the pre-push hook (the pushed-refs law runs only under it), the
+  // staged gate AND the detached-head guard for pre-commit (the hook is the guard's only live
+  // run) — the doctor's own step line must not be able to certify the doctor.
   const committedPrePush = committedText(".githooks/pre-push") ?? "";
   const committedPreCommit = committedText(".githooks/pre-commit") ?? "";
   const committedCommitMsg = committedText(".githooks/commit-msg") ?? "";
-  check("pre-push hook committed and invoking the push fence", invokesMode(committedPrePush, "fence"), "commit .githooks/pre-push that runs 'node tools/task-coverage.mjs --pre-push || exit 1' (docs/WIRING.md)");
-  check("pre-commit staged gate committed", invokesMode(committedPreCommit, "staged"), "commit .githooks/pre-commit that runs 'node tools/task-coverage.mjs --staged'");
-  check("commit-msg binding gate committed", invokesMode(committedCommitMsg, "commit-msg"), "commit .githooks/commit-msg that runs 'node tools/task-coverage.mjs --commit-msg \"$1\"' (docs/WIRING.md)");
+  check("pre-push hook committed and invoking the push fence", invokesMode(committedPrePush, "pre-push"), "commit .githooks/pre-push that runs 'node tools/task-coverage.mjs --pre-push || exit 1' (docs/WIRING.md)");
+  check("pre-commit staged gate committed", invokesMode(committedPreCommit, "staged"), "commit .githooks/pre-commit that runs 'node tools/task-coverage.mjs --staged || exit 1'");
+  check("pre-commit detached-head guard committed", invokesMode(committedPreCommit, "detached-head-guard"), "commit .githooks/pre-commit that also runs 'node tools/detached-head-guard.mjs || exit 1' (docs/WIRING.md §5)");
+  check("commit-msg binding gate committed", invokesMode(committedCommitMsg, "commit-msg"), "commit .githooks/commit-msg that runs 'node tools/task-coverage.mjs --commit-msg \"$1\" || exit 1' (docs/WIRING.md)");
 
   // Activation is clone-local config CI cannot carry — scoped honestly instead of faked:
   // locally it is checked for real (and value-checked, not just set); in CI it is SKIPPED,
@@ -1089,14 +1230,15 @@ function cmdDoctor() {
     const livePrePush = dir && existsSync(`${dir}/pre-push`) ? readFileSync(`${dir}/pre-push`, "utf8") : "";
     const livePreCommit = dir && existsSync(`${dir}/pre-commit`) ? readFileSync(`${dir}/pre-commit`, "utf8") : "";
     const liveCommitMsg = dir && existsSync(`${dir}/commit-msg`) ? readFileSync(`${dir}/commit-msg`, "utf8") : "";
-    check("core.hooksPath points at a wired pre-push", invokesMode(livePrePush, "fence"), "git config core.hooksPath .githooks   (must point at the committed hooks)");
+    check("core.hooksPath points at a wired pre-push", invokesMode(livePrePush, "pre-push"), "git config core.hooksPath .githooks   (must point at the committed hooks)");
     check("core.hooksPath points at a wired pre-commit", invokesMode(livePreCommit, "staged"), "git config core.hooksPath .githooks");
+    check("core.hooksPath points at a pre-commit running the detached-head guard", invokesMode(livePreCommit, "detached-head-guard"), "git config core.hooksPath .githooks   (the committed pre-commit runs the guard)");
     check("core.hooksPath points at a wired commit-msg", invokesMode(liveCommitMsg, "commit-msg"), "git config core.hooksPath .githooks");
   }
 
   const committedWorkflows = (() => {
     try {
-      return gitOut("ls-files", ".github/workflows").split("\n").filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
+      return gitPaths("ls-files", ".github/workflows").filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
     } catch {
       return []; // git that cannot list the committed tree cannot show it either — the CI check fails closed
     }
@@ -1176,13 +1318,12 @@ function cmdDoctor() {
   const gatesConfigRefusal = gatesFamilyRefusal();
   check("every gate config under docs/gates/ parses", gatesConfigRefusal === null, "repair the named config until it parses, or restore it: git checkout HEAD -- docs/gates/<the named file>   (docs/gates/ is fence surface: committing a change needs a protected task's footer)", gatesConfigRefusal);
 
-  let tracked = "";
+  let trackedFiles = [];
   try {
-    tracked = gitOut("ls-files");
+    trackedFiles = gitPaths("ls-files");
   } catch {
     // not a git repo — nothing is classified
   }
-  const trackedFiles = tracked.split("\n").filter(Boolean);
   check("CODE_TREES/CODE_EXTS classify at least one tracked file", trackedFiles.some(isCodePath), trackedFiles.length > 0 ? "edit CODE_TREES/CODE_EXTS in tools/task-coverage.mjs to match this repo's layout — a gate matching nothing covers nothing" : "commit some files first");
 
   // The fence's own resolver — the doctor cannot certify a base the fence would refuse.
@@ -1640,35 +1781,111 @@ export function selfTest() {
   const remedyCount = selfTestRemedyCases(fail, record);
   const pushCount = selfTestPushCases(fail);
   const flagCount = selfTestFlagCases(fail);
+  const transportCount = selfTestTransportCases(fail);
+  const shapeCount = selfTestCommitShapeCases(fail);
+  const mergeLawCount = selfTestMergeLawCases(fail);
+  const hookLineCount = selfTestHookLineCases(fail);
 
-  const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${retireSeamCount + retireShapeCount} retirement + ${anchorCases.length} anchor + ${scanCases.length} scan + ${commitMsgCount} commit-msg + ${remedyCount} remedy + ${pushCount} push + ${flagCount} flag cases — all counts derived`;
+  const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${retireSeamCount + retireShapeCount} retirement + ${anchorCases.length} anchor + ${scanCases.length} scan + ${commitMsgCount} commit-msg + ${remedyCount} remedy + ${pushCount} push + ${flagCount} flag + ${shapeCount} commit-shape + ${mergeLawCount} merge-law + ${hookLineCount} hook-line + ${transportCount} transport cases — all counts derived`;
   console.log(failures.length === 0 ? `task-coverage self-test: OK (${bannerCounts} — group counts derived where arrays are local)` : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
+}
+
+/** Self-test helper: the commit-msg seam over fixture records — an in-flight scoped task `t`, a
+ *  docs-only `d`, and planned `p`/`dp` — with an editor-composed, non-merge commit by default. */
+function commitMsgFixture() {
+  const scopedExec = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "scope", patterns: ["tools/**"] }, { type: "transition", to: "executing" }] };
+  const planned = { ...scopedExec, id: "p", events: scopedExec.events.slice(0, 3) };
+  const records = { t: scopedExec, d: { ...scopedExec, id: "d", riskClass: "docs-only" }, p: planned, dp: { ...planned, id: "dp", riskClass: "docs-only" } };
+  const load = (id) => (records[id] ? { record: records[id] } : { error: `no task record for '${id}'` });
+  return (message, files, facts = {}) => commitMsgVerdict({ message, messageFile: ".git/COMMIT_EDITMSG", files, mergeParents: null, editorUsed: true, cleanup: null, addedLines: [], load, ...facts });
+}
+
+/** The commit-msg seam's reading of git's own shapes: the cleanup git will apply to the message. */
+function selfTestCommitShapeCases(fail) {
+  const verdict = commitMsgFixture();
+  const scissorsTemplate = "\n# ------------------------ >8 ------------------------\n# Do not modify or remove the line above.\n# Everything below it will be ignored.\n#\n# On branch main\n# Changes to be committed:\n#\tnew file:   tools/a.mjs\n#\n";
+  const cases = [
+    ["with no editor git keeps '#' lines, so a '#' paragraph after the footer refuses at commit-msg as the fence will", verdict("fix: x\n\ntask: t\n\n#123 follow-up", ["tools/a.mjs"], { editorUsed: false }).refusal !== undefined
+      && verdict("fix: x\n\ntask: t\n\n#123 follow-up", ["tools/a.mjs"], { editorUsed: false, cleanup: "strip" }).ok !== undefined],
+    ["commit.cleanup=scissors with an editor cuts git's template at the scissors line and keeps the '#' lines above it", verdict(`fix: x\n\ntask: t\n${scissorsTemplate}`, ["tools/a.mjs"], { cleanup: "scissors" }).ok !== undefined
+      && verdict(`fix: x\n\ntask: t\n\n#123 follow-up\n${scissorsTemplate}`, ["tools/a.mjs"], { cleanup: "scissors" }).refusal !== undefined],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
+}
+
+/** The merge law (mergeOwnFiles) the fence and commit-msg share: git's own merge when it can
+ *  make one, the since-the-base fallback when it cannot, and the octopus's first-parent reading. */
+function selfTestMergeLawCases(fail) {
+  const cases = [
+    ["a merge that keeps a stale side's copy over a change the other side made since the base is the merge's own — the stale-side reversion", mergeOwnFiles([["tools/pathspec.mjs"], []], [["tools/pathspec.mjs"], []]).join() === "tools/pathspec.mjs"
+      && mergeOwnFiles([["tools/a.mjs"], []], [[], ["tools/a.mjs"]]).length === 0
+      && mergeOwnFiles([["tools/evil.mjs", "tools/a.mjs"], ["tools/evil.mjs"]], [[], ["tools/a.mjs"]]).join() === "tools/evil.mjs"],
+    ["under git's own merge a file differing from both parents stays the merge's own, and a side's change the other side held is not", mergeOwnFiles([["tools/both.mjs", "tools/a.mjs"], ["tools/both.mjs"]], [], []).join() === "tools/both.mjs"
+      && mergeOwnFiles([[], ["tools/a.mjs"]], [[], ["tools/a.mjs"]], []).length === 0 && mergeOwnFiles([["tools/a.mjs"], []], [], ["tools/a.mjs"]).join() === "tools/a.mjs"],
+    ["a merge with no resolvable base judges every differing path, and an octopus answers for all it brings its first parent", mergeOwnFiles([["tools/a.mjs"], []], null).join() === "tools/a.mjs"
+      && mergeOwnFiles([["tools/a.mjs"], [], ["tools/a.mjs"]], [[], [], []]).join() === "tools/a.mjs"],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
+}
+
+/** The hook-line model the doctor certifies wiring with: the mode each transport needs, and a
+ *  verdict that actually reaches git. */
+function selfTestHookLineCases(fail) {
+  const cases = [
+    ["a bare fence hook does not certify the pre-push transport — the pushed-refs law runs only under --pre-push", !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs || exit 1\n", "pre-push") && invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --pre-push || exit 1\n", "pre-push")],
+    ["an unknown mode certifies nothing — fail closed, never the bare fence", !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs || exit 1\n", "no-such-mode")],
+    ["the detached-head guard's hook line certifies the guard and no task-coverage line does", invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\nnode tools/detached-head-guard.mjs || exit 1\n", "detached-head-guard") && !invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 1\n", "detached-head-guard")],
+    ["a verdict the shell throws away certifies nothing — a non-final bare hook line, '; exit 0', '|| echo', a trailing '&'", ![
+      ["#!/bin/sh\nnode tools/task-coverage.mjs --staged\nnode tools/detached-head-guard.mjs || exit 1\n", "staged"],
+      ["#!/bin/sh\nnode tools/task-coverage.mjs --pre-push\nnode tools/task-coverage.mjs --doctor || exit 1\n", "pre-push"],
+      ["node tools/task-coverage.mjs --staged; exit 0", "staged"],
+      ['node tools/task-coverage.mjs --commit-msg "$1" || echo x', "commit-msg"],
+      ["      run: node tools/task-coverage.mjs || echo fence-failed", "fence"],
+      ["      run: node tools/task-coverage.mjs &", "fence"],
+    ].some(([text, mode]) => invokesMode(text, mode))],
+    ["a verdict sh never hands git certifies nothing — '|| exit 0', '|| exit 256' (sh folds it to 0), a non-final sh -c wrapper, set -e undone by set +e", ![
+      ["#!/bin/sh\nnode tools/task-coverage.mjs --pre-push || exit 0\n", "pre-push"],
+      ["#!/bin/sh\nnode tools/task-coverage.mjs --pre-push || exit 256\n", "pre-push"],
+      ["#!/bin/sh\nnode tools/task-coverage.mjs --staged || exit 512\n", "staged"],
+      ['#!/bin/sh\nsh -c "node tools/task-coverage.mjs --pre-push || exit 1"\necho pushed\n', "pre-push"],
+      ["#!/bin/sh\nset -e\nset +e\nnode tools/task-coverage.mjs --pre-push\nnode tools/task-coverage.mjs --doctor || exit 1\n", "pre-push"],
+      ["#!/bin/sh\nset -eu\nset +o errexit\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged"],
+    ].some(([text, mode]) => invokesMode(text, mode)) && invokesMode("#!/bin/sh\nset -e\nset +x\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged")
+      && invokesMode("#!/bin/sh\nnode tools/task-coverage.mjs --pre-push || exit 257\necho pushed\n", "pre-push")],
+    ["a bare line still certifies where the shell carries its status — the hook's last command, after set -e, a CI step under bash -e", [
+      ['#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg "$1"\n', "commit-msg"],
+      ["#!/bin/sh\nset -eu\nnode tools/task-coverage.mjs --staged\nnode tools/detached-head-guard.mjs\n", "staged"],
+      ['      run: |\n          node tools/task-coverage.mjs --base "$BASE"\n          echo fenced\n', "fence"],
+      ['sh -c "node tools/task-coverage.mjs --staged || exit 2"', "staged"],
+    ].every(([text, mode]) => invokesMode(text, mode))],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
 }
 
 /** The commit-msg law at its seam, driven end to end with git's facts as data — the transport
  *  only gathers them, so every verdict below is the one the hook prints. */
 function selfTestCommitMsgCases(fail) {
-  const scopedExec = { schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-19T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "scope", patterns: ["tools/**"] }, { type: "transition", to: "executing" }] };
-  const planned = { ...scopedExec, id: "p", events: scopedExec.events.slice(0, 3) };
-  const records = { t: scopedExec, d: { ...scopedExec, id: "d", riskClass: "docs-only" }, p: planned, dp: { ...planned, id: "dp", riskClass: "docs-only" } };
-  const load = (id) => (records[id] ? { record: records[id] } : { error: `no task record for '${id}'` });
-  const verdict = (message, files, facts = {}) => commitMsgVerdict({ message, messageFile: ".git/COMMIT_EDITMSG", files, mergeParentFiles: [], addedLines: [], load, ...facts });
+  const verdict = commitMsgFixture();
   const key = `${["sk", "ant"].join("-")}-real0123456789abcdef`;
   const editorTail = "\n\n# Please enter the commit message for your changes. Lines starting\n# with '#' will be ignored, and an empty message aborts the commit.\n";
   const scissorsTail = "\n\n# ------------------------ >8 ------------------------\n# Do not modify or remove the line above.\ndiff --git a/tools/a.mjs b/tools/a.mjs\n+x\n";
   const refusalOf = (v) => v.refusal ?? "";
-  const reRuns = (v) => refusalOf(v).includes("git commit -F .git/COMMIT_EDITMSG") && !refusalOf(v).includes("--amend");
+  const reRuns = (v) => refusalOf(v).includes("git -c commit.cleanup=strip commit -F .git/COMMIT_EDITMSG") && !refusalOf(v).includes("--amend");
   const cases = [
     ["commit-msg scans a footerless no-code commit for secrets", (verdict("chore: env", [".env.production"], { addedLines: [{ file: ".env.production", line: 1, text: `ANTHROPIC_API_KEY=${key}` }] }).refusal ?? "").includes(".env.production:1")],
     ["commit-msg refusals re-run the refused commit and never print --amend", reRuns(verdict("fix: x", ["tools/a.mjs"])) && reRuns(verdict("fix: x\n\ntask: nosuch", ["tools/a.mjs"]))],
-    ["a merge staging only incoming code needs no footer while merge-own code still refuses", verdict("Merge branch 'feat'", ["tools/a.mjs"], { mergeParentFiles: [["docs/x.md"]] }).ok !== undefined && verdict("Merge branch 'feat'", ["tools/a.mjs", "tools/evil.mjs"], { mergeParentFiles: [["docs/x.md", "tools/evil.mjs"]] }).refusal !== undefined],
+    // mergeParents: per recorded parent (HEAD first), where the index differs and what that parent changed since the base.
+    ["a merge staging only incoming code needs no footer while merge-own code still refuses", verdict("Merge branch 'feat'", ["tools/a.mjs"], { mergeParents: { diffs: [["tools/a.mjs"], ["docs/x.md"]], changes: [["docs/x.md"], ["tools/a.mjs"]] } }).ok !== undefined && verdict("Merge branch 'feat'", ["tools/a.mjs", "tools/evil.mjs"], { mergeParents: { diffs: [["tools/a.mjs", "tools/evil.mjs"], ["docs/x.md", "tools/evil.mjs"]], changes: [["docs/x.md"], ["tools/a.mjs"]] } }).refusal !== undefined],
     ["an editor-composed footer survives git's comment block and the scissors tail", verdict(`fix: x\n\ntask: t${editorTail}`, ["tools/a.mjs"]).ok !== undefined && verdict(`fix: x\n\ntask: t${scissorsTail}`, ["tools/a.mjs"]).ok !== undefined],
     ["a record refusal at commit time prints its rule and the exact advance", ["\n  rule: ", "\n  fix: node tools/task-state.mjs advance p executing"].every((part) => (verdict("fix: x\n\ntask: p", ["tools/a.mjs"]).refusal ?? "").includes(part))],
     ["the staged scan refusal prints its rule and the re-run", ["\n  rule: ", "\n  fix: remove the named line"].every((part) => (verdict("chore: x", ["a.ts"], { addedLines: [{ file: "a.ts", line: 9, text: "  debugger;" }] }).refusal ?? "").includes(part))],
     ["a docs-only task cites its own no-code commit while code under it still refuses", verdict("docs: x\n\ntask: d", ["CONTEXT.md"]).ok !== undefined && verdict("docs: x\n\ntask: d", ["tools/a.mjs"]).refusal !== undefined],
     ["a planned docs-only task cited on a no-code commit is told to advance, not to open a code task", refusalOf(verdict("docs: x\n\ntask: dp", ["CONTEXT.md"])).includes("\n  fix: node tools/task-state.mjs advance dp executing")],
-    ["the re-run of a verbose editor's refused commit cuts the scissors tail (-v), so the fence reads the footer commit-msg read", refusalOf(verdict(`fix: x${scissorsTail}`, ["tools/a.mjs"])).includes("git commit -F .git/COMMIT_EDITMSG --cleanup=strip -v --trailer")],
+    ["the re-run of a verbose editor's refused commit cuts the scissors tail (-v), so the fence reads the footer commit-msg read", refusalOf(verdict(`fix: x${scissorsTail}`, ["tools/a.mjs"])).includes("git -c commit.cleanup=strip commit -F .git/COMMIT_EDITMSG -v --trailer")],
     ["the commit-msg transport reads a staged diff past Node's 1 MiB default buffer", gitOutCarriesLargeOutput()],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
@@ -1722,6 +1939,279 @@ function selfTestPushCases(fail) {
   const input = `refs/heads/smuggle ${"1".repeat(40)} refs/heads/smuggle ${zeros}\nrefs/heads/main ${"2".repeat(40)} refs/heads/main ${"3".repeat(40)}\n(delete) ${zeros} refs/heads/old ${"4".repeat(40)}\n`;
   const cases = [
     ["a pushed ref outside HEAD's history is refused while HEAD's own history and deletions pass", unfencedPushTips(input, (sha) => sha.startsWith("2")).join() === "refs/heads/smuggle"],
+    // git hands the hook the refspec's SOURCE verbatim, spaces included; `main` resolves in HEAD's
+    // history exactly as it would for the real ancestry fact.
+    ["a spaced refspec source cannot steer the sha the pre-push fence checks, and a line it cannot parse refuses", (() => {
+      const inHistory = (rev) => rev === "main" || rev.startsWith("2");
+      const outside = "1".repeat(40);
+      return unfencedPushTips(`other^{/fix main bug} ${outside} refs/heads/main ${"3".repeat(40)}\n`, inHistory).join() === "other^{/fix main bug}"
+        && unfencedPushTips(`other^{/revert 0 regressions} ${outside} refs/heads/y ${zeros}\n`, inHistory).length === 1
+        && unfencedPushTips("garbled\n", inHistory).length === 1;
+    })()],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
+}
+
+/** Self-test helper: a scratch git repo in `dir` that vendors this harness (tools/*.mjs, excluded
+ *  from git so it never stages) and runs its CLI there — the transports judged against git's REAL
+ *  output, not facts handed over as data. GIT_* is scrubbed (a hook's GIT_INDEX_FILE would aim
+ *  these writes at the real index) and so is the user's config (a global hooksPath or signing key
+ *  must not run here); CI too, which would skip the doctor's live checks. */
+function scratchRepo(dir) {
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_") && k !== "CI")), HOME: dir, XDG_CONFIG_HOME: dir, GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" };
+  const git = (...args) => execFileSync("git", args, { cwd: dir, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const write = (path, text) => {
+    mkdirSync(`${dir}/${path}`.replace(/\/[^/]*$/, ""), { recursive: true });
+    writeFileSync(`${dir}/${path}`, text);
+  };
+  git("init", "-q");
+  git("symbolic-ref", "HEAD", "refs/heads/main");
+  for (const f of readdirSync(`${ROOT}tools`).filter((x) => x.endsWith(".mjs"))) write(`tools/${f}`, readFileSync(`${ROOT}tools/${f}`, "utf8"));
+  write(".git/info/exclude", "tools/\n");
+  const commit = (path, text, message) => {
+    write(path, text);
+    git("add", "-A");
+    git("commit", "-q", "-m", message);
+    return git("rev-parse", "HEAD");
+  };
+  const message = (text) => {
+    write(".git/STALLION_MSG", text);
+    return `${dir}/.git/STALLION_MSG`;
+  };
+  const run = (args, extraEnv = {}, input = "") => {
+    const r = spawnSync(process.execPath, [`${dir}/tools/task-coverage.mjs`, ...args], { cwd: dir, env: { ...env, ...extraEnv }, input, encoding: "utf8" });
+    return { status: r.status, out: `${r.stdout}${r.stderr}` };
+  };
+  return { dir, git, write, commit, message, run };
+}
+
+/** Self-test helper: one scenario in a fresh scratch repo — a scenario that throws fails. */
+function inScratchRepo(scenario) {
+  const dir = mkdtempSync(`${tmpdir()}/task-coverage-repo-`);
+  try {
+    return scenario(scratchRepo(dir)) === true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** A path git C-quotes: a new code file with a non-ASCII byte in its name, footerless. */
+function quotedPathIsCode(r) {
+  const root = r.commit("README.md", "x\n", "docs: root");
+  r.write("apps/gaté.mjs", "export {};\n");
+  r.git("add", "-A");
+  const staged = r.run(["--staged"]);
+  const commitMsg = r.run(["--commit-msg", r.message("feat: add a gate\n")]);
+  r.git("commit", "-q", "-m", "feat: add a gate");
+  const fence = r.run(["--base", root]);
+  return staged.status === 1 && staged.out.includes("apps/gaté.mjs") && commitMsg.status === 1 && fence.status === 1 && fence.out.includes("touches code but carries no");
+}
+
+/** A rename out of the code trees: porcelain diff lists only the destination unless told not to. */
+function renameOutIsCode(r) {
+  r.commit("apps/gate.mjs", "export {};\n", "chore: root");
+  r.write("docs/.keep", "");
+  r.git("mv", "apps/gate.mjs", "docs/gate.txt");
+  const staged = r.run(["--staged"]);
+  const commitMsg = r.run(["--commit-msg", r.message("chore: move a file\n")]);
+  return staged.status === 1 && staged.out.includes("apps/gate.mjs") && commitMsg.status === 1 && commitMsg.out.includes("apps/gate.mjs");
+}
+
+/** The stale-side reversion through plain porcelain: a side branch forked before a fix is merged,
+ *  and the merge takes the side's (pre-fix) copy of the fixed file — with no footer. */
+function staleSideMergeRefuses(r) {
+  r.commit("apps/gate.mjs", "export const v = 1;\n", "chore: root");
+  r.git("checkout", "-q", "-b", "side");
+  r.commit("NOTE.md", "side\n", "docs: a side note");
+  r.git("checkout", "-q", "main");
+  const fix = r.commit("apps/gate.mjs", "export const v = 2;\n", "chore: the fix, settled before the base");
+  r.git("merge", "-q", "--no-ff", "--no-commit", "side");
+  const incoming = r.run(["--commit-msg", r.message("Merge branch 'side'\n")]);
+  r.git("checkout", "side", "--", "apps/gate.mjs");
+  const reverted = r.run(["--commit-msg", r.message("Merge branch 'side'\n")]);
+  r.git("commit", "-q", "-m", "Merge branch 'side'");
+  const fence = r.run(["--base", fix]);
+  return incoming.status === 0 && reverted.status === 1 && reverted.out.includes("apps/gate.mjs") && fence.status === 1 && fence.out.includes("touches code but carries no");
+}
+
+/** A merge git resolves cleanly, committed as git wrote it, where one side's change already sits
+ *  in the other (a cherry-pick): nothing in it is the merge's own — only the side's commit is
+ *  judged, as its own. */
+function subsumedChangeMergePasses(r) {
+  const gate = (a, b) => `export const a = ${a};\n\n\n\n\n\nexport const b = ${b};\n`;
+  r.commit("apps/gate.mjs", gate(1, 1), "chore: root");
+  r.git("checkout", "-q", "-b", "side");
+  const side = r.commit("apps/gate.mjs", gate(2, 1), "fix: a");
+  r.git("checkout", "-q", "main");
+  r.git("cherry-pick", "-x", side);
+  r.commit("apps/gate.mjs", gate(2, 2), "fix: b");
+  r.git("merge", "-q", "--no-ff", "--no-commit", "side");
+  const commitMsg = r.run(["--commit-msg", r.message("Merge branch 'side'\n")]);
+  r.git("commit", "-q", "-m", "Merge branch 'side'");
+  const fence = r.run(["--base", "HEAD^1"]);
+  return commitMsg.status === 0 && fence.out.includes(`✖ ${side.slice(0, 8)} touches code`) && !fence.out.includes(`✖ ${r.git("rev-parse", "HEAD").slice(0, 8)}`);
+}
+
+/** A conflict's resolution is the merge's own: a file the mainline deleted, restored from the side
+ *  that modified it — the copy git leaves in its own merged tree, so only the conflict marks it. */
+function conflictResolutionIsOwn(r) {
+  r.commit("apps/old.mjs", "export const v = 1;\n", "chore: root");
+  r.git("checkout", "-q", "-b", "side");
+  r.commit("apps/old.mjs", "export const v = 2;\n", "fix: side");
+  r.git("checkout", "-q", "main");
+  r.git("rm", "-q", "apps/old.mjs");
+  r.git("commit", "-q", "-m", "chore: retire old");
+  const tip = r.git("rev-parse", "HEAD");
+  try {
+    r.git("merge", "-q", "--no-ff", "--no-commit", "side");
+  } catch {
+    // modify/delete: git stops for the resolution this scenario makes
+  }
+  r.git("add", "apps/old.mjs");
+  const commitMsg = r.run(["--commit-msg", r.message("Merge branch 'side'\n")]);
+  r.git("commit", "-q", "-m", "Merge branch 'side'");
+  const fence = r.run(["--base", tip]);
+  return commitMsg.status === 1 && commitMsg.out.includes("apps/old.mjs") && fence.out.includes(`✖ ${r.git("rev-parse", "HEAD").slice(0, 8)} touches code`);
+}
+
+/** A merge with no base git can see (unrelated histories, a shallow clone's cut): every path that
+ *  differs from a parent is judged — the orphan side's stale copy of a mainline file included. */
+function baselessMergeJudgesEveryDifference(r) {
+  const tip = r.commit("apps/gate.mjs", "export const v = 2;\n", "chore: root");
+  r.git("checkout", "-q", "--orphan", "old");
+  r.commit("apps/gate.mjs", "export const v = 1;\n", "chore: an unrelated root");
+  r.git("checkout", "-q", "main");
+  r.git("merge", "-q", "--no-commit", "--allow-unrelated-histories", "-s", "ours", "old");
+  r.git("checkout", "old", "--", "apps/gate.mjs");
+  const commitMsg = r.run(["--commit-msg", r.message("Merge branch 'old'\n")]);
+  r.git("commit", "-q", "-m", "Merge branch 'old'");
+  const fence = r.run(["--base", tip]);
+  return commitMsg.status === 1 && commitMsg.out.includes("apps/gate.mjs") && fence.out.includes(`✖ ${r.git("rev-parse", "HEAD").slice(0, 8)} touches code`);
+}
+
+/** Hand-written MERGE_HEADs git reduces away: an ancestor alone (git records one parent), and an
+ *  octopus whose ancestor parent git drops while the file it last touched differs from both kept
+ *  parents — commit-msg must judge the parents git will record. */
+function reducedParentsNarrowNothing(r) {
+  const root = r.commit("apps/gate.mjs", "export const v = 1;\n", "chore: root");
+  r.commit("apps/gate.mjs", "export const v = 2;\n", "chore: the fix");
+  r.git("checkout", root, "--", "apps/gate.mjs");
+  r.write(".git/MERGE_HEAD", `${root}\n`);
+  const ancestor = r.run(["--commit-msg", r.message("Merge branch 'registry'\n")]);
+  r.git("reset", "-q", "--hard");
+  r.git("checkout", "-q", "-b", "other", root);
+  const other = r.commit("NOTE.md", "other\n", "docs: other");
+  r.git("checkout", "-q", "main");
+  const q = r.commit("apps/gate.mjs", "export const v = 3;\n", "chore: q");
+  r.commit("apps/gate.mjs", "export const v = 1;\n", "chore: s restores v1");
+  r.git("merge", "-q", "--no-commit", other);
+  r.git("checkout", q, "--", "apps/gate.mjs");
+  r.write(".git/MERGE_HEAD", `${q}\n${other}\n`);
+  const octopus = r.run(["--commit-msg", r.message("Merge q and other\n")]);
+  return ancestor.status === 1 && ancestor.out.includes("apps/gate.mjs") && octopus.status === 1 && octopus.out.includes("apps/gate.mjs");
+}
+
+/** An octopus git records whole (MERGE_MODE no-ff): its one base predates the mainline's fix,
+ *  so only the first-parent reading sees the stale copy an ancestor parent brings back. */
+function octopusAnswersToFirstParent(r) {
+  const root = r.commit("apps/gate.mjs", "export const v = 1;\n", "chore: root");
+  r.git("checkout", "-q", "-b", "other", root);
+  const other = r.commit("NOTE.md", "other\n", "docs: other");
+  r.git("checkout", "-q", "main");
+  const q = r.commit("apps/gate.mjs", "export const v = 3;\n", "chore: q");
+  const s = r.commit("apps/gate.mjs", "export const v = 1;\n", "chore: s fixes q");
+  r.git("merge", "-q", "--no-commit", other);
+  r.git("checkout", q, "--", "apps/gate.mjs");
+  r.write(".git/MERGE_HEAD", `${q}\n${other}\n`);
+  r.write(".git/MERGE_MODE", "no-ff");
+  const commitMsg = r.run(["--commit-msg", r.message("Merge q and other\n")]);
+  r.git("commit", "-q", "-m", "Merge q and other");
+  const fence = r.run(["--base", s]);
+  return commitMsg.status === 1 && r.git("show", "-s", "--format=%P").split(" ").length === 3 && fence.status === 1 && fence.out.includes("touches code but carries no");
+}
+
+/** A porcelain octopus from a HEAD both heads contain: git drops HEAD and records a two-parent
+ *  merge, so commit-msg judges that merge — incoming code from a side is not the merge's own.
+ *  Under MERGE_MODE no-ff git keeps HEAD, records the octopus, and the octopus law applies. */
+function porcelainOctopusIsJudgedAsRecorded(r) {
+  const root = r.commit("README.md", "x\n", "docs: root");
+  r.git("checkout", "-q", "-b", "x");
+  const x = r.commit("apps/a.mjs", "export {};\n", "feat: a, judged as its own commit");
+  r.git("checkout", "-q", "-b", "y", root);
+  const y = r.commit("docs/y.md", "y\n", "docs: y");
+  r.git("checkout", "-q", "main");
+  r.git("merge", "-q", "--no-commit", x, y);
+  const reduced = r.run(["--commit-msg", r.message("Merge x and y\n")]);
+  r.write(".git/MERGE_MODE", "no-ff");
+  const kept = r.run(["--commit-msg", r.message("Merge x and y\n")]);
+  return reduced.status === 0 && kept.status === 1 && kept.out.includes("apps/a.mjs");
+}
+
+/** git's cleanup as the hook sees it: no editor (GIT_EDITOR=:) keeps '#' lines; commit.cleanup=strip,
+ *  handed down through `git -c`, strips them. */
+function noEditorKeepsHashLines(r) {
+  r.commit("README.md", "x\n", "docs: root");
+  r.write("apps/a.mjs", "export {};\n");
+  r.git("add", "-A");
+  const msg = r.message("fix: x\n\ntask: nosuch\n\n#123 follow-up\n");
+  const raw = r.run(["--commit-msg", msg], { GIT_EDITOR: ":" });
+  const strip = r.run(["--commit-msg", msg], { GIT_EDITOR: ":", GIT_CONFIG_PARAMETERS: "'commit.cleanup=strip'" });
+  return raw.status === 1 && raw.out.includes("carries no 'task: <id>' footer") && strip.status === 1 && strip.out.includes("no task record for 'nosuch'");
+}
+
+/** The pre-push transport itself: git's stdin lines, the real ancestry fact, the dispatch. */
+function prePushTransport(r) {
+  const root = r.commit("README.md", "x\n", "docs: root");
+  r.git("checkout", "-q", "-b", "side");
+  const side = r.commit("NOTE.md", "side\n", "docs: side");
+  r.git("checkout", "-q", "main");
+  r.commit("CHANGES.md", "y\n", "docs: main");
+  const zeros = "0".repeat(40);
+  const push = (line) => r.run(["--pre-push", "--base", root], {}, `${line}\n`);
+  const ancestor = push(`refs/heads/old ${root} refs/heads/old ${zeros}`);
+  const outside = push(`refs/heads/side ${side} refs/heads/side ${zeros}`);
+  return ancestor.status === 0 && outside.status === 1 && outside.out.includes("outside the checked-out history: refs/heads/side");
+}
+
+/** The doctor over committed and live hooks as this harness wires them: a bare pre-push and a
+ *  pre-commit without the detached-head guard are refused, the wired forms certified. */
+function doctorSeesHookControls(r) {
+  const writeHooks = (prePush, preCommit) => {
+    r.write(".githooks/pre-push", `#!/bin/sh\n${prePush}\n`);
+    r.write(".githooks/pre-commit", `#!/bin/sh\n${preCommit}\n`);
+    r.write(".githooks/commit-msg", '#!/bin/sh\nnode tools/task-coverage.mjs --commit-msg "$1" || exit 1\n');
+    r.git("add", "-A");
+    r.git("commit", "-q", "-m", "chore: hooks");
+    r.git("config", "core.hooksPath", ".githooks");
+    const out = r.run(["--doctor"]).out;
+    r.git("config", "--unset", "core.hooksPath");
+    return out;
+  };
+  const stale = writeHooks("node tools/task-coverage.mjs || exit 1", "node tools/task-coverage.mjs --staged || exit 1");
+  const wired = writeHooks("node tools/task-coverage.mjs --pre-push || exit 1", "node tools/task-coverage.mjs --staged || exit 1\nnode tools/detached-head-guard.mjs || exit 1");
+  const checks = ["pre-push hook committed and invoking the push fence", "pre-commit detached-head guard committed", "core.hooksPath points at a wired pre-push", "core.hooksPath points at a pre-commit running the detached-head guard"];
+  return checks.every((name) => stale.includes(`✖ ${name}`) && wired.includes(`✔ ${name}`));
+}
+
+/** The transports end to end, in scratch repos: the pure seams take git's facts as data, so only
+ *  here do git's quoting, rename detection, merge state, cleanup, and pre-push stdin reach them. */
+function selfTestTransportCases(fail) {
+  const cases = [
+    ["a code path git C-quotes, non-ASCII, is code at the staged gate, commit-msg, and the fence", inScratchRepo(quotedPathIsCode)],
+    ["a rename out of the code trees is judged as the code deletion it is at the staged gate and commit-msg", inScratchRepo(renameOutIsCode)],
+    ["a merge that takes a stale side's copy over the mainline's fix refuses at commit-msg and the fence", inScratchRepo(staleSideMergeRefuses)],
+    ["a clean merge whose side change the mainline already holds (a cherry-pick) is not the merge's own at commit-msg or the fence", inScratchRepo(subsumedChangeMergePasses)],
+    ["a merge with no resolvable base judges every differing path at commit-msg and the fence — an orphan side's stale copy refuses", inScratchRepo(baselessMergeJudgesEveryDifference)],
+    ["a conflict's resolution is the merge's own at commit-msg and the fence, even where it matches git's merged tree", inScratchRepo(conflictResolutionIsOwn)],
+    ["a hand-written MERGE_HEAD parent git will reduce away narrows nothing at commit-msg", inScratchRepo(reducedParentsNarrowNothing)],
+    ["an octopus answers for everything it brings its first parent at commit-msg and the fence", inScratchRepo(octopusAnswersToFirstParent)],
+    ["a porcelain octopus is judged as the merge git records: HEAD dropped, a two-parent merge; no-ff, the octopus", inScratchRepo(porcelainOctopusIsJudgedAsRecorded)],
+    ["commit-msg reads the message git will commit: no editor keeps '#' lines, commit.cleanup=strip drops them", inScratchRepo(noEditorKeepsHashLines)],
+    ["the pre-push transport judges git's stdin refs through the real ancestry fact", inScratchRepo(prePushTransport)],
+    ["the doctor refuses a bare pre-push and a guardless pre-commit, committed and live, and certifies the wired forms", inScratchRepo(doctorSeesHookControls)],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
   return cases.length;
