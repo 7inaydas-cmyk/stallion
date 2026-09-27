@@ -136,6 +136,124 @@
       "seq": 12,
       "parent_hash": "ac62ba6c9770aba6ffd451ea966a9644c9c4e6c5b923d025418b3fad15936b87",
       "entry_hash": "144a9831f6a0e0365b9c3dd275dbd85b63c2db4890b2043a499120c00e730dbe"
+    },
+    {
+      "at": "2026-09-27T08:03:53.255Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 13,
+      "parent_hash": "144a9831f6a0e0365b9c3dd275dbd85b63c2db4890b2043a499120c00e730dbe",
+      "entry_hash": "0304f9a015a134d97aa0fdbafb60f431609bbfc57cad5b9cbea2fc46c5067d77"
+    },
+    {
+      "at": "2026-09-27T09:51:06.299Z",
+      "type": "red-check",
+      "expect": "bench: chunk-generator: the spec states the call-time RangeError its hidden suite grades",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 14,
+      "parent_hash": "0304f9a015a134d97aa0fdbafb60f431609bbfc57cad5b9cbea2fc46c5067d77",
+      "entry_hash": "4a71f6a1aba60df2bd26a41a2e98caf8c422f347c3e57e3d247055eb777239b1"
+    },
+    {
+      "at": "2026-09-27T09:51:13.844Z",
+      "type": "red-check",
+      "expect": "bench: the graded module cannot disarm the judge \\(node:assert and node:assert/strict are frozen before it loads\\)",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 15,
+      "parent_hash": "4a71f6a1aba60df2bd26a41a2e98caf8c422f347c3e57e3d247055eb777239b1",
+      "entry_hash": "8df8aa7d9d93b1203492ad2a75deb0d1bd6014292c2f253760d72352586afa4d"
+    },
+    {
+      "at": "2026-09-27T09:51:21.290Z",
+      "type": "red-check",
+      "expect": "bench: a correct module that logs heavily still grades \\(the grader's buffer outlasts its log\\)",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 16,
+      "parent_hash": "8df8aa7d9d93b1203492ad2a75deb0d1bd6014292c2f253760d72352586afa4d",
+      "entry_hash": "52f7c4e3076bb33a409a364c7ea604e4fd852cf305754cbbd0836af172f2dbe7"
+    },
+    {
+      "at": "2026-09-27T09:51:29.084Z",
+      "type": "red-check",
+      "expect": "bench: a run past the grader's output buffer is refused as a buffer kill, not as printing no TAP results",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 17,
+      "parent_hash": "52f7c4e3076bb33a409a364c7ea604e4fd852cf305754cbbd0836af172f2dbe7",
+      "entry_hash": "3f8c36c057cad0e9d55a4efe093c4f5e98532901299841dd39bf516a6639b7e2"
+    },
+    {
+      "at": "2026-09-27T09:51:36.570Z",
+      "type": "red-check",
+      "expect": "bench: a planted \\.bench-acceptance\\.mjs is refused, never written through, and left as evidence",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 18,
+      "parent_hash": "3f8c36c057cad0e9d55a4efe093c4f5e98532901299841dd39bf516a6639b7e2",
+      "entry_hash": "03bc5f601941165cd5b7d1e9e6d0cf0394135c51c2651e3eab598650b1c81eed"
+    },
+    {
+      "at": "2026-09-27T09:51:44.221Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the derived battery reaches nested members on a Node without readdir's recursive option",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 19,
+      "parent_hash": "03bc5f601941165cd5b7d1e9e6d0cf0394135c51c2651e3eab598650b1c81eed",
+      "entry_hash": "9c29175b600855a0d5fba73e54ef9f6b29ec0c142cd1a535c16e2250476e5b75"
+    },
+    {
+      "at": "2026-09-27T09:51:51.834Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the AGENTS stanza's pin clears GREEN at done on a passing run with a failing test\\.todo",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 20,
+      "parent_hash": "9c29175b600855a0d5fba73e54ef9f6b29ec0c142cd1a535c16e2250476e5b75",
+      "entry_hash": "5d714bd312b122d0b557cb0815e7cee80281bdc2f031ba60a5303793e4581d07"
+    },
+    {
+      "at": "2026-09-27T09:51:59.094Z",
+      "type": "red-check",
+      "expect": "bench: both arms carry the task's spec word for word as TASK\\.md",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e2011afa958a",
+      "seq": 21,
+      "parent_hash": "5d714bd312b122d0b557cb0815e7cee80281bdc2f031ba60a5303793e4581d07",
+      "entry_hash": "05b2572580cfcb08616146af5c3823b50d30f8546f5d3fc61bf2652ce9adc716"
+    },
+    {
+      "at": "2026-09-27T10:11:01.434Z",
+      "type": "red-check",
+      "expect": "bench: a run the buffer kills after every ok line is still refused as a buffer kill \\(a complete tally is no verdict\\)",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "aa61e7b9e6cc",
+      "seq": 22,
+      "parent_hash": "05b2572580cfcb08616146af5c3823b50d30f8546f5d3fc61bf2652ce9adc716",
+      "entry_hash": "5e6b77f4aec32d1288574caf9d9cf442816ddd9a97d4e6e1584aa1e527b3e9b4"
+    },
+    {
+      "at": "2026-09-27T10:11:29.971Z",
+      "type": "red-check",
+      "expect": "bench: treatment: the derived battery keeps its nested members when node:fs readdirSync ignores `recursive`",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "99e1154dfcfd",
+      "seq": 23,
+      "parent_hash": "5e6b77f4aec32d1288574caf9d9cf442816ddd9a97d4e6e1584aa1e527b3e9b4",
+      "entry_hash": "05e7ad5e53ae5a344689593e5a42f102bfb63ff5cdef6aeb13dc1606ec9cf682"
     }
   ]
 }

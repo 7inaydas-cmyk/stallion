@@ -4,16 +4,19 @@
  *  setup.mjs <arm> <taskId> <dir>
  *    arm = treatment | control
  *
- *  Both arms get the same seed: apps/lib/<module>.mjs + the visible test, git-initialized, one
- *  seed commit. TREATMENT additionally gets the COMMIT-TIME subset of docs/WIRING.md: the
- *  lifecycle tools (§2's six core members closed over their imports, plus the §7 ZCode
- *  plugin), a selftest battery DERIVED from what was vendored (the doctor's own membership
- *  law — THE BATTERY LAW forbids a hand-kept list), .githooks/ with the staged + commit-msg
- *  gates wired via core.hooksPath, the empty tasks/ state dir, the decisions register, the
- *  adversarial checklist, and the AGENTS.md law stanza. Deliberately OMITTED, so the doctor
- *  still reports them: the push side (pre-push, CI, .stallion-base — the benchmark measures
- *  commit-time behavior) and the §11 gates family with docs/gates/ (repo-specific config, and
- *  complexity-gate's TypeScript peer, that would hand the arm a battery red on day one).
+ *  Both arms get the same seed: TASK.md (the task's spec, word for word — the agent's brief,
+ *  delivered by the kit rather than a hand copy from the answer-key file), apps/lib/<module>.mjs
+ *  + the visible test, git-initialized, one seed commit. TREATMENT additionally gets the
+ *  COMMIT-TIME subset of docs/WIRING.md: the lifecycle tools (§2's six core members closed over
+ *  their imports — today that closure also carries §11's pathspec, retrospective and
+ *  test-lint — plus the §7 ZCode plugin), a selftest battery DERIVED from what was vendored (the
+ *  doctor's own membership law — THE BATTERY LAW forbids a hand-kept list), .githooks/ with the
+ *  staged + commit-msg gates wired via core.hooksPath, the empty tasks/ state dir, the decisions
+ *  register, the adversarial checklist, and the AGENTS.md law stanza. Deliberately OMITTED, so
+ *  the doctor still reports them: the push side (pre-push, CI, .stallion-base — the benchmark
+ *  measures commit-time behavior) and the rest of the §11 gates family with docs/gates/
+ *  (repo-specific config, and complexity-gate's TypeScript peer, that would hand the arm a
+ *  battery red on day one).
  *  CONTROL gets none of it: a plain repo. The only difference between arms is the harness. */
 import { cpSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -30,7 +33,10 @@ const STALLION_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const CORE = ["task-findings.mjs", "task-state.mjs", "adversarial-runner.mjs", "task-workspace.mjs", "task-coverage.mjs", "task-gate.mjs"];
 
 /** The stanza's red-check line pins the TAP reporter, as the grader does: Node 23+ defaults
- *  `node --test` to spec even when piped, and spec never prints the "not ok" the pin expects. */
+ *  `node --test` to spec even when piped, and spec never prints the TAP summary the pin expects.
+ *  Its signature is that summary's failure count, "# fail [1-9]": a bare "not ok" also matches a
+ *  PASSING run's failing test.todo ("not ok N - … # TODO", exit 0, "# fail 0"), which `done`
+ *  re-runs as a vacuous green and refuses (a sweep caught it). */
 const AGENTS_STANZA = `# AGENTS.md
 
 Code in this repo is written under the stallion task lifecycle.
@@ -41,7 +47,7 @@ Code in this repo is written under the stallion task lifecycle.
 - Declare the blast radius when planning: \`node tools/task-state.mjs scope <id> --add "apps/lib/**"\`.
 - Commits that touch code carry a \`task: <id>\` footer on its own line, in the final trailer
   block of the message.
-- \`verified\` needs a command pin: run \`node tools/task-state.mjs red-check <id> --command "node --test --test-reporter=tap apps/lib/<module>.test.mjs" --expect "not ok"\`
+- \`verified\` needs a command pin: run \`node tools/task-state.mjs red-check <id> --command "node --test --test-reporter=tap apps/lib/<module>.test.mjs" --expect "# fail [1-9]"\`
   while the tests still FAIL, before you fix the code.
 - \`done\` needs a clean adversarial pass (the operator dispatches it) and every pin re-run GREEN.
 - Refusals print the rule, the evidence, and an exact fix command. Run the fix. Do not work
@@ -69,11 +75,22 @@ function lifecycleClosure() {
   return [...seen];
 }
 
+/** Every file under <abs>, relative to it — the doctor's own traversal (withFileTypes, dot
+ *  entries skipped), never readdir's `recursive` option, which Node 18.0–18.16 silently ignores:
+ *  there the battery lost every nested member while package.json still promises Node >=18. */
+function toolFiles(abs, rel) {
+  return readdirSync(abs, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name.startsWith(".")) return [];
+    const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
+    return entry.isDirectory() ? toolFiles(`${abs}/${entry.name}`, entryRel) : [entryRel];
+  });
+}
+
 /** The sandbox battery, DERIVED from the vendored tree with the doctor's own membership test:
  *  every vendored .mjs, at any depth, that dispatches on --self-test. A hand-kept list drifted
  *  to six of twenty-two vendored members while the doctor inside the sandbox refused it. */
-function derivedBattery(dir) {
-  return readdirSync(`${dir}/tools`, { recursive: true })
+export function derivedBattery(dir) {
+  return toolFiles(`${dir}/tools`, "")
     .filter((f) => f.endsWith(".mjs") && dispatchesSelfTest(stripComments(readFileSync(`${dir}/tools/${f}`, "utf8"))))
     .sort()
     .map((f) => `node tools/${f} --self-test`)
@@ -120,6 +137,7 @@ function setup(arm, taskId, dir) {
   // (a sweep caught all four disagreeing for the feature tasks — spec-faithful work graded
   // against a stub; then scripts.test still naming taskId while the file is <module>.test.mjs,
   // leaving `npm test` pointing at nothing for chunk-generator and csv-fields).
+  writeFileSync(`${dir}/TASK.md`, `${task.spec}\n`);
   writeFileSync(`${dir}/apps/lib/${task.module}.mjs`, task.seed);
   writeFileSync(`${dir}/apps/lib/${task.module}.test.mjs`, task.visibleTest);
   const pkg = { name: `bench-${arm}-${taskId}`, type: "module", private: true, scripts: { test: `node --test apps/lib/${task.module}.test.mjs` } };
@@ -130,7 +148,7 @@ function setup(arm, taskId, dir) {
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "chore: seed the task");
   if (arm === "treatment") vendorHarness(dir, task, pkg);
-  console.log(`${arm}/${taskId}: sandbox ready at ${dir}`);
+  console.log(`${arm}/${taskId}: sandbox ready at ${dir} — the agent's brief is ${dir}/TASK.md`);
 }
 
 // Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and

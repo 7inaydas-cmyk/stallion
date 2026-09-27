@@ -220,7 +220,9 @@ test("constructor rejects bad capacity", () => {
     spec: `Implement the chunk generator in apps/lib/chunk.mjs: chunk(iterable, n) yields chunks of
 exactly n items, in order, with a final partial chunk holding the remainder (or nothing if the
 length divides evenly). n must be a positive integer — otherwise throw RangeError with a
-message containing "n". Works over any iterable (arrays, generators, Sets), each chunk an
+message containing "n"; a bad n throws as soon as chunk() is called, before any iteration,
+while the chunks themselves stay lazy (nothing is pulled from the iterable before the first
+next()). Works over any iterable (arrays, generators, Sets), each chunk an
 array — except a string, which chunks by UTF-16 code unit into strings (chunk("abcde", 2)
 yields "ab", "cd", "e"). The visible tests are the starting bar.`,
     seed: `export function chunk(iterable, n) {
