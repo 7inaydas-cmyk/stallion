@@ -27,13 +27,13 @@
  * executing gate does not live in (born-scoped), an undeclared file under the corpus, a patched
  * or deleted vendored file, or a mapped doc that does not exist each refuse with a re-vendor
  * remedy. A deleted manifest is NOT an escape: bare mode fails closed on absence. `--upstream`:
- * for stallion's own battery — asserts this tree carries no vendor manifest anywhere (default
- * path plus a tracked-file sweep), because stallion does not vendor itself and a manifest here
- * would be a forged provenance marker. `--freshness <path>`: wave-intake law — points at a local
- * clone of the upstream repo and answers "has upstream moved past our pin, and did anything
- * VENDORED move with it"; a moved vendored source owes a re-vendor before the wave proceeds,
- * an upstream that moved only its own task registers owes nothing. `--manifest <path>` overrides
- * the location for every mode.
+ * for stallion's own battery — asserts the tree this gate ships in carries no vendor manifest
+ * anywhere (default path plus a tracked-file sweep, from any cwd), because stallion does not vendor
+ * itself and a manifest here would be a forged provenance marker. `--freshness <path>`: wave-intake
+ * law — points at a local clone of the upstream repo and answers "has upstream moved past our pin,
+ * and did anything VENDORED move with it"; a moved vendored source owes a re-vendor before the
+ * wave proceeds, an upstream that moved only its own task registers owes nothing, and a source the
+ * pin's tree does not hold refuses. `--manifest <path>` overrides the location for every mode.
  *
  * HONEST LIMIT (the lane-1 finding): `upstream` is recorded provenance, verified by shape only —
  * a host without stallion's git history cannot machine-check the sha offline. Every refusal
@@ -42,7 +42,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -92,12 +92,21 @@ function entryShapeRefusal(path, entry) {
   return ok ? null : `manifest.files[${JSON.stringify(path)}] must be { source: string, sha256: string, adapted: boolean }, got ${JSON.stringify(entry)}`;
 }
 
+/** Doc-map clauses: when present, docs is upstream doc path → host doc path. An ARRAY's keys are its
+ *  indices, which name no upstream doc, so a moved law doc was never counted (freshness failed OPEN). */
+function docsShapeRefusal(manifest) {
+  const docs = manifest.docs;
+  if (docs === undefined) return null;
+  const ok = docs !== null && typeof docs === "object" && !Array.isArray(docs) && Object.values(docs).every((hostDoc) => typeof hostDoc === "string" && hostDoc.length > 0);
+  return ok ? null : `manifest.docs must be an object of upstream doc path → host doc path, got ${JSON.stringify(docs)}`;
+}
+
 /**
  * Shape law, pure. A manifest that fails any clause fails CLOSED — an unparseable or
  * half-written manifest proves nothing, so it must never read as a clean tree.
  */
 export function manifestShapeRefusal(manifest) {
-  return provenanceShapeRefusal(manifest) ?? corpusShapeRefusal(manifest);
+  return provenanceShapeRefusal(manifest) ?? corpusShapeRefusal(manifest) ?? docsShapeRefusal(manifest);
 }
 
 /** The undeclared law: everything under the corpus directory must be declared in the manifest. */
@@ -180,11 +189,19 @@ export function driftVerdict({ manifest, corpusFiles, digests, existingDocs, gat
  * behind with nothing vendored touched is fresh-for-the-wave (upstream's own task registers are
  * not our corpus); a pin behind with vendored sources moved names exactly what a re-vendor owes.
  * The shape law runs first: a manifest without a usable pin never answers a freshness question.
+ * Then every source must be a file in `upstreamAtPin` (the pin's tree): moved is an exact match
+ * against upstream's diff, so a source naming no file at the pin (a ./ prefix, a stale pre-rename
+ * path, a typo) could never move and read FRESH through any change to the file it meant.
  */
-export function freshnessVerdict({ manifest, upstreamHead, upstreamChanged }) {
+export function freshnessVerdict({ manifest, upstreamHead, upstreamChanged, upstreamAtPin }) {
   const shape = manifestShapeRefusal(manifest);
   if (shape !== null) return { refuse: true, reason: shape };
   const sources = new Set([...Object.values(manifest.files).map((e) => e.source), ...Object.keys(manifest.docs ?? {})]);
+  const atPin = new Set(upstreamAtPin);
+  const phantoms = [...sources].filter((s) => !atPin.has(s));
+  if (phantoms.length > 0) {
+    return { refuse: true, reason: `${phantoms.length} vendored source(s) name no file upstream at the pin ${manifest.upstream.slice(0, 10)}, so freshness can never see them move: ${phantoms.join(", ")}` };
+  }
   const moved = [...sources].filter((s) => upstreamChanged.includes(s));
   return { fresh: manifest.upstream === upstreamHead, moved, pin: manifest.upstream, head: upstreamHead };
 }
@@ -223,6 +240,8 @@ function selfTestShape(upstream, good) {
     [good({ files: { x: { sha256: "aa", adapted: false } } }), "entry missing source"],
     [good({ files: { x: { source: "tools/x.mjs", adapted: false } } }), "entry missing sha256"],
     [good({ files: { x: null } }), "null entry"],
+    [good({ docs: ["docs/harness/TASK-LIFECYCLE.md"] }), "array docs map"],
+    [good({ docs: { "docs/TASK-LIFECYCLE.md": 7 } }), "non-string doc target"],
     [good(), null],
   ];
   let failures = 0;
@@ -403,33 +422,28 @@ export function selfTest() {
 function selfTestFreshness(good) {
   const pin = "a".repeat(40);
   const head = "b".repeat(40);
+  // The upstream tree AT THE PIN: every source and doc key the good manifest names lives here.
+  const atPin = ["tools/task-state.mjs", "tools/pathspec.mjs", "docs/TASK-LIFECYCLE.md", "README.md"];
+  const verdict = (manifest, upstreamChanged, upstreamHead = head) => freshnessVerdict({ manifest, upstreamHead, upstreamChanged, upstreamAtPin: atPin });
   let failures = 0;
   const fail = (m) => {
     failures += 1;
     console.error(`vendor-drift SELF-TEST FAIL: ${m}`);
   };
+  const phantomSource = { "task-state.mjs": { source: "./tools/task-state.mjs", sha256: "aa", adapted: true } };
   const cases = [
-    ["a manifest pinned to the upstream HEAD is fresh", typeof freshnessVerdict === "function" && freshnessVerdict({ manifest: good({ upstream: head }), upstreamHead: head, upstreamChanged: [] }).fresh],
+    ["a manifest pinned to the upstream HEAD is fresh", verdict(good({ upstream: head }), []).fresh],
     ["a moved upstream with NO vendored source touched owes nothing (fresh-for-the-wave)", (() => {
-      if (typeof freshnessVerdict !== "function") return false;
-      const v = freshnessVerdict({ manifest: good({ upstream: pin }), upstreamHead: head, upstreamChanged: ["tasks/x.json", "README.md"] });
+      const v = verdict(good({ upstream: pin }), ["tasks/x.json", "README.md"]);
       return !v.fresh && v.moved.length === 0;
     })()],
-    ["a moved vendored source is named as owed", (() => {
-      if (typeof freshnessVerdict !== "function") return false;
-      const v = freshnessVerdict({ manifest: good({ upstream: pin }), upstreamHead: head, upstreamChanged: ["tools/task-state.mjs", "tasks/x.json"] });
-      return !v.fresh && v.moved.join() === "tools/task-state.mjs";
-    })()],
-    ["a moved doc-map upstream doc is named as owed", (() => {
-      if (typeof freshnessVerdict !== "function") return false;
-      const v = freshnessVerdict({ manifest: good({ upstream: pin }), upstreamHead: head, upstreamChanged: ["docs/TASK-LIFECYCLE.md"] });
-      return !v.fresh && v.moved.join() === "docs/TASK-LIFECYCLE.md";
-    })()],
-    ["a manifest with a null upstream pin refuses freshness (shape law first)", (() => {
-      if (typeof freshnessVerdict !== "function") return false;
-      const v = freshnessVerdict({ manifest: good({ upstream: null }), upstreamHead: head, upstreamChanged: [] });
-      return v.refuse === true;
-    })()],
+    ["a moved vendored source is named as owed", verdict(good({ upstream: pin }), ["tools/task-state.mjs", "tasks/x.json"]).moved?.join() === "tools/task-state.mjs"],
+    ["a moved doc-map upstream doc is named as owed", verdict(good({ upstream: pin }), ["docs/TASK-LIFECYCLE.md"]).moved?.join() === "docs/TASK-LIFECYCLE.md"],
+    ["a manifest with a null upstream pin refuses freshness (shape law first)", verdict(good({ upstream: null }), []).refuse === true],
+    // A source the pin's tree does not hold can never appear in upstream's diff: it read unmoved
+    // (FRESH) through any change to the file it meant — a ./ prefix, a stale pre-rename path, a typo.
+    ["freshness — a source that names no file upstream at the pin refuses, never reads unmoved", verdict(good({ upstream: pin, files: phantomSource }), ["tools/task-state.mjs"]).refuse === true],
+    ["freshness — a doc-map key that names no file upstream at the pin refuses", verdict(good({ upstream: pin, docs: { "docs/OLD-NAME.md": "docs/harness/TASK-LIFECYCLE.md" } }), ["docs/TASK-LIFECYCLE.md"]).refuse === true],
   ];
   for (const [name, passes] of cases) if (!passes) fail(name);
   return { failures, count: cases.length };
@@ -484,57 +498,140 @@ function commitFile(repo, path, body) {
 
 /** This gate as a subprocess — the CLI's own refusals only exist past process.exit. */
 function runCli(cwd, ...args) {
-  const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...args], { cwd, encoding: "utf8", env: fixtureEnv() });
+  return runGate(fileURLToPath(import.meta.url), cwd, ...args);
+}
+
+/** A gate file as a subprocess: upstream mode sweeps the tree the EXECUTING gate ships in, so its
+ *  cases run a copy planted inside the fixture repo (plantGate). */
+function runGate(gate, cwd, ...args) {
+  const run = spawnSync(process.execPath, [gate, ...args], { cwd, encoding: "utf8", env: fixtureEnv() });
   return { code: run.status, out: `${run.stdout}\n${run.stderr}` };
+}
+
+/** A copy of this gate at <root>/tools/vendor-drift.mjs — where stallion ships it. */
+function plantGate(root) {
+  mkdirSync(join(root, "tools"), { recursive: true });
+  const gate = join(root, "tools", "vendor-drift.mjs");
+  copyFileSync(fileURLToPath(import.meta.url), gate);
+  return gate;
 }
 
 /**
  * The CLI end to end, against real git repos in a temp dir: the refusals that live past the pure
- * verdicts — the upstream sweep run from a SUBDIRECTORY, the freshness answer for an ABSENT
- * manifest, and a clone whose HEAD sits BEHIND the pin (fetched, never fast-forwarded) — plus the
- * allowance that an ancestor pin still answers.
+ * verdicts — the upstream sweep run from a SUBDIRECTORY or from OUTSIDE the gate's tree, the
+ * freshness answer for an ABSENT manifest, a clone whose HEAD sits BEHIND the pin, a source the pin
+ * does not hold, and a clone behind its own FETCHED upstream — plus the allowance that an ancestor
+ * pin still answers.
  */
 function selfTestCli() {
   const tmp = mkdtempSync(join(tmpdir(), "vendor-drift-cli-"));
   let failures = 0;
+  let count = 0;
   const check = (label, ok) => {
+    count += 1;
     if (ok) return;
     failures += 1;
     console.error(`vendor-drift SELF-TEST FAIL: cli — ${label}`);
   };
   try {
-    const forged = join(tmp, "forged");
-    mkdirSync(forged);
-    fixtureGit(forged, "init", "-q");
-    commitFile(forged, "docs/x.md", "doc");
-    commitFile(forged, DEFAULT_MANIFEST, "{}");
-    check("--upstream run from a subdirectory must still see a tracked forged manifest", runCli(join(forged, "docs"), "--upstream").code === 1);
-
-    const absent = runCli(tmp, "--freshness", forged, "--manifest", join(tmp, "absent.json"));
-    check("--freshness on an absent manifest must print the commit-a-manifest remedy, not a raw token", absent.code === 1 && absent.out.includes("Commit a manifest") && !absent.out.includes("missing-manifest"));
-
-    const upstream = join(tmp, "upstream");
-    mkdirSync(upstream);
-    fixtureGit(upstream, "init", "-q");
-    const first = commitFile(upstream, "tools/x.mjs", "v1");
-    const middle = commitFile(upstream, "README.md", "readme");
-    const last = commitFile(upstream, "tools/x.mjs", "v2");
-    const host = join(tmp, "host");
-    mkdirSync(host);
-    const manifestAt = (pin) => {
-      writeFileSync(join(host, "VENDOR.json"), JSON.stringify({ schema: SCHEMA, upstream: pin, vendored: host, files: { "x.mjs": { source: "tools/x.mjs", sha256: "aa", adapted: false } } }));
-      return join(host, "VENDOR.json");
-    };
-    fixtureGit(upstream, "checkout", "-q", "--detach", first);
-    const behind = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(last));
-    check("--freshness must refuse a clone whose HEAD is BEHIND the pin, never print a downgrade as the re-vendor", behind.code === 1 && behind.out.includes("behind") && !behind.out.includes("past the pin"));
-    fixtureGit(upstream, "checkout", "-q", "--detach", middle);
-    const ahead = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(first));
-    check("--freshness with the pin an ancestor of HEAD must still answer (fresh for the wave)", ahead.code === 0 && ahead.out.includes("FRESH FOR THIS WAVE"));
+    selfTestCliUpstream(tmp, check);
+    selfTestCliFreshness(tmp, check);
+    selfTestCliFetched(tmp, check);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
-  return { failures, count: 4 };
+  return { failures, count };
+}
+
+/** Upstream mode sweeps the tree the executing gate ships in — never whatever repo the cwd names
+ *  (the cwd once decided it, and a run from outside read "OK — anywhere in the tree" unseen). */
+function selfTestCliUpstream(tmp, check) {
+  const forged = join(tmp, "forged");
+  mkdirSync(forged);
+  fixtureGit(forged, "init", "-q");
+  commitFile(forged, "docs/x.md", "doc");
+  commitFile(forged, DEFAULT_MANIFEST, "{}");
+  const forgedGate = plantGate(forged);
+  check("--upstream run from a subdirectory must still see a tracked forged manifest", runGate(forgedGate, join(forged, "docs"), "--upstream").code === 1);
+  // Each asserts the forged manifest is NAMED: a cwd-anchored sweep also exits 1 outside any repo
+  // (it cannot list the cwd's tree), so the exit code alone never proved the anchor.
+  const outside = runGate(forgedGate, tmp, "--upstream");
+  check("--upstream run from OUTSIDE any repo must still sweep the tree the gate ships in, never read OK", outside.code === 1 && outside.out.includes(DEFAULT_MANIFEST));
+  const other = join(tmp, "other");
+  mkdirSync(other);
+  fixtureGit(other, "init", "-q");
+  commitFile(other, "docs/x.md", "doc");
+  const elsewhere = runGate(forgedGate, other, "--upstream");
+  check("--upstream run from INSIDE ANOTHER repo must sweep the tree the gate ships in, never judge the cwd's", elsewhere.code === 1 && elsewhere.out.includes(DEFAULT_MANIFEST));
+
+  const loose = join(tmp, "loose");
+  mkdirSync(loose);
+  fixtureGit(loose, "init", "-q");
+  commitFile(loose, "docs/x.md", "doc");
+  mkdirSync(join(loose, dirname(DEFAULT_MANIFEST)), { recursive: true });
+  writeFileSync(join(loose, DEFAULT_MANIFEST), "{}");
+  check("--upstream run from a subdirectory must see an UNTRACKED manifest at the default path", runGate(plantGate(loose), join(loose, "docs"), "--upstream").code === 1);
+
+  const unswept = join(tmp, "no-repo");
+  const blind = runGate(plantGate(unswept), unswept, "--upstream");
+  check("--upstream where git cannot list the gate's tree must refuse, never read OK", blind.code === 1 && !blind.out.includes("vendor-drift: OK"));
+}
+
+/** Freshness against a fixture upstream: absent manifest, a clone behind the pin, an ancestor pin,
+ *  and a source the pin's tree does not hold. */
+function selfTestCliFreshness(tmp, check) {
+  const absent = runCli(tmp, "--freshness", tmp, "--manifest", join(tmp, "absent.json"));
+  check("--freshness on an absent manifest must print the commit-a-manifest remedy, not a raw token", absent.code === 1 && absent.out.includes("Commit a manifest") && !absent.out.includes("missing-manifest"));
+
+  const upstream = join(tmp, "upstream");
+  mkdirSync(upstream);
+  fixtureGit(upstream, "init", "-q");
+  const first = commitFile(upstream, "tools/x.mjs", "v1");
+  const middle = commitFile(upstream, "README.md", "readme");
+  const last = commitFile(upstream, "tools/x.mjs", "v2");
+  const manifestAt = (pin, source = "tools/x.mjs") => writeHostManifest(tmp, pin, source);
+  fixtureGit(upstream, "checkout", "-q", "--detach", first);
+  const behind = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(last));
+  check("--freshness must refuse a clone whose HEAD is BEHIND the pin, never print a downgrade as the re-vendor", behind.code === 1 && behind.out.includes("behind") && !behind.out.includes("past the pin"));
+  fixtureGit(upstream, "checkout", "-q", "--detach", middle);
+  const ahead = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(first));
+  check("--freshness with the pin an ancestor of HEAD must still answer (fresh for the wave)", ahead.code === 0 && ahead.out.includes("FRESH FOR THIS WAVE"));
+  fixtureGit(upstream, "checkout", "-q", "--detach", last);
+  const phantom = runCli(tmp, "--freshness", upstream, "--manifest", manifestAt(first, "./tools/x.mjs"));
+  check("--freshness must refuse a source that names no file upstream at the pin, never read it FRESH", phantom.code === 1 && phantom.out.includes("name no file upstream at the pin") && !phantom.out.includes("vendor-drift: FRESH"));
+}
+
+/** A clone fetched but never fast-forwarded answers for its OLD HEAD: the FRESH remedy once said
+ *  "fetch", and fetching alone left upstream's moved source unseen — on a branch, and on a
+ *  DETACHED HEAD, which tracks nothing but holds the fetched origin/HEAD all the same. */
+function selfTestCliFetched(tmp, check) {
+  const origin = join(tmp, "origin");
+  mkdirSync(origin);
+  fixtureGit(origin, "init", "-q");
+  const seed = commitFile(origin, "tools/x.mjs", "v1");
+  const [clone, loose] = [join(tmp, "clone"), join(tmp, "clone-detached")];
+  fixtureGit(tmp, "clone", "-q", origin, clone);
+  fixtureGit(tmp, "clone", "-q", origin, loose);
+  fixtureGit(loose, "checkout", "-q", "--detach");
+  commitFile(origin, "tools/x.mjs", "v2");
+  fixtureGit(clone, "fetch", "-q");
+  fixtureGit(loose, "fetch", "-q");
+  const manifest = writeHostManifest(tmp, seed, "tools/x.mjs");
+  const stale = runCli(tmp, "--freshness", clone, "--manifest", manifest);
+  check("--freshness must refuse a clone behind its own FETCHED upstream (never fast-forwarded), never read FRESH", stale.code === 1 && stale.out.includes("behind its own fetched upstream") && !stale.out.includes("vendor-drift: FRESH"));
+  const detached = runCli(tmp, "--freshness", loose, "--manifest", manifest);
+  check("--freshness must refuse a DETACHED clone behind its fetched origin/HEAD, never read FRESH", detached.code === 1 && detached.out.includes("behind its own fetched upstream") && !detached.out.includes("vendor-drift: FRESH"));
+  fixtureGit(loose, "checkout", "-q", "--detach", "origin/HEAD");
+  const caught = runCli(tmp, "--freshness", loose, "--manifest", manifest);
+  check("--freshness on a detached clone AT its fetched origin/HEAD must answer the real verdict, not refuse it as behind", caught.code === 1 && caught.out.includes("upstream moved 1 vendored source") && !caught.out.includes("behind its own fetched upstream"));
+}
+
+/** A host manifest vendoring one upstream source at `pin`, written under <tmp>/host. */
+function writeHostManifest(tmp, pin, source) {
+  const host = join(tmp, "host");
+  mkdirSync(host, { recursive: true });
+  writeFileSync(join(host, "VENDOR.json"), JSON.stringify({ schema: SCHEMA, upstream: pin, vendored: host, files: { "x.mjs": { source, sha256: "aa", adapted: false } } }));
+  return join(host, "VENDOR.json");
 }
 
 function flagValue(name) {
@@ -630,23 +727,18 @@ function runHost(manifestPath) {
 }
 
 /**
- * Upstream mode, for stallion's own battery: this tree must NOT carry a vendor manifest —
- * anywhere. The default path is checked directly, and tracked *VENDOR.json files are swept
- * repo-wide, because the claim "stallion never carries a forged manifest" must not rest on
- * one existsSync. Repo-wide from ANY cwd: a bare pathspec sweeps only the cwd's subtree, so a
- * run from docs/ read a tracked forged manifest green — `:(top)` anchors it at the root. Falls
- * back to the path check alone where git is unavailable.
+ * Upstream mode, for stallion's own battery: the tree this gate SHIPS IN must NOT carry a vendor
+ * manifest — anywhere. The default path is checked directly (untracked too) and tracked
+ * *VENDOR.json files are swept repo-wide, because the claim "stallion never carries a forged
+ * manifest" must not rest on one existsSync. Both are anchored at the gate's own repo root, never
+ * the cwd: a cwd-relative run from docs/ missed the default path, and one from outside the repo
+ * judged another tree (or none) and printed OK. Where git cannot name that root, it REFUSES — a
+ * sweep that never ran proves nothing. `--manifest` stays cwd-relative, as typed.
  */
 function runUpstream(manifestPath) {
-  const offenders = [];
-  if (existsSync(manifestPath)) offenders.push(manifestPath);
-  try {
-    for (const tracked of execFileSync("git", ["ls-files", "--full-name", ":(top)*VENDOR.json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\n")) {
-      if (tracked.trim() !== "") offenders.push(tracked.trim());
-    }
-  } catch {
-    // no git or no repo: the direct path check above already spoke
-  }
+  const { root, tracked } = sweepOwnTree();
+  const direct = manifestPath === DEFAULT_MANIFEST ? join(root, DEFAULT_MANIFEST) : manifestPath;
+  const offenders = [...new Set([...(existsSync(direct) ? [manifestPath] : []), ...tracked])];
   if (offenders.length > 0) {
     process.stderr.write(
       `\x1b[31m✖ vendor-drift: an upstream tree carries a vendor manifest:\x1b[0m\n\n` +
@@ -656,7 +748,28 @@ function runUpstream(manifestPath) {
     );
     process.exit(1);
   }
-  console.log(`vendor-drift: OK — no vendor manifest anywhere in the tree (upstream; stallion does not vendor itself)`);
+  console.log(`vendor-drift: OK — no vendor manifest anywhere in the tree at ${root} (upstream; stallion does not vendor itself)`);
+}
+
+/** The repo root this gate ships in, and every tracked *VENDOR.json under it — or the refusal when
+ *  git cannot answer for that tree. */
+function sweepOwnTree() {
+  const gateDir = dirname(fileURLToPath(import.meta.url));
+  const git = (args) => execFileSync("git", ["-C", gateDir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    const root = git(["rev-parse", "--show-toplevel"]).trim();
+    const tracked = git(["ls-files", "--full-name", ":(top)*VENDOR.json"]).split("\n").map((l) => l.trim()).filter(Boolean);
+    return { root, tracked };
+  } catch (error) {
+    process.stderr.write(
+      `\x1b[31m✖ vendor-drift: cannot sweep the tree this gate ships in (${gateDir}) for vendor manifests.\x1b[0m\n\n` +
+        `  ${String(error.stderr || error.message || error).trim().split("\n")[0]}\n` +
+        `  rule: upstream mode asserts NO manifest anywhere in stallion's tree — a sweep that could not\n` +
+        `        run proves nothing, so it never reads as OK\n` +
+        `  fix: run it from a git checkout of stallion — git -C ${gateDir} rev-parse --show-toplevel must answer\n\n`,
+    );
+    process.exit(1);
+  }
 }
 
 /**
@@ -668,18 +781,20 @@ function runUpstream(manifestPath) {
 function runFreshness(manifestPath, upstreamPath) {
   const facts = loadManifestFacts(manifestPath);
   if (facts.refusal === MISSING_MANIFEST) refuseMissingManifest(manifestPath);
-  if (facts.refusal !== null) {
-    process.stderr.write(
-      `\x1b[31m✖ vendor-drift: the manifest cannot be read for a freshness answer.\x1b[0m\n\n  ✖ ${facts.refusal}\n` +
-        `  fix: repair or re-vendor ${manifestPath} (schema "${SCHEMA}", WIRING §1), or point --manifest at the right file\n\n`,
-    );
-    process.exit(1);
-  }
-  const { head, changed } = readUpstreamSincePin(upstreamPath, facts.manifest.upstream);
+  if (facts.refusal !== null) refuseUnanswerable(facts.refusal, `repair or re-vendor ${manifestPath} (schema "${SCHEMA}", WIRING §1), or point --manifest at the right file`);
+  const { head, changed, atPin } = readUpstreamSincePin(upstreamPath, facts.manifest.upstream);
   if (!pinIsAncestor(upstreamPath, facts.manifest.upstream)) refuseBehindPin(upstreamPath, facts.manifest.upstream, head);
-  const verdict = freshnessVerdict({ manifest: facts.manifest, upstreamHead: head, upstreamChanged: changed });
+  refuseBehindFetched(upstreamPath, head);
+  const verdict = freshnessVerdict({ manifest: facts.manifest, upstreamHead: head, upstreamChanged: changed, upstreamAtPin: atPin });
+  if (verdict.refuse) {
+    refuseUnanswerable(
+      verdict.reason,
+      `name each files[*].source and docs key by its repo-root path at the pin (git -C ${upstreamPath} ls-tree -r --name-only ${facts.manifest.upstream.slice(0, 10)}\n` +
+        `       lists them), or re-vendor and regenerate ${manifestPath} (WIRING §1)`,
+    );
+  }
   if (verdict.fresh) {
-    console.log(`vendor-drift: FRESH — the manifest pin is the upstream HEAD (${head.slice(0, 10)}) as of the LOCAL clone at ${upstreamPath}; fetch before trusting recency`);
+    console.log(`vendor-drift: FRESH — the manifest pin is the upstream HEAD (${head.slice(0, 10)}) as of the LOCAL clone at ${upstreamPath}; fetch and fast-forward it (git -C ${upstreamPath} pull --ff-only) before trusting recency`);
     return;
   }
   if (verdict.moved.length === 0) {
@@ -696,18 +811,27 @@ function runFreshness(manifestPath, upstreamPath) {
   process.exit(1);
 }
 
-/** The upstream clone's HEAD and every path changed from the pin to it — or the refusal when the
- *  clone cannot see the pin. */
+/** The manifest cannot answer a freshness question: the reason, and the fix that makes it answer. */
+function refuseUnanswerable(reason, fix) {
+  process.stderr.write(`\x1b[31m✖ vendor-drift: the manifest cannot answer a freshness question.\x1b[0m\n\n  ✖ ${reason}\n  fix: ${fix}\n\n`);
+  process.exit(1);
+}
+
+/** The upstream clone's HEAD, every path changed from the pin to it, and every file in the pin's
+ *  tree — or the refusal when the clone cannot see the pin. core.quotePath=false: a quoted
+ *  non-ASCII path would match no manifest source on either side. */
 function readUpstreamSincePin(upstreamPath, pin) {
-  const git = (args) => execFileSync("git", ["-C", upstreamPath, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const git = (args) => execFileSync("git", ["-C", upstreamPath, "-c", "core.quotePath=false", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const lines = (out) => out.split("\n").map((l) => l.trim()).filter(Boolean);
   try {
     git(["rev-parse", "--verify", `${pin}^{commit}`]);
     const head = git(["rev-parse", "HEAD"]);
     // --no-renames: under default rename detection a renamed vendored source lists only its NEW
     // path, the old source matches nothing, and the wave reads FRESH-FOR-WAVE through a rename
     // (an adversarial pass proved it end-to-end). Both sides of a rename are owed.
-    const changed = git(["diff", "--name-only", "--no-renames", `${pin}..HEAD`]).split("\n").map((l) => l.trim()).filter(Boolean);
-    return { head, changed };
+    const changed = lines(git(["diff", "--name-only", "--no-renames", `${pin}..HEAD`]));
+    const atPin = lines(git(["ls-tree", "-r", "--name-only", "--full-tree", pin]));
+    return { head, changed, atPin };
   } catch (error) {
     process.stderr.write(
       `\x1b[31m✖ vendor-drift: the upstream repo at ${upstreamPath} could not answer the pin.\x1b[0m\n\n` +
@@ -727,6 +851,35 @@ function readUpstreamSincePin(upstreamPath, pin) {
  *  HEAD that descends from the pin (or is the pin) can answer. Any git failure reads as NOT. */
 function pinIsAncestor(upstreamPath, pin) {
   return spawnSync("git", ["-C", upstreamPath, "merge-base", "--is-ancestor", pin, "HEAD"], { stdio: "ignore" }).status === 0;
+}
+
+/** The fetched tip a clone's HEAD answers against, first that resolves: its branch's @{upstream},
+ *  else origin/HEAD — a DETACHED clone (or a branch tracking nothing) still holds fetched refs, and
+ *  skipping it once read FRESH over a fetched move. Each carries the fast-forward that works there. */
+const FETCHED_TIPS = [
+  ["@{upstream}", (clone) => `git -C ${clone} pull --ff-only`],
+  ["refs/remotes/origin/HEAD", (clone) => `git -C ${clone} checkout --detach origin/HEAD`],
+];
+
+/** A clone whose HEAD is behind its own FETCHED upstream (fetched, never fast-forwarded) answers for
+ *  its old HEAD: the FRESH remedy once said only "fetch", and following it read FRESH while upstream
+ *  had moved a vendored source. A clone with neither tip (no tracking ref, no origin/HEAD) has
+ *  nothing fetched to be behind — the verdict is as current as the clone, which every FRESH line prints. */
+function refuseBehindFetched(upstreamPath, head) {
+  for (const [tip, remedy] of FETCHED_TIPS) {
+    const behind = spawnSync("git", ["-C", upstreamPath, "rev-list", "--count", `HEAD..${tip}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    if (behind.status !== 0) continue;
+    const count = Number(behind.stdout.trim());
+    if (count === 0) return;
+    process.stderr.write(
+      `\x1b[31m✖ vendor-drift: the clone at ${upstreamPath} is ${count} commit(s) behind its own fetched upstream.\x1b[0m\n\n` +
+        `  HEAD ${head.slice(0, 10)} is not the fetched upstream tip (git -C ${upstreamPath} rev-list --count HEAD..${tip} = ${count})\n` +
+        `  rule: a freshness verdict answers for the clone's HEAD — a fetched-but-not-fast-forwarded clone\n` +
+        `        reads FRESH while upstream has moved a vendored source\n` +
+        `  fix: ${remedy(upstreamPath)}, then re-run\n\n`,
+    );
+    process.exit(1);
+  }
 }
 
 function refuseBehindPin(upstreamPath, pin, head) {

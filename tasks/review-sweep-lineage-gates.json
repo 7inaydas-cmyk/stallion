@@ -228,6 +228,179 @@
       "seq": 20,
       "parent_hash": "afd36c82f0dbb4db19e30a754a806b8ccbf38b58772167d1c6f1397b834cb006",
       "entry_hash": "91fc034933574f5da16e29cdf11dbcc1763ecda7ca572762e86854d2b328b196"
+    },
+    {
+      "at": "2026-09-27T08:03:42.125Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 21,
+      "parent_hash": "91fc034933574f5da16e29cdf11dbcc1763ecda7ca572762e86854d2b328b196",
+      "entry_hash": "4295c04aeb0c3eb26aee45804d5e47370ec43bd9efc069d0349321c856715197"
+    },
+    {
+      "at": "2026-09-27T09:43:23.543Z",
+      "type": "red-check",
+      "expect": "a pipe-less GFM body row is still a row",
+      "command": "node tools/debt-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b7b61c45e7e7",
+      "seq": 22,
+      "parent_hash": "4295c04aeb0c3eb26aee45804d5e47370ec43bd9efc069d0349321c856715197",
+      "entry_hash": "710cac0a716ed15aed16d6508c90cffabb2e9ed4209ef9d93761bece03e13fd2"
+    },
+    {
+      "at": "2026-09-27T09:43:23.605Z",
+      "type": "red-check",
+      "expect": "a GFM-escaped pipe inside a SHIPPED citation stays in the status cell",
+      "command": "node tools/debt-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b7b61c45e7e7",
+      "seq": 23,
+      "parent_hash": "710cac0a716ed15aed16d6508c90cffabb2e9ed4209ef9d93761bece03e13fd2",
+      "entry_hash": "2d800d5cdc023392995d94977274f22ef1da36a771362676264ba66bb6022817"
+    },
+    {
+      "at": "2026-09-27T09:43:59.152Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: tools/zcode-plugin/lib/law-source\\.mjs vs \"ONE LAW, THREE TRANSPORTS\"",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "20b6adddf588",
+      "seq": 24,
+      "parent_hash": "2d800d5cdc023392995d94977274f22ef1da36a771362676264ba66bb6022817",
+      "entry_hash": "a0bbb6b82e9c12b89b2f2f7eea9491898c66f8b1bddc79107f096ddc29ac661e"
+    },
+    {
+      "at": "2026-09-27T09:43:59.296Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: tools/zz-head-glue-probe\\.mjs vs \"BATTERY COMPLETENESS\"",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "20b6adddf588",
+      "seq": 25,
+      "parent_hash": "a0bbb6b82e9c12b89b2f2f7eea9491898c66f8b1bddc79107f096ddc29ac661e",
+      "entry_hash": "c2d674c2b3ef2e3c57cc132e08c59bbe59a24c9e7d8598579bf628e9a8c6dfd6"
+    },
+    {
+      "at": "2026-09-27T09:44:49.811Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: the law is the probe's own",
+      "command": "node tools/zz-head-glue-probe.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f3dd3139c07e",
+      "seq": 26,
+      "parent_hash": "c2d674c2b3ef2e3c57cc132e08c59bbe59a24c9e7d8598579bf628e9a8c6dfd6",
+      "entry_hash": "8cac5caf5522f1407c169503f7c45b43c65101da82793e195a345b9423bd8805"
+    },
+    {
+      "at": "2026-09-27T09:45:28.596Z",
+      "type": "red-check",
+      "expect": "live git — a detached HEAD with MERGE_HEAD still refuses",
+      "command": "node tools/detached-head-guard.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d5ee47864dca",
+      "seq": 27,
+      "parent_hash": "8cac5caf5522f1407c169503f7c45b43c65101da82793e195a345b9423bd8805",
+      "entry_hash": "e448d0bd3f6f0d5eec8853f9db253e119f81eae99f6820ef9972b5758bf1ec84"
+    },
+    {
+      "at": "2026-09-27T09:45:29.032Z",
+      "type": "red-check",
+      "expect": "live git — a rebase started on a detached HEAD refuses",
+      "command": "node tools/detached-head-guard.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d5ee47864dca",
+      "seq": 28,
+      "parent_hash": "e448d0bd3f6f0d5eec8853f9db253e119f81eae99f6820ef9972b5758bf1ec84",
+      "entry_hash": "dfdccb8fe81ead73a7237b3918f118c908fa3000d6be0e110606f8b8ed70b944"
+    },
+    {
+      "at": "2026-09-27T09:48:50.742Z",
+      "type": "red-check",
+      "expect": "freshness — a source that names no file upstream at the pin refuses",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b2edcdfe8922",
+      "seq": 29,
+      "parent_hash": "dfdccb8fe81ead73a7237b3918f118c908fa3000d6be0e110606f8b8ed70b944",
+      "entry_hash": "b311239c659e92706343816f4708e6dbca36fb7fd32d899598a3d21c22d93bce"
+    },
+    {
+      "at": "2026-09-27T09:48:51.296Z",
+      "type": "red-check",
+      "expect": "shape — array docs map misjudged",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b2edcdfe8922",
+      "seq": 30,
+      "parent_hash": "b311239c659e92706343816f4708e6dbca36fb7fd32d899598a3d21c22d93bce",
+      "entry_hash": "0078ff11664558bcdfa49a0670cf6adebfff0361f39ec131cd63ec8ece97a803"
+    },
+    {
+      "at": "2026-09-27T09:48:51.805Z",
+      "type": "red-check",
+      "expect": "cli — --upstream run from OUTSIDE any repo must still sweep the tree the gate ships in",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b2edcdfe8922",
+      "seq": 31,
+      "parent_hash": "0078ff11664558bcdfa49a0670cf6adebfff0361f39ec131cd63ec8ece97a803",
+      "entry_hash": "c707769dec13f2ddc322c5dfbb801482c5013377033101e2a07f4f5acc2b7321"
+    },
+    {
+      "at": "2026-09-27T09:48:52.291Z",
+      "type": "red-check",
+      "expect": "cli — --upstream run from a subdirectory must see an UNTRACKED manifest",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b2edcdfe8922",
+      "seq": 32,
+      "parent_hash": "c707769dec13f2ddc322c5dfbb801482c5013377033101e2a07f4f5acc2b7321",
+      "entry_hash": "64d0d642f0ab64062081b314e45553138287351dcc3198a10ead5514dbd87782"
+    },
+    {
+      "at": "2026-09-27T09:48:52.783Z",
+      "type": "red-check",
+      "expect": "cli — --upstream where git cannot list the gate's tree must refuse",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b2edcdfe8922",
+      "seq": 33,
+      "parent_hash": "64d0d642f0ab64062081b314e45553138287351dcc3198a10ead5514dbd87782",
+      "entry_hash": "9e39aac8d20a5ebb724aa531d0a15af14b4210b9dfd0aad245f1f08842b61861"
+    },
+    {
+      "at": "2026-09-27T09:48:53.293Z",
+      "type": "red-check",
+      "expect": "cli — --freshness must refuse a clone behind its own FETCHED upstream",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b2edcdfe8922",
+      "seq": 34,
+      "parent_hash": "9e39aac8d20a5ebb724aa531d0a15af14b4210b9dfd0aad245f1f08842b61861",
+      "entry_hash": "f529d49a313e314321dfd495cbb048d895bd710f95e2f4c555cb5e7cd13f9b76"
+    },
+    {
+      "at": "2026-09-27T10:00:35.064Z",
+      "type": "red-check",
+      "expect": "cli — --freshness must refuse a DETACHED clone behind its fetched origin/HEAD",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8493a8d21741",
+      "seq": 35,
+      "parent_hash": "f529d49a313e314321dfd495cbb048d895bd710f95e2f4c555cb5e7cd13f9b76",
+      "entry_hash": "5b5b8426b747c6a81c5e7fa84b9ee7635f1a2ceb1c9d736947cff162d9e0d344"
+    },
+    {
+      "at": "2026-09-27T10:00:58.618Z",
+      "type": "red-check",
+      "expect": "cli — --upstream run from INSIDE ANOTHER repo must sweep the tree the gate ships in",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "4e8a6fd426f4",
+      "seq": 36,
+      "parent_hash": "5b5b8426b747c6a81c5e7fa84b9ee7635f1a2ceb1c9d736947cff162d9e0d344",
+      "entry_hash": "35dd630a186a0a2f98d97f19efebcaada3e7b9bf9aac62ee6a333d524d735a88"
     }
   ]
 }

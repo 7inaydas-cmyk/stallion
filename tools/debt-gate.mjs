@@ -20,7 +20,7 @@
  *
  * PARSING LAW — PER-LINE, NEVER DOTALL. A lazy `.*?` across `gms` bleeds one row into the next
  * and swallows the documented `SHIPPED (<date>: <citation>)` annotation form — the gate would
- * misread the register it exists to read. Cells are split literally and read by POSITION (id
+ * misread the register it exists to read. Cells are split on unescaped pipes, read by POSITION (id
  * first, due-by and status last); status matches by PREFIX so citations ride along. And a gate
  * that parses FEWER rows than exist reads green for the wrong reason: the parsed-row count must
  * equal the row-line count, and a register with ZERO rows is a
@@ -47,10 +47,11 @@ export function parseRegister(text) {
   }
   const baseline = baselineMatch[1];
 
-  // Candidates are WIDER than the row shape: any table line (indented or not) naming a PD id. Each
-  // must parse or the register is a defect, so the parsed count equals the row-line count by
-  // construction — a row the parser cannot read never silently drops out of the count.
-  const rowLines = text.split("\n").filter((line) => /^\s*\|/.test(line) && /\bPD-\d+\b/.test(line));
+  // Candidates are WIDER than the row shape: any line carrying a pipe and naming a PD id (indented
+  // or not, outer pipes or not — GFM makes them optional, and a pipe-less body row still renders
+  // in the table). Each must parse or the register is a defect, so the parsed count equals the
+  // row-line count by construction — a row the parser cannot read never silently drops out of it.
+  const rowLines = text.split("\n").filter((line) => line.includes("|") && /\bPD-\d+\b/.test(line));
   const rows = [];
   for (const line of rowLines) {
     const row = parseRow(line);
@@ -64,9 +65,11 @@ export function parseRegister(text) {
 
 /** Pure: one row, read by POSITION — id first, due-by second to last, status last (the register's
  *  fixed shape). A first-match scan let an item cell opening "DROPPED …" pose as the status, so an
- *  OPEN row read closed and never went overdue. null = unparseable. */
+ *  OPEN row read closed and never went overdue. Cells split on UNESCAPED pipes only: a GFM `\|`
+ *  inside a SHIPPED citation is cell text, and splitting on it turned an honest row into a defect.
+ *  The outer pipes are optional, as GFM renders them. null = unparseable. */
 function parseRow(line) {
-  const cells = line.trim().split("|").slice(1).map((cell) => cell.trim());
+  const cells = line.trim().replace(/^\|/, "").split(/(?<!\\)\|/).map((cell) => cell.trim());
   if (cells.at(-1) === "") cells.pop();
   const [id, budgetCell, statusCell] = [cells[0], cells.at(-2), cells.at(-1)];
   if (!/^PD-\d+$/.test(id) || !/^next \d+ commits$/.test(budgetCell) || !/^(OPEN|SHIPPED|DROPPED)\b/.test(statusCell)) return null;
@@ -89,6 +92,8 @@ function rowShapeCases() {
     ["an OPEN row whose item starts with DROPPED still reads OPEN and goes overdue", overdueRows(register("| PD-1 | DROPPED events are never retried | audit | P1 | next 5 commits | OPEN |").rows ?? [], 6).map((r) => r.id).join() === "PD-1"],
     ["an indented table row is still a row, counted and parsed", register("  | PD-1 | x | next 5 commits | OPEN |").rows?.length === 1],
     ["a table line naming a PD id outside a clean id cell is a defect, never a silently skipped row", register("| PD-1 | x | next 5 commits | OPEN |", "| **PD-2** | x | next 5 commits | OPEN |").defect !== undefined],
+    ["a pipe-less GFM body row is still a row, counted and parsed — it goes overdue", overdueRows(register("| PD-1 | x | next 50 commits | OPEN |", "PD-2 | x | next 1 commits | OPEN").rows ?? [], 10).map((r) => r.id).join() === "PD-2"],
+    ["a GFM-escaped pipe inside a SHIPPED citation stays in the status cell", register("| PD-1 | x | audit | P1 | next 5 commits | SHIPPED (2026-09-20: `a \\| b`) |").rows?.[0]?.status === "SHIPPED"],
   ];
 }
 
@@ -115,7 +120,7 @@ export function selfTest() {
     ["status matches by PREFIX, so a SHIPPED citation still parses as SHIPPED", parsed.rows?.[1]?.status === "SHIPPED"],
     ["a DROPPED annotation parses as DROPPED, not OPEN", parsed.rows?.[2]?.status === "DROPPED"],
     ["the budget cell carries its number (next 50 commits -> 50)", parsed.rows?.[1]?.budget === 50],
-    ["prose naming a PD id is NOT a row — only line-start pipes are", parseRegister(`${valid}\nPD-4 never started.\n`).rows?.length === 3],
+    ["prose naming a PD id is NOT a row — a line with no pipe is prose", parseRegister(`${valid}\nPD-4 never started.\n`).rows?.length === 3],
     ["missing gate-baseline is a defect — the gate cannot count", parseRegister("# no baseline here\n| PD-1 | x | next 5 commits | OPEN |\n").defect !== undefined],
     ["a non-hex baseline (gate-baseline: HEAD) is a defect", parseRegister("gate-baseline: HEAD\n| PD-1 | x | next 5 commits | OPEN |\n").defect !== undefined],
     ["ZERO rows is a defect — an empty register is not an all-clear", parseRegister("gate-baseline: af4fd70dec9d\n\n| id | due-by | status |\n|---|---|---|\n").defect !== undefined],

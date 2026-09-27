@@ -17,16 +17,17 @@
  * work. That is the silent half. A trunk-based repo whose push path is gated gives "committed
  * but not on the trunk" no legitimate resting place.
  *
- * WHAT IT DELIBERATELY DOES NOT BLOCK. Detached HEAD is normal and correct in the middle of
- * several git operations, and a guard that broke `git rebase` would be traded away within a day:
+ * WHAT IT DELIBERATELY DOES NOT BLOCK. A REBASE OF A BRANCH (.git/rebase-merge, .git/rebase-apply,
+ * whose head-name names refs/heads/…): git detached HEAD on purpose and moves that branch to the
+ * result when it finishes, so a commit mid-rebase lands where it should — and a guard that broke
+ * `git rebase` would be traded away within a day.
  *
- *   - an interactive or conflicted REBASE (.git/rebase-merge, .git/rebase-apply)
- *   - a CHERRY-PICK or REVERT being resolved (CHERRY_PICK_HEAD, REVERT_HEAD)
- *   - a MERGE being resolved (MERGE_HEAD)
- *   - a BISECT run (BISECT_LOG)
- *
- * In every one of those git put HEAD where it is, on purpose, and a commit is the expected next
- * move. The guard fires only for the case nobody chose: a plain commit onto a detached HEAD.
+ * WHAT IT NO LONGER EXEMPTS (an adversarial pass, 2026-09-27). Merge, cherry-pick and revert
+ * (MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD) never detach HEAD: a detached HEAD during one was
+ * already detached — by the user, or by a colocated jj — and the commit advances no branch. A
+ * bisect (BISECT_LOG) detaches HEAD but moves no branch; `git bisect reset` leaves its commit on
+ * none. A rebase STARTED on a detached HEAD (head-name "detached HEAD") and a `git am` on one land
+ * on no branch too. Each was waved through silently: the incident class this guard exists for.
  *
  * SELF-TEST FIRST. The decision lives in a pure function below — no git, no filesystem, no
  * process — because this is the part with branches worth testing, and a guard whose logic can
@@ -38,21 +39,30 @@
  * too (the exact bypass this repo's AGENTS.md forbids outright). One narrow opt-out vs. teaching
  * --no-verify is the whole trade.
  */
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Git operations during which a detached HEAD is expected and a commit is legitimate. */
+/** The git operations that detach HEAD on purpose AND move a branch to the result: the two rebase
+ *  backends' state dirs. Only a rebase whose head-name names a branch counts (rebaseBranch). */
 const IN_PROGRESS_MARKERS = [
-  ["rebase-merge", "an interactive/merge rebase"],
-  ["rebase-apply", "a rebase (am)"],
-  ["CHERRY_PICK_HEAD", "a cherry-pick"],
-  ["REVERT_HEAD", "a revert"],
-  ["MERGE_HEAD", "a merge"],
-  ["BISECT_LOG", "a bisect"],
+  ["rebase-merge", "a rebase (merge backend)"],
+  ["rebase-apply", "a rebase (apply backend)"],
 ];
+
+/** The branch a rebase in progress will move, from its state dir's head-name — null when there is
+ *  no such rebase, or it started on a detached HEAD (git writes "detached HEAD"; `git am` writes no
+ *  branch), because then its commits land on no branch either. */
+function rebaseBranch(stateDir) {
+  try {
+    const name = readFileSync(join(stateDir, "head-name"), "utf8").trim();
+    return name.startsWith("refs/heads/") ? name : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The whole decision, as a pure function — no git, no filesystem, no process.
@@ -95,8 +105,9 @@ export function readHeadState() {
   if (detached) {
     const dir = gitDir();
     for (const [marker, label] of IN_PROGRESS_MARKERS) {
-      if (existsSync(join(dir, marker))) {
-        operation = label;
+      const branch = rebaseBranch(join(dir, marker));
+      if (branch !== null) {
+        operation = `${label} of ${branch}`;
         break;
       }
     }
@@ -108,14 +119,12 @@ export function readHeadState() {
 export function selfTest() {
   const cases = [
     [{ detached: false }, false, "attached -> allow"],
-    [{ detached: false, operation: "a rebase (am)" }, false, "attached during an op -> allow"],
+    [{ detached: false, operation: "a rebase (apply backend) of refs/heads/x" }, false, "attached during an op -> allow"],
     [{ detached: true }, true, "detached, no operation -> REFUSE"],
     [{ detached: true, operation: null }, true, "explicit null operation -> REFUSE"],
-    [{ detached: true, operation: "an interactive/merge rebase" }, false, "detached during a rebase -> allow"],
-    [{ detached: true, operation: "a cherry-pick" }, false, "detached during a cherry-pick -> allow"],
-    [{ detached: true, operation: "a revert" }, false, "detached during a revert -> allow"],
-    [{ detached: true, operation: "a merge" }, false, "detached during a merge -> allow"],
-    [{ detached: true, operation: "a bisect" }, false, "detached during a bisect -> allow"],
+    // Which markers count is the READER's law (readHeadState), pinned by the live-git cases below:
+    // merge, cherry-pick, revert, bisect and a detached-started rebase never yield an operation.
+    [{ detached: true, operation: "a rebase (merge backend) of refs/heads/x" }, false, "detached during a branch's rebase -> allow"],
     [{ detached: true, override: true }, false, "override beats detached -> allow"],
     [{ detached: true, operation: null, override: true }, false, "override beats a refusal -> allow"],
     // The override must not be able to turn an ALLOW into a refusal, and must not depend on order.
@@ -204,12 +213,23 @@ function selfTestLiveGit() {
     git("branch", "-m", "trunk", "master");
     check("with no origin/HEAD the refusal names a local master (git's default), not a missing main", guard().stderr.includes("git checkout master"));
     check("ALLOW_DETACHED_HEAD=1 passes a detached HEAD", guard({ ALLOW_DETACHED_HEAD: "1" }).status === 0);
-    writeFileSync(join(git("rev-parse", "--absolute-git-dir").trim(), "MERGE_HEAD"), "");
-    check("a detached HEAD mid-merge (MERGE_HEAD) passes", guard().status === 0);
+    const gitDir = git("rev-parse", "--absolute-git-dir").trim();
+    // Merge, cherry-pick, revert and bisect never leave a branch to move: a commit made during one
+    // on a detached HEAD lands on no branch — the incident class, not an exemption from it.
+    for (const marker of ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"]) {
+      writeFileSync(join(gitDir, marker), "");
+      check(`a detached HEAD with ${marker} still refuses — that operation moves no branch`, guard().status === 1);
+      rmSync(join(gitDir, marker));
+    }
+    mkdirSync(join(gitDir, "rebase-merge"));
+    writeFileSync(join(gitDir, "rebase-merge", "head-name"), "refs/heads/master\n");
+    check("a rebase of a branch passes — git detached HEAD on purpose and moves the branch at the end", guard().status === 0);
+    writeFileSync(join(gitDir, "rebase-merge", "head-name"), "detached HEAD\n");
+    check("a rebase started on a detached HEAD refuses — its commits land on no branch either", guard().status === 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  return { failures, count: 6 };
+  return { failures, count: 11 };
 }
 
 /** git's stdout, or null when git refuses — the refusal's evidence lines never throw. */
@@ -261,8 +281,10 @@ function runGuard() {
       "                       then push through the repo's gated push path — never a bare\n" +
       "                       `jj git push`, which fires none of the git hooks\n" +
       "    • really meant it  \x1b[36mALLOW_DETACHED_HEAD=1 git commit …\x1b[0m\n\n" +
-      "  Not blocked: rebase, cherry-pick, revert, merge and bisect — git put HEAD there on\n" +
-      "  purpose and a commit is the expected next move.\n\n",
+      "  Not blocked: a rebase of a branch — git detached HEAD on purpose and moves the branch\n" +
+      "  when it finishes. Merge, cherry-pick, revert and bisect move no branch, so a detached\n" +
+      "  HEAD during one still refuses: finish or abort it (e.g. git merge --abort), then check\n" +
+      "  out the branch.\n\n",
   );
   process.exit(1);
 }

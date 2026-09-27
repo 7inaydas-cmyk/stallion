@@ -31,6 +31,19 @@ import { fileURLToPath } from "node:url";
 const SELF_SERVE = { riskClass: "runtime-code", events: [] };
 const fenceSurface = (p) => fenceSurfaceRefusal(SELF_SERVE, [p]) !== null;
 
+/** The one law's transports: the staged gate, the citation seam, and the authoring gate — its hook
+ *  entry, the seam that imports the shared law into it, gate-law, and the agreement matrix. Arming
+ *  on gate-law alone left a law-source change (where the authoring gate stops sharing) silent. */
+const ONE_LAW_PATHS = new Set([
+  "tools/task-state.mjs",
+  "tools/task-coverage.mjs",
+  "tools/zcode-plugin/lib/gate-law.mjs",
+  "tools/zcode-plugin/lib/law-source.mjs",
+  "tools/zcode-plugin/lib/agreement-check.mjs",
+  "tools/zcode-plugin/hooks/authoring-gate.mjs",
+]);
+const toolSource = (p) => p.startsWith("tools/") && p.endsWith(".mjs");
+
 /** Each rule: which paths arm it, and the obligation that follows — traceable to the incident. */
 const RULES = [
   {
@@ -44,9 +57,9 @@ const RULES = [
       "APPEND-ONLY CHAIN — task records are event logs; the tool appends, hands never do. Post-cutover records are hash-chained and a broken chain refuses at every gate. The git history of the record file IS the tamper evidence — edit events and the diff is the confession.",
   },
   {
-    spec: (p) => p === "tools/task-state.mjs" || p === "tools/task-coverage.mjs" || p === "tools/zcode-plugin/lib/gate-law.mjs",
+    spec: (p) => ONE_LAW_PATHS.has(p),
     obligation:
-      "ONE LAW, THREE TRANSPORTS — the staged gate, the citation seam (commit-msg gate + push fence) and the authoring gate (the plugin's gate-law) judge one law through seams shared by import. A change to the law or to any transport must hold all three in agreement; a drifted copy of the law in one transport is an adversarial finding that has SHIPPED here before. Run task-state's, task-coverage's and agreement-check's self-tests (the agreement matrix); add the case to the seam that owns the law.",
+      "ONE LAW, THREE TRANSPORTS — the staged gate, the citation seam (commit-msg gate + push fence) and the authoring gate (the plugin's hook, its law-source seam and gate-law) judge one law through seams shared by import. A change to the law or to any transport must hold all three in agreement; a drifted copy of the law in one transport is an adversarial finding that has SHIPPED here before. Run task-state's, task-coverage's and agreement-check's self-tests (the agreement matrix); add the case to the seam that owns the law.",
   },
   {
     spec: (p) => p === "docs/gates/guard-reach.json" || p === "docs/gates/guard-reach-modes.json",
@@ -59,12 +72,13 @@ const RULES = [
       "CEILING, NOT ALLOWANCE — the baseline is a ratchet. Raising a row without splitting the function in the same commit is a self-serve defang; if a split is genuinely impossible, the justification rides the task's register.",
   },
   {
-    spec: (p) => p === "package.json",
+    // Armed by the tools too: a tool gaining a dispatch is the change that forgets package.json.
+    spec: (p) => p === "package.json" || toolSource(p),
     obligation:
-      "BATTERY COMPLETENESS — every tool's --self-test dispatch must appear in the selftest chain in the spelling the tool actually answers to; a dispatch spelling the battery cannot invoke passes vacuously (the dispatch-spelling finding). Adding a tools/*.mjs without wiring its self-test ships an unproven tool.",
+      "BATTERY COMPLETENESS — every tool's --self-test dispatch must appear in the selftest chain in the spelling the tool actually answers to; a dispatch spelling the battery cannot invoke passes vacuously (the dispatch-spelling finding). Adding a tools/*.mjs — or a --self-test to one — without wiring it in package.json in the same commit ships an unproven tool (`node tools/task-coverage.mjs --doctor` names the missing member).",
   },
   {
-    spec: (p) => p.startsWith("tools/") && p.endsWith(".mjs"),
+    spec: toolSource,
     obligation:
       "RED→GREEN PIN — a behavior change owes a command pin recorded RED against pre-fix source with --expect assertion evidence (an uncollectable failure red-pins nothing); done re-runs every pin twice. Prefer a seam self-test case over a grep: a structural pin asserts the wiring, never a bare count.",
   },
@@ -206,9 +220,19 @@ function selfTestObligationCases(fail) {
     ["tools/task-state.mjs", "ONE LAW, THREE TRANSPORTS", true],
     ["tools/task-coverage.mjs", "ONE LAW, THREE TRANSPORTS", true],
     ["tools/zcode-plugin/lib/gate-law.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    // The authoring transport is its hook entry, the seam importing the shared law, and the
+    // agreement matrix — not gate-law alone (a law-source change is where it stops sharing).
+    ["tools/zcode-plugin/lib/law-source.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    ["tools/zcode-plugin/hooks/authoring-gate.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    ["tools/zcode-plugin/lib/agreement-check.mjs", "ONE LAW, THREE TRANSPORTS", true],
+    ["tools/zcode-plugin/lib/io.mjs", "ONE LAW, THREE TRANSPORTS", false],
     ["tools/pathspec.mjs", "ONE LAW, THREE TRANSPORTS", false],
     ["docs/gates/complexity-baseline.json", "CEILING", true],
     ["package.json", "BATTERY COMPLETENESS", true],
+    // A tool gaining a --self-test dispatch is where the battery goes incomplete, and package.json
+    // is the file such a change forgets (the zz-head-glue-probe range tip failed the doctor).
+    ["tools/zz-head-glue-probe.mjs", "BATTERY COMPLETENESS", true],
+    ["docs/WIRING.md", "BATTERY COMPLETENESS", false],
     ["tools/vendor-drift.mjs", "RED→GREEN PIN", true],
     ["adversarial/some-lane.md", "RED→GREEN PIN", false],
   ];
