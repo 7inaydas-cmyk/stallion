@@ -82,12 +82,12 @@ function decodeAnsiC(text) {
  * single/double/locale quotes yield their content as a token when it is a single token, and
  * vanish when it is a payload or value; ANSI-C quotes decode their escapes first; backslashes
  * outside quotes are their characters (git reset \\-\-hard IS --hard); interpreter/eval
- * payloads are appended whole as commands, one level deep. This models COMMON quoting — it is
+ * payloads are appended whole as commands, one level deep — unless `payloads` is false, the
+ * view ONE command is judged by (commandWords). This models COMMON quoting — it is
  * friction that demands facts, not a shell parser; the push fence is the control.
  */
-export function classifiedText(command) {
+export function classifiedText(command, payloads = true) {
   const raw = String(command ?? "");
-  const payloads = interpreterPayloads(raw);
   let out = "";
   for (let i = 0; i < raw.length; i += 1) {
     const c = raw[i];
@@ -130,24 +130,38 @@ export function classifiedText(command) {
     }
     out += c;
   }
-  return [out, ...payloads].join("\n");
+  return payloads ? [out, ...interpreterPayloads(raw)].join("\n") : out;
 }
 
-const GIT_HOOKED = /(?:^|\s)(?:commit|merge|cherry-pick|rebase|am|push)(?:\s|$)/;
+const GIT_HOOKED = new Set(["commit", "merge", "cherry-pick", "rebase", "am", "push"]);
+
+/** Pure: is this token git's own spelling of the bypass? Any prefix of --no-verify down to
+ *  --no-v (git expands a unique long-option prefix; an ambiguous one it rejects, so refusing it
+ *  costs nothing), and — on commit, where -n is --no-verify — an n in a short-flag cluster ahead
+ *  of any flag that takes a value (-anm wip is -a -n -m wip; -mn is the message "n"). */
+function bypassToken(token, commit) {
+  return (token.length >= 6 && "--no-verify".startsWith(token)) || (commit && /^-[aeiopqsvz]*n/.test(token));
+}
 
 /** Pure: does ONE segment skip the hooks? Judged per segment, never over the whole compound: a
  *  `git commit` beside an unrelated `-n` (git log -n, head -n) is not `commit -n` (a review
- *  caught the whole-string join refusing the common commit-then-log compound on every retry). */
+ *  caught the whole-string join refusing the common commit-then-log compound on every retry).
+ *  Tokens split at subshell and substitution marks too: `(git commit -n)` ends its flag in `)`,
+ *  and commandWords already made a glued redirect a space (--no-verify>/dev/null IS the flag). */
 function skipsHooks(segment) {
-  const s = classifiedText(segment);
-  return GIT_HOOKED.test(s) && (/(?:^|\s)--no-verify(?:\s|$)/.test(s) || (/(?:^|\s)commit\s/.test(s) && /(?:^|\s)-n(?:\s|$)/.test(s)));
+  return commandWords(segment).some((words) => {
+    const tokens = words.split(/[\s()`]+/);
+    const commit = tokens.includes("commit");
+    return tokens.some((t) => GIT_HOOKED.has(t)) && tokens.some((t) => bypassToken(t, commit));
+  });
 }
 
-/** Pure: does this command attempt to bypass the gates? ALWAYS refused — not a fact request. */
+/** Pure: does this command attempt to bypass the gates? ALWAYS refused — not a fact request.
+ *  git is a WORD, not a token start: `(git`, `$(git`, `/usr/bin/git` and `git>/dev/null` all run it. */
 export function bypassRefusal(command) {
   const t = classifiedText(command);
   const rawText = String(command ?? "");
-  const git = /(?:^|\s)git\s+/.test(t) || /GIT_CONFIG_KEY_\d+=core\.hooksPath/i.test(rawText);
+  const git = /\bgit[\s<>&]/.test(t) || /GIT_CONFIG_KEY_\d+=core\.hooksPath/i.test(rawText);
   if (!git) return null;
   if (commandSegments(command).some(skipsHooks)) {
     return "this command bypasses the commit hooks (--no-verify / commit -n) — the hooks ARE the gates; run them";
@@ -177,32 +191,51 @@ export function bypassRefusal(command) {
   return null;
 }
 
-/** [pattern, name, where]: FLAG-shaped dangers match the UNQUOTED command (a flag-looking
- *  value inside quotes is not a flag); CONTENT-shaped dangers (SQL payloads) match the RAW
- *  command, because the payload lives inside the quotes. */
+/** [pattern, name, where]: FLAG-shaped dangers match the UNQUOTED words of ONE command (a
+ *  flag-looking value inside quotes is not a flag) — commandWords, so `.*` never leaves that
+ *  command; CONTENT-shaped dangers (SQL payloads) match the RAW segment, because the payload
+ *  lives inside the quotes. */
 const DESTRUCTIVE = [
   // rm's flag must START a token — a hyphen inside a file name (rm old-report.txt) is not -r
   // (a review caught single-file removes spending the session's one destructive ask). These rows
   // judge `git rm` too; its own unanchored row only ever matched a hyphen in a path or --dry-run.
-  [/\brm\s+(?:[^;|&]*\s)?-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])/, "recursive forced delete", "unquoted"],
-  [/\brm\s+(?:[^;|&]*\s)?(?:-[a-zA-Z]*[rR]|--recursive\b)/, "recursive delete", "unquoted"],
+  [/\brm\s+(?:.*\s)?-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])/, "recursive forced delete", "unquoted"],
+  // GNU rm expands a unique long-option prefix: --r through --recursive all recurse.
+  [/\brm\s+(?:.*\s)?(?:-[a-zA-Z]*[rR]|--(?:recursive|recursiv|recursi|recurs|recur|recu|rec|re|r)\b)/, "recursive delete", "unquoted"],
   [/git\s+reset\s+--hard/, "hard reset (uncommitted work is unrecoverable)", "unquoted"],
   [/git\s+(?:checkout\s+--|checkout\s+\.|restore\s+(?!--staged))/, "discard working-tree changes", "unquoted"],
   [/git\s+clean\s+-[a-zA-Z]*f/, "clean -f (untracked files are unrecoverable)", "unquoted"],
-  [/git\s+push\s+[^;|&]*(?:--force(?:\s|$|=)|(?:^|\s)-f(?:\s)|\+refs\/)/, "force push (rewrites remote history)", "unquoted"],
-  [/git\s+commit\s+[^;|&]*--amend/, "amend (rewrites an existing commit)", "unquoted"],
-  [/git\s+switch\s+[^;|&]*(?:-f|-C)\s/, "forced branch switch (discards local changes)", "unquoted"],
-  [/find\s+[^;|&]*-exec\s+rm/, "find -exec rm", "unquoted"],
-  [/\bdd\s+[^;|&]*if=/, "dd (raw device write)", "unquoted"],
+  // A short flag is a whole token: after the verb (push -f) or ending the command (… main -f)
+  // too — the old `(?:^|\s)-f\s` needed a space on both sides the verb's own \s+ had consumed.
+  [/git\s+push\s+.*(?:--force(?:\s|$|=)|(?<=\s)-f(?:\s|$)|\+refs\/)/, "force push (rewrites remote history)", "unquoted"],
+  [/git\s+commit\s+.*--amend/, "amend (rewrites an existing commit)", "unquoted"],
+  [/git\s+switch\s+.*(?<=\s)(?:-f|-C)(?:\s|$)/, "forced branch switch (discards local changes)", "unquoted"],
+  [/find\s+.*-exec\s+rm/, "find -exec rm", "unquoted"],
+  [/\bdd\s+.*if=/, "dd (raw device write)", "unquoted"],
   [/\b(?:DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM)\b/i, "bulk SQL data loss", "raw"],
 ];
 
+/** The length of the unquoted separator starting at raw[i], or 0 — bash's own operators, not
+ *  every & and |: a redirection's & or | (2>&1, &>, >|) is part of the redirect, and splitting
+ *  there stranded a bypass flag from its git head (an adversarial pass caught 2>&1 --no-verify).
+ *  `literal` is the index a backslash escaped: \> is a word, so the & after it still separates. */
+function separatorAt(raw, i, literal) {
+  const two = raw.slice(i, i + 2);
+  if (["&&", "||", "|&"].includes(two)) return 2;
+  const redirect = (/[<>]/.test(raw[i - 1] ?? "") && i - 1 !== literal) || two === "&>";
+  return "\n;".includes(raw[i]) || ("&|".includes(raw[i]) && !redirect) ? 1 : 0;
+}
+
 /** Split a compound at SEPARATOR characters OUTSIDE quotes — a pipe inside a quoted message
  *  is data, and splitting on it stranded flags from their command heads (a regression a sweep
- *  caught: git commit -m "a|b" --amend stopped classifying as an amend). */
+ *  caught: git commit -m "a|b" --amend stopped classifying as an amend). An unquoted backslash
+ *  is bash's escape: \<newline> continues the line and \; \| \& are literal characters, so
+ *  neither splits (an adversarial pass caught `git commit \<newline> --no-verify` as routine);
+ *  an escaped \> or \< is a word, so the & or | after it still does. */
 export function quoteAwareSplit(raw) {
   const parts = [""];
   let quote = null; // "'", '"', "$'", '$"'
+  let literal = -1; // the last character a backslash escaped
   for (let i = 0; i < raw.length; i += 1) {
     const c = raw[i];
     if (quote) {
@@ -215,14 +248,19 @@ export function quoteAwareSplit(raw) {
       if (c === quote) quote = null;
       continue;
     }
+    if (c === "\\") {
+      if (raw[i + 1] !== "\n") parts[parts.length - 1] += c + (raw[i + 1] ?? "");
+      i += 1;
+      literal = i;
+      continue;
+    }
     if (c === "'") { quote = "'"; parts[parts.length - 1] += c; continue; }
     if (c === '"') { quote = '"'; parts[parts.length - 1] += c; continue; }
     if (c === "$" && (raw[i + 1] === "'" || raw[i + 1] === '"')) { quote = "$" + raw[i + 1]; parts[parts.length - 1] += c; continue; }
-    const two = raw.slice(i, i + 2);
-    const atSeparator = c === "\n" || c === ";" || c === "&" || two === "&&" || two === "||" || two === "|&" || c === "|";
-    if (atSeparator) {
+    const separator = separatorAt(raw, i, literal);
+    if (separator > 0) {
       if (parts[parts.length - 1].trim() !== "") parts.push("");
-      if (two === "&&" || two === "||" || two === "|&") i += 1;
+      i += separator - 1;
       continue;
     }
     parts[parts.length - 1] += c;
@@ -232,9 +270,19 @@ export function quoteAwareSplit(raw) {
 
 export function commandSegments(command) {
   const raw = String(command ?? "");
-  // interpreter/eval payloads are commands too — appended as their own segments, one level
-  // deep; the SAME capture as classifiedText (one law, no drift).
-  return [...quoteAwareSplit(raw), ...interpreterPayloads(raw)];
+  // interpreter/eval payloads are commands too — split by the SAME separator law into their own
+  // segments, one level deep (a payload judged whole let `sh -c 'git commit --no-verify; echo'`
+  // pass: the flag read as --no-verify;); the SAME capture as classifiedText (one law, no drift).
+  return [...quoteAwareSplit(raw), ...interpreterPayloads(raw).flatMap(quoteAwareSplit)];
+}
+
+/** Pure: the commands ONE segment runs, each as its unquoted words — the segment itself, then
+ *  its interpreter payload's commands. The separators already split it, so every ; | & < > left
+ *  in a command is data or a redirect and reads as a space: nothing inside one command hides its
+ *  flag from a row (a review caught `git push origin main\; --force` and `… 2>&1 --force` read
+ *  as routine), and a glued redirect never extends a flag (--no-verify>/dev/null IS --no-verify). */
+function commandWords(segment) {
+  return [segment, ...interpreterPayloads(segment).flatMap(quoteAwareSplit)].map((c) => classifiedText(c, false).replace(/[\s;|&<>]+/g, " "));
 }
 
 /** Pure: is this command destructive? Returns the human name of the danger, or null.
@@ -244,8 +292,9 @@ export function commandSegments(command) {
 export function destructiveAs(command) {
   for (const segment of commandSegments(command)) {
     if (/git\s+push\s+[^;|&]*--force-with-lease/.test(segment)) continue;
+    const words = commandWords(segment);
     for (const [pattern, name, where] of DESTRUCTIVE) {
-      if (pattern.test(where === "raw" ? segment : classifiedText(segment))) return name;
+      if (where === "raw" ? pattern.test(segment) : words.some((w) => pattern.test(w))) return name;
     }
   }
   return null;
@@ -514,6 +563,15 @@ function liveStateCases() {
       const entries = JSON.parse(readFileSync(statePath(session), "utf8")).entries;
       return Object.keys(entries).length === MAX_TARGETS && "edit:x.mjs" in entries;
     })],
+    // The session keys the state file — the one thing keeping conversations from sharing asks.
+    ["--stdin keys the gate state by the payload's session_id", inSession("stdin-key", (session) => {
+      cli(["--stdin"], JSON.stringify({ session_id: session, tool_input: { file_path: `${session}.ts` } }));
+      return existsSync(statePath(session));
+    })],
+    ["--stdin keeps an explicit --session when the payload carries no session_id", inSession("stdin-argv", (session) => {
+      cli(["--stdin", "--session", session], JSON.stringify({ tool_input: { file_path: `${session}.ts` } }));
+      return existsSync(statePath(session));
+    })],
   ];
 }
 
@@ -567,6 +625,40 @@ export function selfTest() {
     ["echo is routine", destructiveAs("echo hi") === null],
     ["a commit beside an unrelated -n (git log -n, head -n) is not a bypass — judged per segment", ['git commit -m "wip" && git log --oneline -n 3', "git add -A && git commit -m fix && head -n 5 CHANGELOG.md"].every((c) => bypassRefusal(c) === null)],
     ["a real commit -n in a later segment still refuses", bypassRefusal("git commit -m x && git commit -n -m y") !== null],
+    ["bash's own separator rules: a line continuation, an escaped separator, or a redirect's & never splits a command from its flags", [
+      "git commit -m x \\\n  --no-verify", "git commit -m x \\\n-n", "git push origin main \\\n  --no-verify", "git commit -m wip\\; --no-verify",
+      "git commit -m a\\|b -n", "git commit -m x \\& --no-verify", "git commit -m wip 2>&1 --no-verify", "git push origin main 2>&1 --no-verify", "git commit -m wip &>/dev/null --no-verify",
+    ].every((c) => bypassRefusal(c) !== null) && ["git reset \\\n  --hard HEAD~1", "git push origin main \\\n  --force", "rm \\\n  -rf build/"].every((c) => destructiveAs(c) !== null)
+      && ["ls 2>&1 | head -n 1 && git commit -m y", "git commit -m x 2>&1 && git log -n 3"].every((c) => bypassRefusal(c) === null)],
+    ["git's own bypass spellings refuse: a bundled -n, an abbreviated --no-verify, a subshell or path around git", [
+      "git commit -nm wip", "git commit -anm wip", "git commit -qn -m x", "git commit --no-verif -m x", "git commit --no-veri -m x", "git push --no-veri origin main",
+      "(git commit -m x --no-verify)", "(git commit -m x -n)", "echo $(git commit -m x --no-verify)", "/usr/bin/git commit --no-verify -m x", "(git -c core.hooksPath=/dev/null commit -m x)",
+    ].every((c) => bypassRefusal(c) !== null)],
+    ["an escaped < or > is a word, not a redirect: the & or | after it still separates", [
+      ...["git push --force-with-lease origin main \\>& rm -rf build/", "git push --force-with-lease origin main \\>| rm -rf build/", "git push --force-with-lease origin main \\<& rm -rf build/"].map((c) => destructiveAs(c) !== null),
+      bypassRefusal("git commit -m x \\>& git log -n 3") === null, bypassRefusal("git commit -m x \\\\>&1 --no-verify") !== null,
+    ].every(Boolean)],
+    ["a redirect glued to the bypass flag or to git itself still refuses — bash strips it, git gets the bare flag", [
+      "git commit -q -m glued --no-verify>/dev/null", "git push origin main --no-verify>log", "git commit -m x --no-verify&>/dev/null", "git commit -m x --no-verify>&2",
+      "git commit -m x --no-veri>/dev/null", "git>/dev/null commit --no-verify -m x",
+    ].every((c) => bypassRefusal(c) !== null)],
+    ["a ; | & < > inside ONE command (escaped, quoted, a redirect) never hides its destructive flag", [
+      "git push origin main\\; --force", "git commit -m a\\;b --amend", "git push origin x\\& --force", "git push origin x\\| --force", "git push origin 'main;' --force", 'git commit -m "a|b" --amend',
+      "git push origin main 2>&1 --force", "git commit -m x 2>&1 --amend", "rm x 2>&1 -rf", "git push origin main --force>/dev/null", "find . -name x -exec echo {} \\; -exec rm {} \\;",
+    ].every((c) => destructiveAs(c) !== null)],
+    ["a short destructive flag right after the verb or ending the command still classifies (git push -f origin main, git push origin main -f)", [
+      ...["git push -f origin main", "git push origin main -f", "git switch feat -f", "git switch -C feat"].map((c) => destructiveAs(c) !== null),
+      ...["git push --follow-tags origin main", "git switch feature-f"].map((c) => destructiveAs(c) === null),
+    ].every(Boolean)],
+    ["an interpreter payload splits at its own separators: a chained bypass or rm inside sh -c is judged, a neighbour's flag is not", [
+      bypassRefusal("sh -c 'git commit -m x --no-verify; echo done'") !== null, bypassRefusal("bash -c 'git push origin main --no-verify|cat'") !== null,
+      destructiveAs('bash -c "git push --force-with-lease origin main; rm -rf build/"') !== null,
+      destructiveAs("sh -c 'git push origin; echo --force'") === null, bypassRefusal("sh -c 'git commit -m x && git log -n 3'") === null,
+    ].every(Boolean)],
+    // Past the documented one level, but the reach classifiedText always had — kept, not dropped.
+    ["a payload's own wrapper is judged too (bash -c \"sh -c '…'\" — the reach classifiedText always had)",
+      [`bash -c "sh -c 'git reset --hard'"`, `bash -c "eval 'rm -rf build/'"`].every((c) => destructiveAs(c) !== null)],
+    ["a value glued to its flag is not a bypass (-mn is the message n, -Fn the file n)", ["git commit -mn", "git commit -Fn", "git commit -m no-verify"].every((c) => bypassRefusal(c) === null)],
     ["the rollback demand shows in full even after three earlier denials (destructive never condenses)", (() => {
       const d = gateDecision({ sessionDenials: 3, fullShown: 3, entries: {} }, destructiveTarget(), bashFactDemand("git reset --hard HEAD~3", "hard reset"), 1000);
       return d.refuse && d.text.includes("rollback") && d.text.includes("#4 this session");
@@ -582,6 +674,7 @@ export function selfTest() {
     })()],
     ["a hyphenated single-file rm is not a recursive delete (the flag must start a token)", ["rm tools/adversarial-runner.mjs", "rm -f old-report.txt"].every((c) => destructiveAs(c) === null)],
     ["rm's recursive flag after the path, capitalized, or spelled long still classifies", ["rm build/ -rf", "rm -Rf build/", "rm --recursive build/"].every((c) => destructiveAs(c) !== null)],
+    ["rm's --recursive abbreviated (--r, --rec, --recur) still classifies — GNU rm expands a unique prefix", ["rm --r build/", "rm --rec build/", "rm -f --recur build/"].every((c) => destructiveAs(c) !== null)],
     ["rm -r is named a recursive delete", destructiveAs("rm -r build/") === "recursive delete"],
     ["rm -fr is named a recursive forced delete", destructiveAs("rm -fr build/") === "recursive forced delete"],
     ["a hyphenated single-file git rm, a --cached rm, or a dry run is not destructive", ["git rm tools/adversarial-runner.mjs", "git rm --cached tools/x-ray.mjs", "git rm --dry-run notes.md"].every((c) => destructiveAs(c) === null)],
@@ -655,7 +748,11 @@ if (isEntry) {
   const argv = process.argv.slice(2);
   const args = parseArgs(argv);
   if (args["self-test"]) process.exit(selfTest() ? 0 : 1);
-  if (args.stdin) Object.assign(args, argsFromHookPayload(readHookPayload()));
+  if (args.stdin) {
+    // An explicit --session survives a payload without session_id — never silently "default".
+    const hook = argsFromHookPayload(readHookPayload());
+    Object.assign(args, hook, { session: hook.session ?? args.session });
+  }
   if (args.edit) {
     runGate(`edit:${args.edit}`, editFactDemand(args.edit), args.session);
     process.exit(0);

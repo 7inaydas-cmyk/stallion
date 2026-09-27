@@ -14,7 +14,7 @@
  * the lifecycle grants.
  */
 import { spawnSync } from "node:child_process";
-import { readdirSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, readdirSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,7 +82,7 @@ export function readRecords(stateDir) {
 }
 
 /** The harness's task-state CLI, repo-relative — from the layout law-source resolved, never
- *  re-derived from the shape name here (three ternaries once each re-typed the layout table). */
+ *  re-derived here from a layout name (three ternaries once each re-typed the layout table). */
 const stateToolOf = (law) => join(law.harnessDir, "task-state.mjs");
 
 /**
@@ -290,23 +290,61 @@ export function sitrepLine(facts) {
   return parts.length === 0 ? "" : `[stallion] sitrep: ${parts.join("; ")}`;
 }
 
-/** A throwaway harness whose law THROWS, for driving the hooks as processes — so their exit-code
- *  contract is pinned, not assumed. PHASES is empty on purpose: nothing here is taxonomy. */
-function withThrowingHarness(fn) {
+/** A throwaway directory holding `files` ({ relative path: content }), for driving the hooks as
+ *  processes — so their exit-code contract is pinned, not assumed. */
+function withTree(files, fn) {
   const dir = mkdtempSync(join(tmpdir(), "gate-law-harness-"));
   try {
-    mkdirSync(join(dir, "tools"));
-    writeFileSync(join(dir, "tools/task-coverage.mjs"), 'const boom = () => { throw new TypeError("events is not iterable"); };\nexport { boom as isCodePath, boom as recordRefusal, boom as scopeRefusal, boom as citationRefusal };\n');
-    writeFileSync(join(dir, "tools/task-state.mjs"), 'export const PHASES = [];\nexport const derivePhase = () => "intake";\nexport const scopeOf = () => [];\n');
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), content);
+    }
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-/** Run one of the plugin's hooks as the runner does: the payload on stdin, the verdict in the exit. */
-function runHook(name, payload) {
-  return spawnSync(process.execPath, [fileURLToPath(new URL(`../hooks/${name}`, import.meta.url))], { input: JSON.stringify(payload), encoding: "utf8" });
+/** A harness whose law THROWS. PHASES is empty on purpose: nothing here is taxonomy. */
+const withThrowingHarness = (fn) => withTree({
+  "tools/task-coverage.mjs": 'const boom = () => { throw new TypeError("events is not iterable"); };\nexport { boom as isCodePath, boom as recordRefusal, boom as scopeRefusal, boom as citationRefusal };\n',
+  "tools/task-state.mjs": 'export const PHASES = [];\nexport const derivePhase = () => "intake";\nexport const scopeOf = () => [];\n',
+}, fn);
+
+/** A well-formed harness with no task records: tools/ is code, and nothing authorizes it. */
+const withQuietHarness = (fn) => withTree({
+  "tools/task-coverage.mjs": 'const none = () => null;\nexport const isCodePath = (p) => p.startsWith("tools/");\nexport { none as recordRefusal, none as scopeRefusal, none as citationRefusal };\n',
+  "tools/task-state.mjs": 'export const PHASES = ["intake", "planned", "executing", "verified", "adversarial", "done"];\nexport const derivePhase = () => "intake";\nexport const scopeOf = () => [];\n',
+}, fn);
+
+/** Run one of the plugin's hooks as the runner does: the payload on stdin (an object is sent as
+ *  its JSON, a string as-is), the verdict in the exit. `hooksDir` runs a copied plugin's hooks. */
+function runHook(name, payload, hooksDir = fileURLToPath(new URL("../hooks/", import.meta.url))) {
+  return spawnSync(process.execPath, [join(hooksDir, name)], { input: typeof payload === "string" ? payload : JSON.stringify(payload), encoding: "utf8" });
+}
+
+/** An Edit payload for `file` under `dir`, as the runner sends it. */
+const editIn = (dir, file) => ({ tool_name: "Edit", cwd: dir, tool_input: { file_path: join(dir, file) } });
+
+/**
+ * The authoring hook's exit-code contract, one case per path that blocks: 2 BLOCKS, while 1 is a
+ * non-blocking error the runner lets through — so each refusal path is driven as a process (only
+ * the crash path once was, and flipping any other exit(2) left the battery green: a review finding).
+ */
+function hookExitCases() {
+  const refuses = (run, text) => run.status === 2 && run.stderr.includes(text);
+  return [
+    ["the authoring hook refuses (exit 2) a payload that is not JSON", refuses(runHook("authoring-gate.mjs", "{"), "not JSON")],
+    ["the authoring hook refuses (exit 2) a payload that names no file", refuses(runHook("authoring-gate.mjs", { tool_name: "Edit", tool_input: {} }), "fix:")],
+    ["the authoring hook refuses (exit 2) where no harness is found", withTree({}, (dir) => refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")), "no stallion harness found"))],
+    ["the authoring hook refuses (exit 2) a harness missing the law's exports", withTree({ "tools/task-coverage.mjs": "export const x = 1;\n", "tools/task-state.mjs": "export const y = 1;\n" }, (dir) => refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")), "does not export"))],
+    ["the authoring hook's ordinary deny exits 2 with the fix, and a non-code edit exits 0", withQuietHarness((dir) => refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs")), "fix:") && runHook("authoring-gate.mjs", editIn(dir, "README.md")).status === 0)],
+    ["the authoring hook fails CLOSED (exit 2) when one of its own modules cannot load", withTree({}, (dir) => {
+      cpSync(fileURLToPath(new URL("../", import.meta.url)), dir, { recursive: true });
+      appendFileSync(join(dir, "lib/gate-law.mjs"), "\nexport const broken = ;\n");
+      return refuses(runHook("authoring-gate.mjs", editIn(dir, "tools/x.mjs"), join(dir, "hooks")), "rule:");
+    })],
+  ];
 }
 
 /** The hook's event name as the banner answered it, or null when it printed nothing parseable. */
@@ -380,6 +418,23 @@ function failClosedCases(fakeLaw, task) {
       return d.decision === "deny" && d.reason.includes("rule:") && d.reason.includes("fix:");
     })()],
   ];
+}
+
+/**
+ * The tier law through the REAL harness beside the plugin. newTaskFix calls fenceSurfaceRefusal
+ * optionally (a harness predating the tier law lacks it), so a rename in task-state fell back to
+ * the runtime-code dead end with every fake-law case green (a review finding). A copied plugin
+ * has no tree beside it: nothing to pin there, the same skip the frozen-law pins take.
+ */
+function realTierPin() {
+  const layout = layoutAt(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."));
+  if (layout === null) return true;
+  const code = `const { loadLaw } = await import(${JSON.stringify(new URL("./law-source.mjs", import.meta.url).href)});
+const { authoringDecision } = await import(${JSON.stringify(import.meta.url)});
+const law = await loadLaw(${JSON.stringify(layout)});
+const d = law.ok ? authoringDecision({ filePath: ${JSON.stringify(join(layout.root, ".githooks/pre-push"))}, cwd: law.root }, law, []) : null;
+process.exit(d?.reason?.includes("--risk-class protected") ? 0 : 1);`;
+  return spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).status === 0;
 }
 
 /** The sitrep case family, split from selfTest so the ratchet keeps its word on both. */
@@ -463,6 +518,7 @@ if (checked === 0) console.error("(no harness tree found from the plugin locatio
       if (run.status !== 0) return false;
       return !inRepo || !run.stderr.includes("pins unchecked here");
     })()],
+    ["the real law's tier export still reaches the gate — a fence-surface path's fix opens a protected task", realTierPin()],
     ["file_path, filePath, and path spellings are all read", parseEditPayload({ tool_input: { file_path: "a" } }).ok && parseEditPayload({ tool_input: { filePath: "a" } }).ok && parseEditPayload({ tool_input: { path: "a" } }).ok],
     ["a non-object payload refuses", parseEditPayload(null).ok === false],
     ["the banner names the in-flight task, its phase, and the next command", (() => { const b = bannerContext(fakeLaw, [task("executing", ["tools/**"])]); return b.includes("t-executing") && b.includes("advance") && b.includes("tools/**"); })()],
@@ -475,6 +531,7 @@ if (checked === 0) console.error("(no harness tree found from the plugin locatio
     ["the banner's next step follows the repo's own PHASES (a declared phase is the next advance, never a skip to done)", bannerContext(shippingLaw, [task("adversarial", ["tools/**"])]).includes("advance t-adversarial shipping")],
     ["the no-task refusal states the repo's own authorizing window", authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, shippingLaw, []).reason.includes("shipping")],
     ...failClosedCases(fakeLaw, task),
+    ...hookExitCases(),
     ["a phase the repo's PHASES does not declare still refuses", (() => {
       const rec = { schema: "stallion/task-state@1", id: "t-ship", events: [{ to: "shipping" }], scope: ["tools/**"] };
       return authoringDecision({ filePath: "/repo/tools/x.mjs", cwd: "/repo" }, fakeLaw, [rec]).decision === "deny";

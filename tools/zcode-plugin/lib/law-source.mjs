@@ -17,8 +17,8 @@ import { pathToFileURL } from "node:url";
 
 /** The harness shapes this plugin knows, checked walking upward from the session's cwd. */
 const LAYOUTS = [
-  { marker: "tools/task-coverage.mjs", harnessDir: "tools", stateDir: "tasks", shape: "stallion" },
-  { marker: "tools/harness/task-coverage.mjs", harnessDir: "tools/harness", stateDir: "docs/harness/task-state", shape: "vendored" },
+  { marker: "tools/task-coverage.mjs", harnessDir: "tools", stateDir: "tasks" },
+  { marker: "tools/harness/task-coverage.mjs", harnessDir: "tools/harness", stateDir: "docs/harness/task-state" },
 ];
 
 /** Pure: which layout (if any) a directory carries. */

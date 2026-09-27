@@ -51,9 +51,12 @@ function record(chainStampEvents, PHASES, id, phase, scope) {
 
 /**
  * The fixture for one matrix row. Beyond the repo's PHASES, two derived terminal shapes: a
- * RETIRED record (lawfully retired from planned — the terminal-by-event state every transport
- * must refuse alike) and a FORGED one (an unstamped transition to a phase the law does not know:
- * derivePhase ignores it, the chain law refuses it).
+ * RETIRED record (lawfully retired from planned) and a FORGED one (an unstamped transition to a
+ * phase the law does not know: derivePhase ignores it, the chain law refuses it). The retired row
+ * is a SMOKE row, not a retirement pin: lawful retirement is pre-executing, so the planned phase
+ * beneath already refuses, and a transport that ignored retirement passes it too (a review
+ * finding). It proves a lawful retired record crashes no transport and all three agree on it; the
+ * retirement discriminators live in task-coverage (selfTestRetirementSeamCases / ShapeCases).
  */
 function fixture(chainStampEvents, PHASES, phase, scope) {
   const id = `probe-${phase}-${scope ? "scoped" : "bare"}`;

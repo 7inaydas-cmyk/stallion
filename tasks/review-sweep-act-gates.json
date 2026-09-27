@@ -225,6 +225,124 @@
       "seq": 20,
       "parent_hash": "6fb8e66d9b6d399bdbdc9fc80f602c0c26d73f0a564a177749495a9529db68a1",
       "entry_hash": "569ca9ce0c66059527bbad7dd37204503b9335f07b46470d7e989fcc557175a8"
+    },
+    {
+      "at": "2026-09-27T08:02:56.723Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 21,
+      "parent_hash": "569ca9ce0c66059527bbad7dd37204503b9335f07b46470d7e989fcc557175a8",
+      "entry_hash": "527f1e696c1235132386982ccb7b44824abd65c4670630dabad465ba3f6d5870"
+    },
+    {
+      "at": "2026-09-27T09:45:28.201Z",
+      "type": "red-check",
+      "expect": "task-gate: bash's own separator rules",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "da7af04c20fe",
+      "seq": 22,
+      "parent_hash": "527f1e696c1235132386982ccb7b44824abd65c4670630dabad465ba3f6d5870",
+      "entry_hash": "29bd509594765258046f48cca64a3561aef3b25b83f8b2dd2c36ca4b23936a73"
+    },
+    {
+      "at": "2026-09-27T09:45:28.720Z",
+      "type": "red-check",
+      "expect": "task-gate: git's own bypass spellings refuse",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "da7af04c20fe",
+      "seq": 23,
+      "parent_hash": "29bd509594765258046f48cca64a3561aef3b25b83f8b2dd2c36ca4b23936a73",
+      "entry_hash": "25852fa3d40c0887b63d75c320cc9369e836cdf0496a470a433ce20daba3b078"
+    },
+    {
+      "at": "2026-09-27T09:45:29.221Z",
+      "type": "red-check",
+      "expect": "task-gate: rm's --recursive abbreviated",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "da7af04c20fe",
+      "seq": 24,
+      "parent_hash": "25852fa3d40c0887b63d75c320cc9369e836cdf0496a470a433ce20daba3b078",
+      "entry_hash": "921a17d7e93f21d4a5e9e0799c04842e07936d6fc919070f4d69802a92eb5023"
+    },
+    {
+      "at": "2026-09-27T09:45:29.709Z",
+      "type": "red-check",
+      "expect": "task-gate: --stdin keeps an explicit --session when the payload carries no session_id",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "da7af04c20fe",
+      "seq": 25,
+      "parent_hash": "921a17d7e93f21d4a5e9e0799c04842e07936d6fc919070f4d69802a92eb5023",
+      "entry_hash": "3cc8970251934c8e743cb249c118f9060f63734600836e2d8bdc3702ec7defb6"
+    },
+    {
+      "at": "2026-09-27T09:47:19.069Z",
+      "type": "red-check",
+      "expect": "zcode-plugin gate-law: the authoring hook fails CLOSED \\(exit 2\\) when one of its own modules cannot load",
+      "command": "node tools/zcode-plugin/lib/gate-law.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1c5df2572a66",
+      "seq": 26,
+      "parent_hash": "3cc8970251934c8e743cb249c118f9060f63734600836e2d8bdc3702ec7defb6",
+      "entry_hash": "416fa3666797599d6d3a7c5ca53b52ace23142f84ffe407639206b8ef631eabc"
+    },
+    {
+      "at": "2026-09-27T10:09:16.856Z",
+      "type": "red-check",
+      "expect": "task-gate: an escaped < or > is a word, not a redirect",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "209559b16922",
+      "seq": 27,
+      "parent_hash": "416fa3666797599d6d3a7c5ca53b52ace23142f84ffe407639206b8ef631eabc",
+      "entry_hash": "651edb931f1f5c4721cb6cda0e3f1ca86bb8f4b7aef59b6c74dc065ea9d9874d"
+    },
+    {
+      "at": "2026-09-27T10:09:17.330Z",
+      "type": "red-check",
+      "expect": "task-gate: a redirect glued to the bypass flag or to git itself still refuses",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "209559b16922",
+      "seq": 28,
+      "parent_hash": "651edb931f1f5c4721cb6cda0e3f1ca86bb8f4b7aef59b6c74dc065ea9d9874d",
+      "entry_hash": "6584b075df8bf67a4340b658c47356da169f087a901b17092ff2c890efd1e39a"
+    },
+    {
+      "at": "2026-09-27T10:09:17.778Z",
+      "type": "red-check",
+      "expect": "task-gate: a ; \\| & < > inside ONE command",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "209559b16922",
+      "seq": 29,
+      "parent_hash": "6584b075df8bf67a4340b658c47356da169f087a901b17092ff2c890efd1e39a",
+      "entry_hash": "3a9a808be7a9a12c61a4035580b1fb9d8efe6c4d9e056642e3315f8ebba3bd10"
+    },
+    {
+      "at": "2026-09-27T10:09:18.214Z",
+      "type": "red-check",
+      "expect": "task-gate: an interpreter payload splits at its own separators",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "209559b16922",
+      "seq": 30,
+      "parent_hash": "3a9a808be7a9a12c61a4035580b1fb9d8efe6c4d9e056642e3315f8ebba3bd10",
+      "entry_hash": "860328cf112a81ba19fc3837420b86ea5af81c37783b96279bced266bcd32cdb"
+    },
+    {
+      "at": "2026-09-27T10:11:12.124Z",
+      "type": "red-check",
+      "expect": "task-gate: a short destructive flag right after the verb or ending the command still classifies",
+      "command": "node tools/task-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "036fab023ebd",
+      "seq": 31,
+      "parent_hash": "860328cf112a81ba19fc3837420b86ea5af81c37783b96279bced266bcd32cdb",
+      "entry_hash": "1faf6b500c08b2df2f253e2cc5ef2259c3c88131c873321a1d4dabe3af5ba22a"
     }
   ]
 }

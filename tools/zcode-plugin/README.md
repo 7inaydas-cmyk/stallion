@@ -13,10 +13,15 @@ fence that re-judge the same code later.
   allowed only when an in-flight task (executing/verified/adversarial) whose declared scope
   covers the file exists. Everything else exits 2 (block) with the rule, the evidence, and an
   exact fix command on stderr. Fails closed: unreadable payload, no vendored harness, a
-  harness missing law exports, or a crash anywhere in the gate all refuse (exit 2). A task
+  harness missing law exports, or a crash in the gate or any module it loads all refuse
+  (exit 2) — every one of those paths is driven as a process by `gate-law.mjs --self-test`.
+  The one uncatchable crash is a parse error in `authoring-gate.mjs` itself (it exits 1
+  before any handler exists). A task
   record the law refuses or throws on authorizes nothing, and when no task authorizes code the
   refusal names it with the law's reason; a record file that is not valid JSON is not a task
-  and authorizes nothing. A path on the fence's own surface gets the protected-task fix.
+  and authorizes nothing. A path on the fence's own surface gets the protected-task fix
+  (through the harness's `fenceSurfaceRefusal`, pinned against the real tree; a vendored
+  harness predating it gets the runtime-code fix).
 - `hooks/banner.mjs` — SessionStart + UserPromptSubmit. Injects the live task state (task,
   phase, scope, next command) at session start and re-injects it every turn — the per-turn
   injection is what carries it past compaction. Its output names the event it answers. Fails
