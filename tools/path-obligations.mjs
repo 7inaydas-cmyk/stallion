@@ -143,12 +143,13 @@ export function selectContext(paths) {
 /**
  * `stderr: "pipe"` is not tidiness: inherited, git's failure prints its ~200-line diff usage dump
  * and the refusal this module wants you to read scrolls off the top of it (vendor-repo lesson,
- * graduated with the engine).
+ * graduated with the engine). Every read is a -z path list split on NUL: a newline list C-quotes a
+ * non-ASCII path ("tasks/\303\274.json"), which arms no obligation glob.
  */
 function gitLines(args) {
   try {
     const out = execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    return { ok: true, lines: out.split("\n").filter(Boolean) };
+    return { ok: true, lines: out.split("\0").filter(Boolean) };
   } catch (error) {
     const first = String(error?.stderr ?? error?.message ?? error).split("\n").find((l) => l.trim() !== "");
     return { ok: false, lines: [], why: first ?? "git failed with no message" };
@@ -156,10 +157,11 @@ function gitLines(args) {
 }
 
 /** The working-change-set half: tracked changes plus untracked files — silence about a
- *  brand-new file is the false-empty this tool exists to refuse. */
+ *  brand-new file is the false-empty this tool exists to refuse. --no-renames: rename detection
+ *  lists only a rename's NEW path, and an obligation keyed to the old one went silent. */
 function workingPaths() {
-  const wt = gitLines(["diff", "--name-only", "HEAD"]);
-  const untracked = gitLines(["ls-files", "--others", "--exclude-standard"]);
+  const wt = gitLines(["diff", "-z", "--name-only", "--no-renames", "HEAD"]);
+  const untracked = gitLines(["ls-files", "-z", "--others", "--exclude-standard"]);
   if (!wt.ok) return { paths: null, why: wt.why };
   const paths = [...new Set([...wt.lines, ...(untracked.ok ? untracked.lines : [])])];
   return { paths, untracked: untracked.ok ? untracked.lines.length : 0 };
@@ -177,7 +179,7 @@ export function changedPaths(argv) {
   if (explicit.length > 0) return { paths: explicit, source: "arguments" };
   const stagedMode = argv.includes("--staged");
   if (stagedMode) {
-    const staged = gitLines(["diff", "--cached", "--name-only"]);
+    const staged = gitLines(["diff", "-z", "--cached", "--name-only", "--no-renames"]);
     if (staged.ok && staged.lines.length > 0) return { paths: staged.lines, source: "git index" };
   }
   const wt = workingPaths();
@@ -309,21 +311,49 @@ function inHostHook(family) {
 function selfTestChangeSetCases(fail) {
   const dir = mkdtempSync(join(tmpdir(), "path-obligations-"));
   const git = (...args) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, stdio: ["ignore", "pipe", "pipe"], env: fixtureEnv() });
+  const obligations = (...flags) => spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...flags], { cwd: dir, encoding: "utf8", env: fixtureEnv() });
   try {
     git("init", "-q");
+    mkdirSync(join(dir, "tasks"));
     writeFileSync(join(dir, "README.md"), "seed\n");
-    git("add", "README.md");
+    writeFileSync(join(dir, "tasks", "old.json"), '{"renamed":"away"}\n');
+    git("add", "README.md", "tasks/old.json");
     git("commit", "-q", "-m", "seed");
     mkdirSync(join(dir, "tools"));
     writeFileSync(join(dir, "tools", "new-gate.mjs"), "export {};\n");
-    const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--staged"], { cwd: dir, encoding: "utf8", env: fixtureEnv() });
+    const run = obligations("--staged");
     if (!`${run.stdout}`.includes("armed by: tools/new-gate.mjs")) {
       fail(`SELF-TEST FAIL (change set): --staged with nothing staged is silent about an untracked new file — got: ${`${run.stdout}${run.stderr}`.trim().split("\n")[0]}`);
     }
+    return 1 + selfTestPathSpellingCases(dir, git, obligations, fail);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  return 1;
+}
+
+/** The path-spelling family, one case per git read: a newline list C-quotes a non-ASCII path
+ *  ("tasks/\303\274-new.json" arms no glob), and rename detection lists only a rename's NEW path,
+ *  so an obligation keyed to the old one went silent. Each path here arms APPEND-ONLY alone. */
+function selfTestPathSpellingCases(dir, git, obligations, fail) {
+  const cases = [
+    ["a staged rename arms its OLD path (diff --cached)", () => git("mv", "tasks/old.json", "docs-renamed.json"), ["--staged"], "tasks/old.json"],
+    ["a working-copy rename arms its OLD path (diff HEAD)", () => {}, [], "tasks/old.json"],
+    ["an untracked non-ASCII path arms (ls-files --others)", () => {
+      git("commit", "-q", "-m", "rename");
+      writeFileSync(join(dir, "tasks", "ü-new.json"), "{}\n");
+    }, ["--staged"], "tasks/ü-new.json"],
+    ["a staged non-ASCII path arms (diff --cached)", () => git("add", "tasks/ü-new.json"), ["--staged"], "tasks/ü-new.json"],
+    ["a tracked non-ASCII change arms (diff HEAD)", () => {}, [], "tasks/ü-new.json"],
+  ];
+  for (const [label, arrange, flags, path] of cases) {
+    arrange();
+    const run = obligations(...flags);
+    if (!`${run.stdout}`.includes(`armed by: ${path}`)) {
+      const armed = `${run.stdout}${run.stderr}`.split("\n").filter((l) => l.includes("↳ armed by") || l.includes("failed")).map((l) => l.trim()).join(" | ");
+      fail(`SELF-TEST FAIL (path spelling): ${label} — got: ${armed || "nothing armed"}`);
+    }
+  }
+  return cases.length;
 }
 
 // Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and

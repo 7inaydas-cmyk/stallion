@@ -401,6 +401,50 @@
       "seq": 36,
       "parent_hash": "5b5b8426b747c6a81c5e7fa84b9ee7635f1a2ceb1c9d736947cff162d9e0d344",
       "entry_hash": "35dd630a186a0a2f98d97f19efebcaada3e7b9bf9aac62ee6a333d524d735a88"
+    },
+    {
+      "at": "2026-09-27T11:16:54.850Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL \\(path spelling\\): (an untracked|a staged|a tracked) non-ASCII",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bf211a20f7c5",
+      "seq": 37,
+      "parent_hash": "35dd630a186a0a2f98d97f19efebcaada3e7b9bf9aac62ee6a333d524d735a88",
+      "entry_hash": "039ff12049f25077bd78ac5bf639f10679255291e1f0d71202554c65147fa8a5"
+    },
+    {
+      "at": "2026-09-27T11:16:55.187Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL \\(path spelling\\): a (staged|working-copy) rename arms its OLD path",
+      "command": "node tools/path-obligations.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "bf211a20f7c5",
+      "seq": 38,
+      "parent_hash": "039ff12049f25077bd78ac5bf639f10679255291e1f0d71202554c65147fa8a5",
+      "entry_hash": "5acd2e83d6dfbca6283de5cb051368b44ce69196e2ecbe0be4e040f798233578"
+    },
+    {
+      "at": "2026-09-27T11:17:40.049Z",
+      "type": "red-check",
+      "expect": "vendor-drift SELF-TEST FAIL: cli — --upstream must name a tracked non-ASCII forged manifest by its path",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fa58c0c28e96",
+      "seq": 39,
+      "parent_hash": "5acd2e83d6dfbca6283de5cb051368b44ce69196e2ecbe0be4e040f798233578",
+      "entry_hash": "54eccf4160cd1fa76aa26b354eebfbefb2ac0364e15d224c6868dbfa73305f7a"
+    },
+    {
+      "at": "2026-09-27T11:17:40.821Z",
+      "type": "red-check",
+      "expect": "vendor-drift SELF-TEST FAIL: cli — --freshness must see a moved source whose path git C-quotes",
+      "command": "node tools/vendor-drift.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "fa58c0c28e96",
+      "seq": 40,
+      "parent_hash": "54eccf4160cd1fa76aa26b354eebfbefb2ac0364e15d224c6868dbfa73305f7a",
+      "entry_hash": "db6a8606592d3934afe2ac50c5a5977436812ae55316bd3b850e1620dd3f3027"
     }
   ]
 }

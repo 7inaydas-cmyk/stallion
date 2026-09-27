@@ -537,6 +537,7 @@ function selfTestCli() {
     selfTestCliUpstream(tmp, check);
     selfTestCliFreshness(tmp, check);
     selfTestCliFetched(tmp, check);
+    selfTestCliSpelling(tmp, check);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -624,6 +625,26 @@ function selfTestCliFetched(tmp, check) {
   fixtureGit(loose, "checkout", "-q", "--detach", "origin/HEAD");
   const caught = runCli(tmp, "--freshness", loose, "--manifest", manifest);
   check("--freshness on a detached clone AT its fetched origin/HEAD must answer the real verdict, not refuse it as behind", caught.code === 1 && caught.out.includes("upstream moved 1 vendored source") && !caught.out.includes("behind its own fetched upstream"));
+}
+
+/** A newline path list C-quotes a non-ASCII path, and one carrying a quote even under
+ *  core.quotePath=false: a quoted name matches no manifest source, and a refusal naming it names
+ *  no file — so every git path list is read -z. */
+function selfTestCliSpelling(tmp, check) {
+  const accented = join(tmp, "accented");
+  mkdirSync(accented);
+  fixtureGit(accented, "init", "-q");
+  commitFile(accented, "vendor/hárness/VENDOR.json", "{}");
+  const swept = runGate(plantGate(accented), accented, "--upstream");
+  check("--upstream must name a tracked non-ASCII forged manifest by its path, never C-quoted", swept.code === 1 && swept.out.includes("✖ vendor/hárness/VENDOR.json"));
+
+  const upstream = join(tmp, "upstream-quoted");
+  mkdirSync(upstream);
+  fixtureGit(upstream, "init", "-q");
+  const pin = commitFile(upstream, 'tools/q"x.mjs', "v1");
+  commitFile(upstream, 'tools/q"x.mjs', "v2");
+  const moved = runCli(tmp, "--freshness", upstream, "--manifest", writeHostManifest(tmp, pin, 'tools/q"x.mjs'));
+  check("--freshness must see a moved source whose path git C-quotes, never read it a phantom or FRESH", moved.code === 1 && moved.out.includes("upstream moved 1 vendored source"));
 }
 
 /** A host manifest vendoring one upstream source at `pin`, written under <tmp>/host. */
@@ -758,7 +779,8 @@ function sweepOwnTree() {
   const git = (args) => execFileSync("git", ["-C", gateDir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   try {
     const root = git(["rev-parse", "--show-toplevel"]).trim();
-    const tracked = git(["ls-files", "--full-name", ":(top)*VENDOR.json"]).split("\n").map((l) => l.trim()).filter(Boolean);
+    // -z: a newline list C-quotes a non-ASCII path, and the refusal named a file that does not exist.
+    const tracked = git(["ls-files", "-z", "--full-name", ":(top)*VENDOR.json"]).split("\0").filter(Boolean);
     return { root, tracked };
   } catch (error) {
     process.stderr.write(
@@ -818,19 +840,22 @@ function refuseUnanswerable(reason, fix) {
 }
 
 /** The upstream clone's HEAD, every path changed from the pin to it, and every file in the pin's
- *  tree — or the refusal when the clone cannot see the pin. core.quotePath=false: a quoted
- *  non-ASCII path would match no manifest source on either side. */
+ *  tree — or the refusal when the clone cannot see the pin. Path lists are -z, split on NUL and
+ *  never trimmed: a newline list C-quotes a path carrying a quote, backslash or control character
+ *  even under core.quotePath=false, and a quoted (or trimmed) path matches no manifest source on
+ *  either side. */
 function readUpstreamSincePin(upstreamPath, pin) {
-  const git = (args) => execFileSync("git", ["-C", upstreamPath, "-c", "core.quotePath=false", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  const lines = (out) => out.split("\n").map((l) => l.trim()).filter(Boolean);
+  const run = (args) => execFileSync("git", ["-C", upstreamPath, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const git = (args) => run(args).trim();
+  const paths = (args) => run(args).split("\0").filter(Boolean);
   try {
     git(["rev-parse", "--verify", `${pin}^{commit}`]);
     const head = git(["rev-parse", "HEAD"]);
     // --no-renames: under default rename detection a renamed vendored source lists only its NEW
     // path, the old source matches nothing, and the wave reads FRESH-FOR-WAVE through a rename
     // (an adversarial pass proved it end-to-end). Both sides of a rename are owed.
-    const changed = lines(git(["diff", "--name-only", "--no-renames", `${pin}..HEAD`]));
-    const atPin = lines(git(["ls-tree", "-r", "--name-only", "--full-tree", pin]));
+    const changed = paths(["diff", "-z", "--name-only", "--no-renames", `${pin}..HEAD`]);
+    const atPin = paths(["ls-tree", "-z", "-r", "--name-only", "--full-tree", pin]);
     return { head, changed, atPin };
   } catch (error) {
     process.stderr.write(
