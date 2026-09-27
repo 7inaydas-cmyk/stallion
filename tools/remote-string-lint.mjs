@@ -17,8 +17,9 @@
  * never once executed. It was found by running the code, which is the only thing that ever finds
  * this class. So this lint is the standing replacement for "somebody runs it".
  *
- * WHAT IT CHECKS. Inside a double-quoted block opened by `--command "` or `<NAME>_REMOTE="` and
- * closed by a line that is a lone `"`:
+ * WHAT IT CHECKS. Inside a double-quoted block opened by `--command "`, `<NAME>_REMOTE="` or a call
+ * to a remote-dispatch wrapper, and closed by a line that starts with the closing `"` (alone, or
+ * followed by `)`, `;`, `&&`, a pipe or a redirect):
  *   - an UNESCAPED backtick        → command substitution, evaluated locally. ERROR.
  *   - an UNESCAPED `$(`            → same. ERROR.
  * `\`` and `\$(` are correct and pass: they reach the host literally.
@@ -195,7 +196,10 @@ export function shellFunctions(text) {
     .split("\n")
     .map((line) => (/^\s*#/.test(line) ? "" : line))
     .join("\n");
-  const re = /^[ \t]*([a-z_]\w*)\s*\(\)\s*\{/gm;
+  // Every form bash declares a function with: `name() {`, `function name {`, `function name() {`,
+  // any case. Either the keyword or the `()` must be present, so a bare `word {` is not one. The
+  // lowercase `name() {` form alone once let a `function on_vm { ssh ... }` dispatcher go unseen.
+  const re = /^[ \t]*(?:function[ \t]+([A-Za-z_]\w*)(?:[ \t]*\(\))?|([A-Za-z_]\w*)[ \t]*\(\))\s*\{/gm;
   let m = re.exec(text);
   while (m !== null) {
     const open = text.indexOf("{", m.index);
@@ -211,7 +215,7 @@ export function shellFunctions(text) {
         }
       }
     }
-    if (m[1] !== undefined) out.push({ name: m[1], body: text.slice(open + 1, end) });
+    out.push({ name: m[1] ?? m[2], body: text.slice(open + 1, end) });
     m = re.exec(text);
   }
   return out;
@@ -272,13 +276,20 @@ export function indirectWrapperNames(text, known) {
   return out;
 }
 
-/** `--command "` or `NAME_REMOTE="` at end of line — the two static openers. */
-const OPENS = /(--command\s+"|^[A-Z_]+_REMOTE=")\s*$/;
-// The closers that actually occur: a lone `"`, `" | tee ...`, `" || fail ...`. A continuation line
-// that merely STARTS with a quote (`  "https://..."`) is not a closer, which is why the quote must
-// be followed by end-of-line or a pipe. Getting this wrong is not a small bug: an unclosed block
-// makes every later line read as "inside", and the lint then reports the rest of the file.
-const CLOSES = /^\s*"(\s*$|\s*\|\|?(\s|$))/;
+/**
+ * `--command "` / `--command="` or `NAME_REMOTE="` at end of line — the two static openers. The
+ * assignment may be indented (a block built inside a deploy function), carry `export` / `local` /
+ * `readonly` / `declare`, and have digits in its name; a column-0-only anchor left every one of
+ * those blocks unscanned.
+ */
+const OPENS = /(--command(?:\s+|=)"|^\s*(?:(?:export|local|readonly|declare(?:\s+-\w+)*)\s+)?[A-Z_][A-Z0-9_]*_REMOTE=")\s*$/;
+// The closers that actually occur: a lone `"`, `" | tee ...`, `" || fail ...`, `" && ...`, `")` (the
+// `OUT=$(remote_run "` shape), `"; then` (the `if remote_run "` shape) and `" > log`. A
+// continuation line that merely STARTS with a quote (`  "https://..."`) is not a closer, which is
+// why the quote must be followed by end-of-line or a shell terminator. Getting this wrong is not a
+// small bug: an unclosed block makes every later line read as "inside", and the lint then reports
+// the rest of the file.
+const CLOSES = /^\s*"\s*(?:$|\)|;|&&|\|\|?(?:\s|$)|\d*[<>])/;
 // Deliberate local evaluation does exist — a script composes an optional command into the remote
 // script on purpose. Marked, not guessed: an unmarked one is still an error.
 const ALLOW = /lint-allow-local-expansion/;
@@ -322,9 +333,13 @@ export function scan(text, file = "<input>", corpusWrappers) {
   const wrapperOpens =
     wrappers.length > 0 ? new RegExp(`(?:^|[\\s;&|(]|\\$\\()(?:${wrappers.join("|")})\\s+"\\s*$`) : null;
   let inside = false;
+  // How many blocks were OPENED, carried on the result: main's "dispatching" count reads this
+  // rather than re-deriving the openers with a narrower pattern of its own.
+  out.blocks = 0;
   text.split("\n").forEach((line, i) => {
     if (!inside) {
-      if (opensBlock(line, wrapperOpens)) inside = true;
+      inside = opensBlock(line, wrapperOpens);
+      out.blocks += Number(inside);
       return;
     }
     if (CLOSES.test(line)) {
@@ -409,6 +424,27 @@ function selfTest() {
       0,
       ["remote_run"],
     ],
+    // ── every declaration form bash accepts. `function name {` is ordinary bash style; a wrapper
+    // declared that way was never collected, so its call blocks never opened.
+    ["function-keyword wrapper `function on_vm {` is found", 'function on_vm {\n  gcloud compute ssh "$VM" --command "$1"\n}\non_vm "\n  # `bad`\n"\n', 1],
+    ["function-keyword wrapper `function on_vm() {` is found", 'function on_vm() {\n  ssh "$H" "$1"\n}\non_vm "\n  # `bad`\n"\n', 1],
+    ["uppercase-name wrapper `OnVm() {` is found", 'OnVm() { ssh "$H" "$1"; }\nOnVm "\n  # `bad`\n"\n', 1],
+    ["a bare `word {` line is not a declaration", 'echo {\n  ssh "$H"\n}\necho "\n  # `local`\n"\n', 0],
+    // ── every opener spelling the static form takes. A remote block assigned inside a function is
+    // indented, and gcloud also takes `--command="`; each was a block the lint never opened.
+    ["static-opener indented `  PREFLIGHT_REMOTE=\"` opens a block", 'deploy() {\n  PREFLIGHT_REMOTE="\n  # `x`\n"\n}\n', 1],
+    ["static-opener `export PREFLIGHT_REMOTE=\"` opens a block", 'export PREFLIGHT_REMOTE="\n  # `x`\n"\n', 1],
+    ["static-opener `local PREFLIGHT_REMOTE=\"` opens a block", 'f() {\n  local PREFLIGHT_REMOTE="\n  # `x`\n"\n}\n', 1],
+    ["static-opener with a digit `STEP2_REMOTE=\"` opens a block", 'STEP2_REMOTE="\n  # `x`\n"\n', 1],
+    ["static-opener `--command=\"` opens a block", 'gcloud compute ssh vm --command="\n  # `x`\n"\n', 1],
+    ["a lowercase `step_REMOTE=\"` is not an opener", 'step_REMOTE="\n  # `local`\n"\n', 0],
+    // ── the closers of the prefixed call shapes scan() opens. `")` and `"; then` did not close,
+    // so every later LOCAL line was reported as inside the remote string.
+    ["closer-subshell `\")` closes an `OUT=$(remote_run \"` block", 'remote_run() { ssh "$H" "$1"; }\nOUT=$(remote_run "\n  echo hi\n")\n# `after` is local\n', 0],
+    ["closer-then `\"; then` closes an `if remote_run \"` block", 'remote_run() { ssh "$H" "$1"; }\nif remote_run "\n  echo hi\n"; then\n  A=$(date)\nfi\n', 0],
+    ["closer-and `\" && x` closes a block", 'x --command "\n  echo hi\n" && echo ok\n# `after` is local\n', 0],
+    ["closer-redirect `\" > f` closes a block", 'x --command "\n  echo hi\n" > out.log\n# `after` is local\n', 0],
+    ["a bare backtick INSIDE an `OUT=$(remote_run \"` block is still caught", 'remote_run() { ssh "$H" "$1"; }\nOUT=$(remote_run "\n  # `bad`\n")\n', 1],
   ];
   let failed = 0;
   for (const [name, input, want, corpusWrappers] of cases) {
@@ -468,6 +504,10 @@ function selfTest() {
     expect("floors satisfied is not a defect", floorDefects({ scripts: ["a", "b"], wrappers: ["w"] }, config).length === 0);
     expect("too few discovered SCRIPTS is a defect", floorDefects({ scripts: ["a"], wrappers: ["w"] }, config).length === 1);
     expect("too few discovered DISPATCHERS is a defect", floorDefects({ scripts: ["a", "b"], wrappers: [] }, config).length === 1);
+
+    // ── the "dispatching" count is the one visible symptom of a collapsed union, so it is read
+    // off the blocks scan() actually opened, never re-derived by a narrower pattern.
+    expect("dispatch-count: scan() reports the blocks it opened behind a prefixed call", scan('remote_run() { ssh "$H" "$1"; }\nOUT=$(remote_run "\n  echo\n")\n').blocks === 1);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -529,9 +569,7 @@ function main() {
     // and a silent `continue` meant a renamed script simply stopped being checked.
     const text = readFileSync(resolve(ROOT, rel), "utf8");
     const found = scan(text, rel, wrappers);
-    if (OPENS.test(text) || text.includes("--command") || wrappers.some((w) => new RegExp(`^\\s*${w}\\s+"`, "m").test(text))) {
-      withRemoteBlocks += 1;
-    }
+    if (found.blocks > 0) withRemoteBlocks += 1;
     findings = findings.concat(found);
   }
 

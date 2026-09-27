@@ -1,0 +1,286 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-lint-gates",
+  "title": "2026-09-27 code-review sweep: the lint-gates group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:09.462Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "b640459ae9dc294fd9bf7b63d03856589e34da18ccb8bb7b42ec9c9a3bfbe026"
+    },
+    {
+      "at": "2026-09-27T05:54:09.492Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "b640459ae9dc294fd9bf7b63d03856589e34da18ccb8bb7b42ec9c9a3bfbe026",
+      "entry_hash": "c263d9699e8a08eab8be1f5d3c994fec4a254b0b371b921545ddbae217b0a3c7"
+    },
+    {
+      "at": "2026-09-27T05:54:09.527Z",
+      "type": "scope",
+      "patterns": [
+        "tools/complexity-gate.mjs",
+        "tools/remote-string-lint.mjs",
+        "tools/test-lint.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "c263d9699e8a08eab8be1f5d3c994fec4a254b0b371b921545ddbae217b0a3c7",
+      "entry_hash": "f85ec8e21a1b0a1fdad3ba9c55551dcded53731747d7fcf00f35dfff81f44680"
+    },
+    {
+      "at": "2026-09-27T05:54:09.556Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "f85ec8e21a1b0a1fdad3ba9c55551dcded53731747d7fcf00f35dfff81f44680",
+      "entry_hash": "2284ad05b5d314a515239f42070945e7e7218a674cff98560fa06a0b4b79717a"
+    },
+    {
+      "at": "2026-09-27T06:10:09.986Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: glob-string-opens-comment",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a98ea42df6d8",
+      "seq": 4,
+      "parent_hash": "2284ad05b5d314a515239f42070945e7e7218a674cff98560fa06a0b4b79717a",
+      "entry_hash": "c06fe7bfc45b258eb23f30c221578bf750b468d184fc4797ff4cf4de9a7b7fe2"
+    },
+    {
+      "at": "2026-09-27T06:10:10.041Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: glob-string-hides-read",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a98ea42df6d8",
+      "seq": 5,
+      "parent_hash": "c06fe7bfc45b258eb23f30c221578bf750b468d184fc4797ff4cf4de9a7b7fe2",
+      "entry_hash": "bec78ef050b4b4bfab1ceea215f52778765b3fde0d5e945ab84ede14e6ffe16a"
+    },
+    {
+      "at": "2026-09-27T06:10:10.097Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: exempt-by-comment",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a98ea42df6d8",
+      "seq": 6,
+      "parent_hash": "bec78ef050b4b4bfab1ceea215f52778765b3fde0d5e945ab84ede14e6ffe16a",
+      "entry_hash": "ca83df8555ca70a0acebe7e8037776aaf953dc7a6eba0576404846822e434b33"
+    },
+    {
+      "at": "2026-09-27T06:10:10.149Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: exempt-by-string",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a98ea42df6d8",
+      "seq": 7,
+      "parent_hash": "ca83df8555ca70a0acebe7e8037776aaf953dc7a6eba0576404846822e434b33",
+      "entry_hash": "fdb7f4bd8aa9fc341816bf3eee61c32f3837485cf69c1996639e71378171f498"
+    },
+    {
+      "at": "2026-09-27T06:12:21.958Z",
+      "type": "red-check",
+      "expect": "✖ function-keyword wrapper",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 8,
+      "parent_hash": "fdb7f4bd8aa9fc341816bf3eee61c32f3837485cf69c1996639e71378171f498",
+      "entry_hash": "f40d371f74e9bedec2e52f40729b4433477a161f582170c8d55d4f72d6cb2ba6"
+    },
+    {
+      "at": "2026-09-27T06:12:22.015Z",
+      "type": "red-check",
+      "expect": "✖ uppercase-name wrapper",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 9,
+      "parent_hash": "f40d371f74e9bedec2e52f40729b4433477a161f582170c8d55d4f72d6cb2ba6",
+      "entry_hash": "2a0bddda58f25b73b9f88dedbef0a351db78df395d8c2e5f57c1987bccfa8eb0"
+    },
+    {
+      "at": "2026-09-27T06:12:22.071Z",
+      "type": "red-check",
+      "expect": "✖ static-opener indented",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 10,
+      "parent_hash": "2a0bddda58f25b73b9f88dedbef0a351db78df395d8c2e5f57c1987bccfa8eb0",
+      "entry_hash": "07a69471e619f6aaedb7bf966e2531b0543162da676412c6081e3715442c94bf"
+    },
+    {
+      "at": "2026-09-27T06:12:22.127Z",
+      "type": "red-check",
+      "expect": "✖ static-opener with a digit",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 11,
+      "parent_hash": "07a69471e619f6aaedb7bf966e2531b0543162da676412c6081e3715442c94bf",
+      "entry_hash": "455a708d1322b16936a2daab6971d098535e498a71638b6be59ad1d023930938"
+    },
+    {
+      "at": "2026-09-27T06:12:22.190Z",
+      "type": "red-check",
+      "expect": "✖ static-opener `--command=",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 12,
+      "parent_hash": "455a708d1322b16936a2daab6971d098535e498a71638b6be59ad1d023930938",
+      "entry_hash": "7f240cbce9472a7a5e42b2b4a13f0108c7f89874ea5889552097947b38b44860"
+    },
+    {
+      "at": "2026-09-27T06:12:22.249Z",
+      "type": "red-check",
+      "expect": "✖ closer-subshell",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 13,
+      "parent_hash": "7f240cbce9472a7a5e42b2b4a13f0108c7f89874ea5889552097947b38b44860",
+      "entry_hash": "bcaf0e9fc30d0812f7ef9d44144c0119a559e1e7a1d39c982171574f61cf8788"
+    },
+    {
+      "at": "2026-09-27T06:12:22.305Z",
+      "type": "red-check",
+      "expect": "✖ closer-then",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 14,
+      "parent_hash": "bcaf0e9fc30d0812f7ef9d44144c0119a559e1e7a1d39c982171574f61cf8788",
+      "entry_hash": "54f1e0ad6b1c08267445bf0ddf18d5da5009721ebb5cf105cd24a0fc26724029"
+    },
+    {
+      "at": "2026-09-27T06:12:22.364Z",
+      "type": "red-check",
+      "expect": "✖ dispatch-count",
+      "command": "node tools/remote-string-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9f6c160894e",
+      "seq": 15,
+      "parent_hash": "54f1e0ad6b1c08267445bf0ddf18d5da5009721ebb5cf105cd24a0fc26724029",
+      "entry_hash": "aafa9fdbc0895bfa8d65b4b28895b96496152d89539f43bfddf5c876d01b3631"
+    },
+    {
+      "at": "2026-09-27T06:16:33.954Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: the unparseable baseline fixture was accepted",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a002e3b44149",
+      "seq": 16,
+      "parent_hash": "aafa9fdbc0895bfa8d65b4b28895b96496152d89539f43bfddf5c876d01b3631",
+      "entry_hash": "87718710b367051d62fdff312f619e9e66a2cecd9c4a5f59c33c20fa6ea6d8fa"
+    },
+    {
+      "at": "2026-09-27T06:16:34.492Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: the shapeless baseline fixture was accepted",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a002e3b44149",
+      "seq": 17,
+      "parent_hash": "87718710b367051d62fdff312f619e9e66a2cecd9c4a5f59c33c20fa6ea6d8fa",
+      "entry_hash": "1e7f00748d0881a18a8f569b9b4fef91b5170470fd570702892ab8087da6c753"
+    },
+    {
+      "at": "2026-09-27T06:16:35.040Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: missing-config-fix-circular",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a002e3b44149",
+      "seq": 18,
+      "parent_hash": "1e7f00748d0881a18a8f569b9b4fef91b5170470fd570702892ab8087da6c753",
+      "entry_hash": "d50bd27a7593980312e9b720c27c10bc9f9b3fe326a88881ad7798f4249f28c8"
+    },
+    {
+      "at": "2026-09-27T06:16:35.575Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: born-remedy-closed-hatch",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a002e3b44149",
+      "seq": 19,
+      "parent_hash": "d50bd27a7593980312e9b720c27c10bc9f9b3fe326a88881ad7798f4249f28c8",
+      "entry_hash": "100fedfb915e8ab6fbfe113b050aae341f39a4922d0ae3f8a366c587f7310ab1"
+    },
+    {
+      "at": "2026-09-27T06:16:36.094Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: stale-fix-not-a-command",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a002e3b44149",
+      "seq": 20,
+      "parent_hash": "100fedfb915e8ab6fbfe113b050aae341f39a4922d0ae3f8a366c587f7310ab1",
+      "entry_hash": "16027f57581cf43d185a57f55cecbed5238c53b8cb295c1cd35e5a6d4ac4427e"
+    },
+    {
+      "at": "2026-09-27T06:16:36.658Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: opt-out-fix-incomplete",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a002e3b44149",
+      "seq": 21,
+      "parent_hash": "16027f57581cf43d185a57f55cecbed5238c53b8cb295c1cd35e5a6d4ac4427e",
+      "entry_hash": "59139755a19275e66bbbd174194c4e1059a666146a9c634c71faa50bbc9cbaec"
+    },
+    {
+      "at": "2026-09-27T06:29:42.698Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: replace-comment-in-string",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "18f7db6201b3",
+      "seq": 22,
+      "parent_hash": "59139755a19275e66bbbd174194c4e1059a666146a9c634c71faa50bbc9cbaec",
+      "entry_hash": "dbab0c1fb5f7e2a6ce6165f2d9b0b53955379ecb6bafaed18ae54b2161c98e61"
+    },
+    {
+      "at": "2026-09-27T06:29:42.761Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: strip-regex-in-string",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "18f7db6201b3",
+      "seq": 23,
+      "parent_hash": "dbab0c1fb5f7e2a6ce6165f2d9b0b53955379ecb6bafaed18ae54b2161c98e61",
+      "entry_hash": "c95dab8ad12074da759763a8d2dbc8669affde36c12d49cfac348201805d3c68"
+    },
+    {
+      "at": "2026-09-27T06:29:42.817Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: regex-after-arrow",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "18f7db6201b3",
+      "seq": 24,
+      "parent_hash": "c95dab8ad12074da759763a8d2dbc8669affde36c12d49cfac348201805d3c68",
+      "entry_hash": "6a8263e0449a43c5b83a119cc0cb08ef2b839222956cadc07c4bbcb1474dcd30"
+    },
+    {
+      "at": "2026-09-27T06:30:07.826Z",
+      "type": "red-check",
+      "expect": "SELF-TEST FAIL: opt-out-keeps-tool",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "cb686618372a",
+      "seq": 25,
+      "parent_hash": "6a8263e0449a43c5b83a119cc0cb08ef2b839222956cadc07c4bbcb1474dcd30",
+      "entry_hash": "b5e06c59e0e0b5e2d390b49880e8416cb54c2dfe802d527fc994b6eb4faa486e"
+    }
+  ]
+}

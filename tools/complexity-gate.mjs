@@ -54,18 +54,24 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 // The compiler is the OPTIONAL peer dependency (see package.json): a missing typescript must
 // refuse with a fix line naming the two honest exits, not crash the battery with a bare
 // ERR_MODULE_NOT_FOUND (an adversarial finding: the static import made the battery unrunnable
 // in any fresh clone).
+// The opt-out names EVERY place that registers this gate: a partial list left guard-reach red.
+const NO_COMPILER_FIX =
+  "npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate: delete tools/complexity-gate.mjs and drop its battery line, " +
+  "docs/gates/complexity*.json, and the complexity-gate-new-file guard in docs/gates/guard-reach.json (guard-reach rewrites guard-reach-modes.json itself)";
 let ts;
 try {
   ts = await import("typescript");
 } catch {
   console.error("complexity-gate: the TypeScript compiler is not installed — the ratchet cannot count what it cannot parse");
-  console.error("  fix: npm install -D typescript (an optional peer dep, dev-time only) — or vendor without this gate and drop its battery line and docs/gates/complexity*.json");
+  console.error(`  fix: ${NO_COMPILER_FIX}`);
   process.exit(1);
 }
 import { matches } from "./pathspec.mjs";
@@ -73,28 +79,47 @@ import { matches } from "./pathspec.mjs";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const CONFIG_PATH = "docs/gates/complexity.json";
 export const BASELINE_PATH = "docs/gates/complexity-baseline.json";
+const CONFIG_SHAPE = '{"threshold": 8, "includes": ["tools/**/*.mjs"], "excludes": ["**/node_modules/**", "**/fixtures/**"], "testGlobs": []}';
+// --update-baseline cannot recreate a missing CONFIG (it needs one to run, and writes only the
+// baseline), so the config's fix is a restore; the baseline's is a restore or a deliberate re-record.
+const RESTORE_CONFIG = `git checkout -- ${CONFIG_PATH} (or copy it from the vendor template at docs/gates/) — shape: ${CONFIG_SHAPE}`;
+const RESTORE_BASELINE = `git checkout -- ${BASELINE_PATH} (or resolve its merge conflict); a deliberate re-record is node tools/complexity-gate.mjs --update-baseline`;
 
 /**
  * Config: threshold, includes, excludes, testGlobs — all repo data, none in this file. Fail
  * closed on every malformation shape (missing, unparseable, wrong types, empty includes) with a
- * fix line naming the path: a gate that cannot read its config must not pass.
+ * fix line naming the path: a gate that cannot read its config must not pass. Returns
+ * `{ ok: true, config }` or `{ ok: false, reason }` instead of exiting, so the self-test drives
+ * every refusal from fixture files; the CLI dies on a refusal through `orDie`.
  */
-function loadConfig() {
-  const path = `${ROOT}${CONFIG_PATH}`;
-  if (!existsSync(path)) die(`${CONFIG_PATH} is missing — the ratchet cannot run blind\n  fix: restore it (see the vendor template) or regenerate: node tools/complexity-gate.mjs --update-baseline`);
+function loadConfig(path = `${ROOT}${CONFIG_PATH}`) {
+  if (!existsSync(path)) return refused(`${CONFIG_PATH} is missing — the ratchet cannot run blind\n  fix: ${RESTORE_CONFIG}`);
   let parsed;
   try {
     parsed = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
-    die(`${CONFIG_PATH} does not parse: ${e.message}\n  fix: repair the JSON`);
+    return refused(`${CONFIG_PATH} does not parse: ${e.message}\n  fix: repair the JSON — shape: ${CONFIG_SHAPE}`);
   }
-  const strArray = (key) => {
-    const v = parsed[key];
-    if (!Array.isArray(v) || v.some((x) => typeof x !== "string") || v.length === 0) die(`${CONFIG_PATH} field '${key}' must be a non-empty array of glob strings\n  fix: repair the config`);
-    return v;
-  };
-  if (typeof parsed.threshold !== "number" || !Number.isInteger(parsed.threshold) || parsed.threshold < 2) die(`${CONFIG_PATH} field 'threshold' must be an integer >= 2\n  fix: repair the config`);
-  return { threshold: parsed.threshold, includes: strArray("includes"), excludes: strArray("excludes"), testGlobs: Array.isArray(parsed.testGlobs) && parsed.testGlobs.every((x) => typeof x === "string") ? parsed.testGlobs : die(`${CONFIG_PATH} field 'testGlobs' must be an array of glob strings (empty = the test-names hatch is CLOSED)\n  fix: repair the config`) };
+  const shape = configShapeError(parsed);
+  if (shape !== null) return refused(`${CONFIG_PATH} ${shape}\n  fix: repair the config — shape: ${CONFIG_SHAPE}`);
+  return { ok: true, config: { threshold: parsed.threshold, includes: parsed.includes, excludes: parsed.excludes, testGlobs: parsed.testGlobs } };
+}
+
+const refused = (reason) => ({ ok: false, reason });
+const isGlobArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
+
+/** The config's shape law, pure: the first malformation as refusal text, or null. */
+function configShapeError(parsed) {
+  if (!Number.isInteger(parsed?.threshold) || parsed.threshold < 2) return "field 'threshold' must be an integer >= 2";
+  const bad = ["includes", "excludes"].find((key) => !isGlobArray(parsed[key]) || parsed[key].length === 0);
+  if (bad !== undefined) return `field '${bad}' must be a non-empty array of glob strings`;
+  if (!isGlobArray(parsed.testGlobs)) return "field 'testGlobs' must be an array of glob strings (empty = the test-names hatch is CLOSED)";
+  return null;
+}
+
+/** The CLI boundary: a loader's refusal exits here, so the loaders themselves stay drivable. */
+function orDie(loaded, key) {
+  return loaded.ok ? loaded[key] : die(loaded.reason);
 }
 
 function die(message) {
@@ -218,7 +243,7 @@ export function analyse(file, text) {
 }
 
 /** Every function in the tracked corpus at or over the threshold. */
-export function scan(config = loadConfig()) {
+export function scan(config = orDie(loadConfig(), "config")) {
   const over = [];
   for (const file of trackedFiles(config.includes, config.excludes)) {
     for (const fn of analyse(file, readFileSync(`${ROOT}${file}`, "utf8"))) {
@@ -239,20 +264,39 @@ function testMentions(config) {
 
 const keyOf = (fn) => `${fn.file}::${fn.name}`;
 
-export function readBaseline() {
+/**
+ * The ceilings. An ABSENT baseline is an empty one — a fresh vendor has recorded nothing yet. An
+ * unparseable or wrong-shaped one REFUSES: a catch-all once turned a merge-conflicted baseline into
+ * 42 "born convoluted" misdiagnoses (and, with testGlobs set, into no ceilings at all), and a `{}`
+ * into a TypeError stack instead of a refusal.
+ */
+function loadBaseline(path = `${ROOT}${BASELINE_PATH}`) {
+  if (!existsSync(path)) return { ok: true, baseline: { threshold: null, functions: [] } };
+  let parsed;
   try {
-    return JSON.parse(readFileSync(`${ROOT}${BASELINE_PATH}`, "utf8"));
-  } catch {
-    return { threshold: null, functions: [] };
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    return refused(`${BASELINE_PATH} does not parse: ${e.message}\n  fix: ${RESTORE_BASELINE}`);
   }
+  if (!Array.isArray(parsed?.functions) || !parsed.functions.every(isBaselineRow)) {
+    return refused(`${BASELINE_PATH} field 'functions' must be an array of {file, name, complexity} rows\n  fix: ${RESTORE_BASELINE}`);
+  }
+  return { ok: true, baseline: parsed };
+}
+
+const isBaselineRow = (row) => typeof row?.file === "string" && typeof row?.name === "string" && Number.isInteger(row?.complexity);
+
+export function readBaseline() {
+  return orDie(loadBaseline(), "baseline");
 }
 
 /**
  * The three failure directions. Pure, so the self-test can drive it with fixtures instead of the
  * repo — a checker only ever exercised against a tree that passes is a checker nobody has watched
- * discriminate.
+ * discriminate. `hatchOpen` (testGlobs non-empty) only chooses which remedy the birth refusal
+ * prints; what is permitted is decided by `mentioned` alone.
  */
-export function judge(current, baseline, mentioned, threshold) {
+export function judge(current, baseline, mentioned, threshold, hatchOpen = false) {
   const errors = [];
   const recorded = new Map(baseline.functions.map((f) => [`${f.file}::${f.name}`, f.complexity]));
   const seen = new Set();
@@ -273,20 +317,31 @@ export function judge(current, baseline, mentioned, threshold) {
       const nameOnly = fn.name.split(".").pop();
       if (!mentioned.has(nameOnly)) {
         errors.push(
-          `${fn.file}:${fn.line} ${fn.name} — cyclomatic complexity ${fn.complexity} exceeds ${threshold} and no test names it. ` +
-            "Split it, or pin it with a test that exercises the branches.",
+          `${fn.file}:${fn.line} ${fn.name} — cyclomatic complexity ${fn.complexity} exceeds ${threshold} and no test names it.\n  fix: ${bornRemedy(threshold, hatchOpen)}`,
         );
       }
       continue;
     }
     // 2. The ratchet. Baselined functions may fall, never rise.
     if (fn.complexity > was) {
-      errors.push(`${fn.file}:${fn.line} ${fn.name} — complexity rose ${was} -> ${fn.complexity}. The baseline is a ceiling, not an allowance.`);
+      errors.push(
+        `${fn.file}:${fn.line} ${fn.name} — complexity rose ${was} -> ${fn.complexity}. The baseline is a ceiling, not an allowance.\n  fix: bring ${fn.name} back to ${was} or below — split out the branches that arrived`,
+      );
     }
   }
 
   errors.push(...staleBaselineErrors(baseline, seen, threshold));
   return errors;
+}
+
+/**
+ * The birth refusal names only exits that exist HERE. With testGlobs empty the test-names hatch is
+ * closed, so "pin it with a test" sent an agent to write a test the gate then ignored.
+ */
+function bornRemedy(threshold, hatchOpen) {
+  const split = `split it until each piece is at or under ${threshold}`;
+  if (hatchOpen) return `${split}, or name it in a test under testGlobs (${CONFIG_PATH}) that exercises its branches`;
+  return `${split} — the test-names hatch is CLOSED here (testGlobs in ${CONFIG_PATH} is empty); a deliberate exemption is node tools/complexity-gate.mjs --update-baseline, landed under a protected task (${BASELINE_PATH} is fence surface)`;
 }
 
 /**
@@ -309,7 +364,9 @@ function staleBaselineErrors(baseline, seen, threshold) {
   const errors = [];
   for (const row of baseline.functions) {
     if (!seen.has(`${row.file}::${row.name}`)) {
-      errors.push(`${BASELINE_PATH} still exempts ${row.file} ${row.name} (${row.complexity}), which is gone or now under ${threshold}. Run --update-baseline.`);
+      errors.push(
+        `${BASELINE_PATH} still exempts ${row.file} ${row.name} (${row.complexity}), which is gone or now under ${threshold}.\n  fix: node tools/complexity-gate.mjs --update-baseline (it writes fence surface: land it under a protected task)`,
+      );
     }
   }
   return errors;
@@ -377,6 +434,83 @@ function selfTestJudge(fail) {
   if (judge([fnA, method], base, new Set(["handle"]), T).length !== 0) fail("a class method named by a test was refused (bare-name lookup broken)");
 }
 
+/** `[fixture, file body (null = absent), refusal expected]` — every shape loadConfig promises to refuse. */
+const CONFIG_CASES = [
+  ["valid config", '{"threshold": 8, "includes": ["tools/**/*.mjs"], "excludes": ["**/fixtures/**"], "testGlobs": []}', false],
+  ["missing config", null, true],
+  ["unparseable config", "{not json", true],
+  ["null config", "null", true],
+  ["string-threshold config", '{"threshold": "8", "includes": ["a"], "excludes": ["b"], "testGlobs": []}', true],
+  ["fractional-threshold config", '{"threshold": 8.5, "includes": ["a"], "excludes": ["b"], "testGlobs": []}', true],
+  ["threshold-below-2 config", '{"threshold": 1, "includes": ["a"], "excludes": ["b"], "testGlobs": []}', true],
+  ["empty-includes config", '{"threshold": 8, "includes": [], "excludes": ["b"], "testGlobs": []}', true],
+  ["non-string-excludes config", '{"threshold": 8, "includes": ["a"], "excludes": [1], "testGlobs": []}', true],
+  ["no-testGlobs config", '{"threshold": 8, "includes": ["a"], "excludes": ["b"]}', true],
+];
+
+/** The same for loadBaseline. An ABSENT baseline is an empty one (a fresh vendor has recorded nothing). */
+const BASELINE_CASES = [
+  ["valid baseline", '{"threshold": 8, "functions": [{"file": "a.mjs", "name": "f", "complexity": 9}]}', false],
+  ["absent baseline", null, false],
+  ["unparseable baseline", "<<<<<<< HEAD\n{", true],
+  ["shapeless baseline", "{}", true],
+  ["row-less baseline", '{"functions": [{"file": "a.mjs", "name": "f"}]}', true],
+];
+
+function fixture(dir, name, body) {
+  const path = join(dir, `${name.replaceAll(" ", "-")}.json`);
+  if (body !== null) writeFileSync(path, body);
+  return path;
+}
+
+function expectVerdict(fail, name, refuses, loaded) {
+  if (loaded.ok === refuses) fail(`the ${name} fixture was ${refuses ? "accepted" : `refused: ${loaded.reason}`}`);
+  if (!loaded.ok && !loaded.reason.includes("\n  fix: ")) fail(`the ${name} fixture was refused without a fix line`);
+}
+
+/** The loaders' fail-closed refusals, driven from real files: an undriven refusal is decoration. */
+function selfTestLoaders(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-"));
+  try {
+    for (const [name, body, refuses] of CONFIG_CASES) expectVerdict(fail, name, refuses, loadConfig(fixture(dir, name, body)));
+    for (const [name, body, refuses] of BASELINE_CASES) expectVerdict(fail, name, refuses, loadBaseline(fixture(dir, name, body)));
+    // The missing-config fix must be one that works: --update-baseline needs the config to run at
+    // all, and writes only the baseline.
+    const missing = String(loadConfig(join(dir, "absent.json")).reason);
+    if (!missing.includes(" is missing")) fail(`an absent config was not refused as missing: ${missing}`);
+    if (missing.includes("--update-baseline")) fail("missing-config-fix-circular: the missing-config fix names --update-baseline, which dies on the same missing config");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Every refusal names a fix that exists HERE — the test hatch is closed while testGlobs is empty. */
+function selfTestRemedies(fail) {
+  const big = { file: "a.ts", name: "big", line: 1, complexity: 12 };
+  const born = { file: "b.ts", name: "fresh", line: 4, complexity: 9 };
+  const base = { threshold: 8, functions: [{ file: "a.ts", name: "big", complexity: 12 }] };
+  const [closed] = judge([big, born], base, new Set(), 8, false);
+  if (!closed.includes("\n  fix: ") || closed.includes("pin it with a test")) fail("born-remedy-closed-hatch: with testGlobs empty the birth refusal still offers the closed test hatch as its fix");
+  const [open] = judge([big, born], base, new Set(), 8, true);
+  if (!open.includes("testGlobs")) fail("with the hatch open the birth refusal does not name the test route");
+  const [rose] = judge([{ ...big, complexity: 13 }], base, new Set(), 8);
+  if (!rose.includes("\n  fix: ")) fail("rise-without-fix: the ratchet refusal names no fix");
+  const [stale] = judge([], base, new Set(), 8);
+  if (!stale.includes("\n  fix: node tools/complexity-gate.mjs --update-baseline")) fail("stale-fix-not-a-command: the stale-row refusal does not print the runnable refresh command");
+}
+
+/** The opt-out fix must name every gate file that registers this tool, or following it leaves the battery red. */
+function selfTestOptOut(fail) {
+  for (const file of readdirSync(`${ROOT}docs/gates`)) {
+    const rel = `docs/gates/${file}`;
+    if (!file.endsWith(".json") || file.startsWith("complexity") || !readFileSync(`${ROOT}${rel}`, "utf8").includes("tools/complexity-gate.mjs")) continue;
+    if (!NO_COMPILER_FIX.includes(rel)) fail(`opt-out-fix-incomplete: ${rel} registers tools/complexity-gate.mjs, but the missing-compiler fix does not say to drop it`);
+  }
+  // task-coverage --doctor requires every self-testing tool in tools/ to ride the battery, so
+  // dropping the battery line while the file stays leaves the doctor red.
+  if (!NO_COMPILER_FIX.includes("delete tools/complexity-gate.mjs")) fail("opt-out-keeps-tool: the missing-compiler fix drops the battery line but keeps tools/complexity-gate.mjs, which task-coverage --doctor then refuses");
+}
+
 function selfTestJudgeCollisions(fail) {
   const dupBig = { file: "d.ts", name: "dup", line: 1, complexity: 26 };
   const dupSmall = { file: "d.ts", name: "dup", line: 9, complexity: 10 };
@@ -396,10 +530,13 @@ export function selfTest() {
   selfTestMetric(fail);
   selfTestJudge(fail);
   selfTestJudgeCollisions(fail);
+  selfTestLoaders(fail);
+  selfTestRemedies(fail);
+  selfTestOptOut(fail);
 
   // And the repo's own config + baseline must be honest right now, or the gate ships pre-broken.
-  const config = loadConfig();
-  const live = judge(scan(config), readBaseline(), testMentions(config), config.threshold);
+  const config = orDie(loadConfig(), "config");
+  const live = judge(scan(config), readBaseline(), testMentions(config), config.threshold, config.testGlobs.length > 0);
   if (live.length !== 0) fail(`the committed baseline does not describe this tree:\n    ${live.join("\n    ")}`);
 
   // THE GATE MUST NOT NEED TO EXEMPT ITSELF. A ratchet whose own author is in the baseline is an
@@ -416,7 +553,7 @@ if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
 
-  const config = loadConfig();
+  const config = orDie(loadConfig(), "config");
   const current = scan(config);
 
   if (argv.includes("--report")) {
@@ -439,7 +576,7 @@ if (isEntry) {
     process.exit(0);
   }
 
-  const errors = judge(current, readBaseline(), testMentions(config), config.threshold);
+  const errors = judge(current, readBaseline(), testMentions(config), config.threshold, config.testGlobs.length > 0);
   if (errors.length === 0) {
     // "over the threshold", not "baselined": `current` may include a NEW function permitted by the
     // named-by-a-test hatch, which is deliberately not written to the baseline.
