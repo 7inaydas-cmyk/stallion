@@ -43,8 +43,9 @@
  *      self-test INSIDE the production file (`function selfTestValidate() { ... }` in the same
  *      module that ships). A name filter cannot see that, and test code seeding members by hand is
  *      precisely the blindness this gate exists to remove — so the corpus cuts `selfTest*`
- *      FUNCTION BODIES (string-aware brace matching; on parser doubt the cut runs to EOF, which
- *      can only over-report findings, the fail-closed direction).
+ *      FUNCTION BODIES, and every file-private helper only they reach (string-aware brace
+ *      matching; on parser doubt the cut runs to EOF, which can only over-report findings, the
+ *      fail-closed direction).
  *   2. THE DECLARATION. Antitube excluded the contract FILE; stallion's contracts share files with
  *      their own producers (`RISK_CLASSES` lives in task-state.mjs, which also branches on its
  *      members), so excluding the file would gut the sweep. The corpus excludes exactly the
@@ -53,10 +54,11 @@
  *   tool's fixtures name every member; counting them was the false-positive class that motivated
  *   the original self-exclusion).
  *
- * BASELINE. `accepted` in the config records today's ACCEPTED findings, each with a reason — an
- * absent or empty reason fails the config. The gate fails on any finding NOT accepted, and ALSO on
- * an accepted row that is no longer a finding: a stale row means the baseline has stopped
- * describing reality, and a baseline nobody prunes decays into a permission slip.
+ * BASELINE. `accepted` in the config records today's ACCEPTED findings, each with a reason that
+ * OPENS with the verdict it accepts — an absent reason, or one naming no verdict, fails the config.
+ * The gate fails on any finding NOT accepted, on an accepted row that is no longer a finding, and on
+ * a row whose finding now carries a different verdict: a stale or drifted row means the baseline
+ * has stopped describing reality, and a baseline nobody prunes decays into a permission slip.
  *
  * FAIL CLOSED ON THE CONFIG. Missing, unparseable, or wrongly shaped config fails the gate with a
  * fix line naming the path — a gate that cannot read its own law certifies nothing.
@@ -80,13 +82,17 @@ const SELF_REALPATH = realpathSync(fileURLToPath(import.meta.url));
 const CODE_EXTS = /\.(?:mjs|cjs|js)$/;
 /** Fixed law, not config: test artifacts by name are never production, whatever the tree grows. */
 const NEVER_CORPUS = /\.(?:test|spec)\.[^.]+$|\/(?:test|tests|__tests__|fixtures|dist)\//;
+/** The verdicts memberVerdict issues (see VERDICTS in the header) — every accepted row opens with one. */
+const VERDICTS = ["DEAD", "NO_PRODUCER", "NO_CONSUMER"];
+/** The verdict an accepted row was written for: its reason's opening token, or null. */
+const recordedVerdict = (reason) => VERDICTS.find((verdict) => new RegExp(`^${verdict}\\b`).test(reason)) ?? null;
 
 /* ------------------------------------------------------------------------------------------------
  * Config — fail closed on every shape this gate depends on. Each validator returns null or a
  * [message, fix] pair; loadConfig chains them so every refusal names the path and its fix.
  * ---------------------------------------------------------------------------------------------- */
 
-function configDefect(path, message, fix) {
+function configDefect(message, fix) {
   return { ok: false, error: `reader-existence GATE_DEFECT — ${message}\n  fix: ${fix}` };
 }
 
@@ -123,29 +129,37 @@ function isReasonlessExclusion(x) {
 function acceptedError(accepted) {
   if (typeof accepted !== "object" || accepted === null || Array.isArray(accepted)) return ['accepted must be an object of { "<SYMBOL>.<member>": "<reason>" }', `repair accepted in ${CONFIG_PATH}.`];
   for (const [id, reason] of Object.entries(accepted)) {
-    if (typeof reason !== "string" || reason.trim().length === 0) return [`accepted row ${id} carries no reason`, `give ${id} a reason in ${CONFIG_PATH}, or delete the row — "it was already like that" is not one.`];
+    const defect = acceptedRowError(id, reason);
+    if (defect !== null) return defect;
   }
+  return null;
+}
+
+/** A row's reason must exist AND open with the verdict it accepts — the token baselineVerdict holds it to. */
+function acceptedRowError(id, reason) {
+  if (typeof reason !== "string" || reason.trim().length === 0) return [`accepted row ${id} carries no reason`, `give ${id} a reason in ${CONFIG_PATH}, or delete the row — "it was already like that" is not one.`];
+  if (recordedVerdict(reason) === null) return [`accepted row ${id} does not open with the verdict it accepts (${VERDICTS.join(" / ")})`, `start ${id}'s reason in ${CONFIG_PATH} with its verdict (e.g. "NO_PRODUCER — <why>") — a row naming no verdict cannot be checked for drift.`];
   return null;
 }
 
 export function loadConfig(path) {
   if (!existsSync(path)) {
-    return configDefect(path, `${path} is missing; the gate cannot know its contracts, corpus, or accepted findings.`, `restore ${path} from history (its accepted rows and exclusion reasons are the baseline's audit trail) — do not re-seed it blind.`);
+    return configDefect(`${path} is missing; the gate cannot know its contracts, corpus, or accepted findings.`, `restore ${path} from history (its accepted rows and exclusion reasons are the baseline's audit trail) — do not re-seed it blind.`);
   }
   let raw;
   try {
     raw = readFileSync(path, "utf8");
   } catch (e) {
-    return configDefect(path, `${path} is unreadable: ${e.message}`, "check the file's permissions, then re-run.");
+    return configDefect(`${path} is unreadable: ${e.message}`, "check the file's permissions, then re-run.");
   }
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch (e) {
-    return configDefect(path, `${path} is not valid JSON: ${e.message}`, `repair the JSON in ${path} (a gate that cannot parse its law fails closed).`);
+    return configDefect(`${path} is not valid JSON: ${e.message}`, `repair the JSON in ${path} (a gate that cannot parse its law fails closed).`);
   }
   const defect = contractsError(parsed.contracts) ?? corpusError(parsed.corpus) ?? acceptedError(parsed.accepted);
-  if (defect !== null) return configDefect(path, `${path}: ${defect[0]}`, defect[1]);
+  if (defect !== null) return configDefect(`${path}: ${defect[0]}`, defect[1]);
   return { ok: true, config: parsed };
 }
 
@@ -185,13 +199,12 @@ export function declarationRange(source, name) {
 
 const escapeRe = (literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** The shapes that READ a member: a comparison operand, a `case` label, a predicate call's argument. */
+const consumerShapes = (q) => [`[=!]==?\\s*"${q}"`, `"${q}"\\s*[=!]==`, `case\\s+"${q}"`, `\\.?(?:has|includes|indexOf|startsWith|endsWith)\\(\\s*"${q}"`];
+
 function consumerRoles(line, literal) {
   const q = escapeRe(literal);
-  const roles = new Set();
-  if (new RegExp(`([=!]==?\\s*"${q}")|("${q}"\\s*[=!]==)`).test(line)) roles.add("CONSUMER");
-  if (new RegExp(`case\\s+"${q}"`).test(line)) roles.add("CONSUMER");
-  if (new RegExp(`\\.?(has|includes|indexOf|startsWith|endsWith)\\(\\s*"${q}"`).test(line)) roles.add("CONSUMER");
-  return roles;
+  return consumerShapes(q).some((shape) => new RegExp(shape).test(line)) ? new Set(["CONSUMER"]) : new Set();
 }
 
 // PRODUCER — the literal is being supplied as data. Checked INDEPENDENTLY of the consumer
@@ -201,7 +214,10 @@ function consumerRoles(line, literal) {
 function producerRoles(line, literal) {
   const q = escapeRe(literal);
   const roles = new Set();
-  if (new RegExp(`return\\s+.*"${q}"`).test(line)) roles.add("PRODUCER");
+  // A `return` supplies the literal only where it is not a READ: `return m === "GHOST"` produces
+  // nothing, and counting it would turn a read-never-written member green.
+  const unread = line.replace(new RegExp(consumerShapes(q).join("|"), "g"), "");
+  if (new RegExp(`return\\s+.*"${q}"`).test(unread)) roles.add("PRODUCER");
   if (new RegExp(`:\\s*"${q}"`).test(line)) roles.add("PRODUCER");
   if (new RegExp(`\\.push\\(\\s*"${q}"`).test(line)) roles.add("PRODUCER");
   if (new RegExp(`[^=!<>]=\\s*"${q}"`).test(line)) roles.add("PRODUCER");
@@ -286,9 +302,68 @@ export function selfTestRanges(lines) {
   return ranges;
 }
 
+const PRIVATE_FN_DECL = /^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(/;
+
+/**
+ * TEST CODE in a production file: every `selfTest*` body, plus — to a fixpoint — every FILE-PRIVATE
+ * top-level function referenced only from test code. A helper is test code by what reaches it, not
+ * by its name: `runLawRepairCases` and `bundleBlockCarriesAllRanked` escaped a name-only cut, and
+ * their hand-seeded literals counted as production — hiding a DEAD member and flipping accepted
+ * rows (the 2026-09-27 sweep). Exported functions are never cut this way: another module may be
+ * their production caller. KNOWN LIMIT: any mention outside test code, a comment included, keeps a
+ * helper in the corpus; naming it selfTest* cuts it outright.
+ */
+export function testCodeRanges(lines) {
+  const ranges = selfTestRanges(lines);
+  const cut = new Set(ranges.flatMap(lineSpan));
+  const refs = identifierLines(lines);
+  let pending = privateFunctions(lines);
+  let reached = pending.filter((fn) => onlyTestReached(fn, refs, cut));
+  while (reached.length > 0) {
+    for (const fn of reached) {
+      ranges.push(fn.range);
+      for (const i of lineSpan(fn.range)) cut.add(i);
+    }
+    pending = pending.filter((fn) => !reached.includes(fn));
+    reached = pending.filter((fn) => onlyTestReached(fn, refs, cut));
+  }
+  return ranges;
+}
+
+const lineSpan = ([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+/** Top-level, non-exported, non-selfTest function declarations, each with its line range. */
+function privateFunctions(lines) {
+  const found = [];
+  lines.forEach((line, i) => {
+    const decl = PRIVATE_FN_DECL.exec(line);
+    if (decl !== null && !SELFTEST_DECL.test(line)) found.push({ name: decl[1], range: [i, functionEnd(lines, i)] });
+  });
+  return found;
+}
+
+/** identifier -> the lines it appears on. */
+function identifierLines(lines) {
+  const index = new Map();
+  lines.forEach((line, i) => {
+    for (const id of new Set(line.match(/[A-Za-z_$][\w$]*/g))) {
+      if (!index.has(id)) index.set(id, []);
+      index.get(id).push(i);
+    }
+  });
+  return index;
+}
+
+/** Referenced at all, and only from lines already cut as test code (its own body aside). */
+function onlyTestReached(fn, refs, cut) {
+  const [start, end] = fn.range;
+  const outside = (refs.get(fn.name) ?? []).filter((i) => i < start || i > end);
+  return outside.length > 0 && outside.every((i) => cut.has(i));
+}
+
 /** Index of the line where the function starting at `start` closes; EOF on parser doubt. */
 function functionEnd(lines, start) {
-  const st = { depth: 0, started: false, str: null, block: false };
+  const st = { depth: 0, parens: 0, started: false, str: null, block: false };
   for (let j = start; j < lines.length; j += 1) {
     if (scanLine(lines[j], st)) return j;
   }
@@ -335,12 +410,25 @@ function codeStep(line, k, st) {
     if (line[k + 1] === "*") st.block = true;
   }
   if (QUOTE_CHARS.has(c)) st.str = c; // templates are opaque, holes included
-  if (c === "{") {
-    st.depth += 1;
+  if (st.started) bodyStep(c, st);
+  else headerStep(c, st);
+  return { next: k + 1, ended: st.started && st.depth <= 0 };
+}
+
+/** Before the body: braces inside the PARAMETER list (destructuring, `= {}` defaults) are not the
+ *  body's — ending the cut on them left whole helper bodies in the corpus, the fail-open direction. */
+function headerStep(c, st) {
+  if (c === "(") st.parens += 1;
+  if (c === ")") st.parens -= 1;
+  if (c === "{" && st.parens === 0) {
+    st.depth = 1;
     st.started = true;
   }
+}
+
+function bodyStep(c, st) {
+  if (c === "{") st.depth += 1;
   if (c === "}") st.depth -= 1;
-  return { next: k + 1, ended: st.started && st.depth <= 0 };
 }
 
 /** Production corpus under `root`: config roots, code extensions, minus test artifacts, minus the
@@ -411,14 +499,14 @@ export function sweep(root, config) {
 }
 
 function buildContext(root, config) {
-  const files = corpusFiles(root, config.corpus ?? { roots: ["tools"] });
+  const files = corpusFiles(root, config.corpus);
   const cache = new Map();
   const deadByFile = new Map();
   const load = (path) => {
     if (!cache.has(path)) {
       const text = readFileSync(join(root, path), "utf8");
       const lines = text.split("\n");
-      cache.set(path, { text, lines, dead: selfTestRanges(lines), predicate: predicateArrayRanges(text) });
+      cache.set(path, { text, lines, dead: testCodeRanges(lines), predicate: predicateArrayRanges(text) });
     }
     return cache.get(path);
   };
@@ -549,18 +637,25 @@ function printFinding(f, report) {
   console.log(`  ${f.verdict.padEnd(12)} ${f.id} — ${f.detail}${where}`);
 }
 
-function baselineVerdict(accepted, findings) {
+/**
+ * The gate. Three ways the baseline stops describing reality: a NEW finding, a STALE row, and a row
+ * whose verdict DRIFTED — keyed by id alone, a NO_PRODUCER row whose last consumer is deleted turns
+ * DEAD and stays green, its reason still describing a reader that no longer exists.
+ */
+function baselineVerdict(accepted, findings, out = console) {
   const acceptedIds = new Set(Object.keys(accepted));
   const current = new Set(findings.map((f) => f.id));
   const added = [...current].filter((id) => !acceptedIds.has(id));
   const stale = [...acceptedIds].filter((id) => !current.has(id));
-  for (const id of added) console.error(`  NEW dead wiring: ${id} — add a reader/producer, or accept it in ${CONFIG_PATH} WITH A REASON.`);
-  for (const id of stale) console.error(`  STALE accepted row: ${id} is no longer a finding — remove it from ${CONFIG_PATH}. A baseline nobody prunes becomes a permission slip.`);
-  if (added.length > 0 || stale.length > 0) {
-    console.error(`reader-existence: FAILED (${added.length} new, ${stale.length} stale).`);
+  const drifted = findings.filter((f) => acceptedIds.has(f.id) && recordedVerdict(accepted[f.id]) !== f.verdict);
+  for (const id of added) out.error(`  NEW dead wiring: ${id} — add a reader/producer, or accept it in ${CONFIG_PATH} WITH A REASON.`);
+  for (const id of stale) out.error(`  STALE accepted row: ${id} is no longer a finding — remove it from ${CONFIG_PATH}. A baseline nobody prunes becomes a permission slip.`);
+  for (const f of drifted) out.error(`  DRIFTED accepted row: ${f.id} was accepted as ${recordedVerdict(accepted[f.id])}, the sweep now says ${f.verdict} — fix the wiring, or re-justify the row in ${CONFIG_PATH} with a reason opening "${f.verdict} —".`);
+  if (added.length + stale.length + drifted.length > 0) {
+    out.error(`reader-existence: FAILED (${added.length} new, ${stale.length} stale, ${drifted.length} drifted).`);
     return 1;
   }
-  console.log(`reader-existence — no new dead wiring (${acceptedIds.size} accepted finding(s), each with a reason, in ${CONFIG_PATH}).`);
+  out.log(`reader-existence — no new dead wiring (${acceptedIds.size} accepted finding(s), each with a reason, in ${CONFIG_PATH}).`);
   return 0;
 }
 
@@ -591,13 +686,24 @@ function selfTestClassifier(fail) {
     // The stallion shape the port added: a single-line guard set, resolved as a predicate const.
     ["CONSUMER", classifyLine('export const APPROVAL_REQUIRED = new Set(["protected", "migration"]);', "protected", true)],
   ];
-  for (const [want, got] of cases) {
-    // `got` is a SET of roles — the case table lists a role that must be PRESENT, not equality.
-    if (!got.has(want)) fail(`classifier wanted ${want}, got [${[...got].join(",")}]`);
-  }
+  // Every assertion is counted as it runs, so the banner's number is derived, never hand-typed.
+  let asserted = 0;
+  const check = (ok, message) => {
+    asserted += 1;
+    if (!ok) fail(message);
+  };
+  // `got` is a SET of roles — the case table lists a role that must be PRESENT, not equality.
+  for (const [want, got] of cases) check(got.has(want), `classifier wanted ${want}, got [${[...got].join(",")}]`);
   // The both-roles line is the regression that motivated the Set: assert BOTH, not just one.
   const both = classifyLine('  return labels.includes("BLOCK") ? labels : [...labels, "BLOCK"];', "BLOCK", false);
-  if (!both.has("CONSUMER") || !both.has("PRODUCER")) fail(`a produce-and-consume line classified as [${[...both].join(",")}]`);
+  check(both.has("CONSUMER") && both.has("PRODUCER"), `a produce-and-consume line classified as [${[...both].join(",")}]`);
+  // A READ that happens to sit in a return statement writes nothing: counting it as a producer
+  // turns a read-never-written member green (the founding tier() shape, one statement over).
+  const readInReturn = classifyLine('  return m === "GHOST";', "GHOST", false);
+  check(!readInReturn.has("PRODUCER"), `a comparison inside a return was read as a PRODUCER: [${[...readInReturn].join(",")}]`);
+  const returned = classifyLine('  return ok ? "CLOSED" : null;', "CLOSED", false);
+  check(returned.has("PRODUCER"), `a returned literal lost its PRODUCER role: [${[...returned].join(",")}]`);
+  return asserted;
 }
 
 function selfTestPredicateShapes(fail) {
@@ -637,6 +743,10 @@ function selfTestDeclarationAndCut(fail) {
   const unbalanced = ['function selfTestOdd(fail) {', '  fail("never closes in this fixture");'];
   const odd = selfTestRanges(unbalanced);
   if (odd.length !== 1 || odd[0][1] !== unbalanced.length - 1) fail("parser doubt must cut to EOF (over-cut fails toward findings)");
+  // Braces in the PARAMETER list (destructuring, `= {}` defaults) are not the body's: ending the cut
+  // there leaves the whole body in the corpus — the under-cut, fail-open direction.
+  const destructured = ['function selfTestD(fail, { a, b } = {}) {', '  fail(a, b);', '}', 'export const after = 1;'];
+  if (JSON.stringify(selfTestRanges(destructured)) !== "[[0,2]]") fail(`a destructured parameter list ended the cut early: ${JSON.stringify(selfTestRanges(destructured))}`);
 }
 
 function writeFixtureTree(dir) {
@@ -646,12 +756,27 @@ function writeFixtureTree(dir) {
     [
       'export function open() { return { status: "OPEN" }; }',
       'export const isOpen = (m) => m === "OPEN";',
-      'export function close() { return { status: "CLOSED" }; }',
+      // A file-private helper that PRODUCTION reaches: its literals are production, never cut.
+      'function closedStatus() {',
+      '  return { status: "CLOSED" };',
+      '}',
+      'export function close() { return closedStatus(); }',
       'export const isClosed = (m) => m === "CLOSED";',
       'export const isGhost = (m) => m === "GHOST";',
+      // File-private helpers that ONLY the self-test reaches — one of them through the other — are
+      // test code whatever their names. `open` is reached from the self-test too, but it is EXPORTED:
+      // another module may be its production caller, so it stays.
+      'function orphanStatus() {',
+      '  return { status: "ORPHAN" };',
+      '}',
+      'function seedOrphan() {',
+      '  return orphanStatus();',
+      '}',
       'function selfTestUnit() {',
       '  if (isGhost("GHOST") !== true) throw new Error("GHOST seeded by hand, like a test would");',
       '  if ("ORPHAN" === "ORPHAN") console.log("ORPHAN referenced only by test prose");',
+      '  seedOrphan();',
+      '  open();',
       '}',
       'void selfTestUnit;',
     ].join("\n"),
@@ -663,7 +788,7 @@ function fixtureConfig() {
   return {
     contracts: [{ path: "contract.mjs", symbol: "MODES" }],
     corpus: { roots: ["."], exclude: [] },
-    accepted: { "MODES.ORPHAN": "fixture: seeded dead member accepted with a reason" },
+    accepted: { "MODES.ORPHAN": "DEAD — fixture: seeded dead member accepted with a reason" },
   };
 }
 
@@ -673,19 +798,37 @@ function selfTestSweepVerdicts(fail, dir) {
     fail(`fixture sweep refused: ${result.defect}`);
     return;
   }
-  const verdicts = JSON.stringify(Object.fromEntries(result.findings.map((f) => [f.id, f.verdict])), Object.keys({ "MODES.GHOST": 1, "MODES.ORPHAN": 1 }).sort());
+  // The WHOLE map, sorted: a key-whitelist replacer would hide a spurious finding on any other member.
+  const verdicts = JSON.stringify(Object.fromEntries(result.findings.map((f) => [f.id, f.verdict]).sort()));
   // The inline self-test's hand-seeded references must NOT count — the founding blindness.
-  const expected = JSON.stringify({ "MODES.ORPHAN": "DEAD", "MODES.GHOST": "NO_PRODUCER" }, ["MODES.GHOST", "MODES.ORPHAN"]);
-  if (verdicts !== expected) fail(`fixture verdicts wrong: ${verdicts}`);
+  if (verdicts !== '{"MODES.GHOST":"NO_PRODUCER","MODES.ORPHAN":"DEAD"}') fail(`fixture verdicts wrong: ${verdicts}`);
+  const orphan = result.findings.find((f) => f.id === "MODES.ORPHAN");
+  if (orphan?.verdict !== "DEAD") fail(`a helper called only from selfTest code leaked into the corpus: MODES.ORPHAN is ${orphan?.verdict} at ${orphan?.where.join(", ")}`);
   if (result.findings.some((f) => f.where.some((w) => w.startsWith("old.test.mjs")))) fail("a test artifact leaked into the corpus");
+  const defect = (contract) => String(sweep(dir, { ...fixtureConfig(), contracts: [contract] }).defect);
+  if (!defect({ path: "missing.mjs", symbol: "MODES" }).includes("does not exist")) fail("a missing contract file must be a GATE_DEFECT");
+  if (!defect({ path: "contract.mjs", symbol: "NOPE" }).includes("not found")) fail("an unknown contract symbol must be a GATE_DEFECT");
 }
 
-function selfTestBaselineDirection(fail, dir) {
-  const config = fixtureConfig();
-  config.accepted["MODES.OPEN"] = "stale on purpose";
-  const current = new Set(sweep(dir, config).findings.map((f) => f.id));
-  const stale = Object.keys(config.accepted).filter((id) => !current.has(id));
-  if (stale.join(",") !== "MODES.OPEN") fail(`stale detection wrong: ${stale.join(",")}`);
+/** baselineVerdict itself, every direction — its exit code is the gate; a copy of its logic proves nothing. */
+function selfTestBaselineDirection(fail) {
+  const findings = [
+    { id: "MODES.ORPHAN", verdict: "DEAD" },
+    { id: "MODES.GHOST", verdict: "NO_PRODUCER" },
+  ];
+  const clean = { "MODES.ORPHAN": "DEAD — r", "MODES.GHOST": "NO_PRODUCER — r" };
+  const cases = [
+    ["the matching baseline passes", clean, 0, "no new dead wiring"],
+    ["an unaccepted finding fails as NEW", { "MODES.ORPHAN": "DEAD — r" }, 1, "NEW dead wiring: MODES.GHOST"],
+    ["an accepted row with no finding fails as STALE", { ...clean, "MODES.OPEN": "NO_CONSUMER — stale on purpose" }, 1, "STALE accepted row: MODES.OPEN"],
+    ["a verdict drifted under an accepted row and the baseline stayed green", { ...clean, "MODES.ORPHAN": "NO_PRODUCER — r" }, 1, "DRIFTED accepted row: MODES.ORPHAN"],
+  ];
+  for (const [label, accepted, code, needle] of cases) {
+    const lines = [];
+    const sink = { log: (m) => lines.push(m), error: (m) => lines.push(m) };
+    const got = baselineVerdict(accepted, findings, sink);
+    if (got !== code || !lines.join("\n").includes(needle)) fail(`${label} (wanted exit ${code} naming "${needle}", got exit ${got})`);
+  }
 }
 
 function selfTestConfigFailClosed(fail) {
@@ -705,10 +848,17 @@ function selfTestConfigFailClosed(fail) {
       loadConfigFromObject({ contracts: [{ path: "tools/task-state.mjs", symbol: "RISK_CLASSES" }], corpus: { roots: ["tools"] }, accepted: { "RISK_CLASSES.protected": "" } }),
       "no reason",
     ],
+    [
+      "an accepted row that names no verdict must fail closed",
+      loadConfigFromObject({ contracts: [{ path: "tools/task-state.mjs", symbol: "RISK_CLASSES" }], corpus: { roots: ["tools"] }, accepted: { "RISK_CLASSES.protected": "argv produces it" } }),
+      "verdict",
+    ],
   ];
   for (const [label, result, needle] of cases) {
     if (result.ok || !result.error.includes(needle)) fail(`${label} (wanted the refusal to name "${needle}")`);
   }
+  const wellFormed = loadConfigFromObject({ contracts: [{ path: "tools/task-state.mjs", symbol: "RISK_CLASSES" }], corpus: { roots: ["tools"] }, accepted: { "RISK_CLASSES.protected": "NO_PRODUCER — argv produces it" } });
+  if (!wellFormed.ok) fail(`a well-formed config must load: ${wellFormed.error}`);
   rmSync(tmpCfg, { force: true });
 }
 
@@ -718,7 +868,7 @@ function selfTest() {
     ok = false;
     console.error(`  reader-existence self-test FAIL: ${m}`);
   };
-  selfTestClassifier(fail);
+  const classifierCases = selfTestClassifier(fail);
   selfTestPredicateShapes(fail);
   selfTestUnionShapes(fail);
   selfTestDeclarationAndCut(fail);
@@ -726,12 +876,12 @@ function selfTest() {
   try {
     writeFixtureTree(dir);
     selfTestSweepVerdicts(fail, dir);
-    selfTestBaselineDirection(fail, dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+  selfTestBaselineDirection(fail);
   selfTestConfigFailClosed(fail);
-  console.log(ok ? "reader-existence self-test: OK (9 classifier cases + predicate/union/declaration/cut/corpus/baseline/config groups)" : "reader-existence self-test: FAILED");
+  console.log(ok ? `reader-existence self-test: OK (${classifierCases} classifier cases, count derived + predicate/union/declaration/cut/corpus/baseline/config groups)` : "reader-existence self-test: FAILED");
   return ok;
 }
 

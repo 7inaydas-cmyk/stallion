@@ -1,0 +1,230 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-contract-gates",
+  "title": "2026-09-27 code-review sweep: the contract-gates group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:09.342Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "898707ac92ba57e608fc9c06ca0261a49e42071e0e0493801417e6eccb805693"
+    },
+    {
+      "at": "2026-09-27T05:54:09.375Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "898707ac92ba57e608fc9c06ca0261a49e42071e0e0493801417e6eccb805693",
+      "entry_hash": "7988a090aece4d08bf1963a70a07ae2946865c17bc15bc80daee1ca92fe26695"
+    },
+    {
+      "at": "2026-09-27T05:54:09.404Z",
+      "type": "scope",
+      "patterns": [
+        "tools/reader-existence.mjs",
+        "tools/doc-reconcile.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "7988a090aece4d08bf1963a70a07ae2946865c17bc15bc80daee1ca92fe26695",
+      "entry_hash": "6a6e503200feeaf97061d6f2fa264d662383948585e2c40cd596b7475b3ae57e"
+    },
+    {
+      "at": "2026-09-27T05:54:09.433Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "6a6e503200feeaf97061d6f2fa264d662383948585e2c40cd596b7475b3ae57e",
+      "entry_hash": "de7c4e978ff8b1281f1a1d2d4c66b37fa5138c9d33f67ceb3bb28d423b77ea8b"
+    },
+    {
+      "at": "2026-09-27T06:13:34.706Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: the gate resolves the repo from its own location, not the cwd",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 4,
+      "parent_hash": "de7c4e978ff8b1281f1a1d2d4c66b37fa5138c9d33f67ceb3bb28d423b77ea8b",
+      "entry_hash": "4d5fb20a63344f8b9febb06376eac4fb105349f4f28754a8f309679cf50ec147"
+    },
+    {
+      "at": "2026-09-27T06:13:34.771Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a missing registry is refused with a restore-from-history fix",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 5,
+      "parent_hash": "4d5fb20a63344f8b9febb06376eac4fb105349f4f28754a8f309679cf50ec147",
+      "entry_hash": "ca74073fabb3ddb33ce5a2f029e5c420a7aa3e5db3be0fc90b44cfe88b1e7ec9"
+    },
+    {
+      "at": "2026-09-27T06:13:34.831Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a reasonless corpus ignore is refused",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 6,
+      "parent_hash": "ca74073fabb3ddb33ce5a2f029e5c420a7aa3e5db3be0fc90b44cfe88b1e7ec9",
+      "entry_hash": "7e50976b8ffd1c98ab80cd5958599dba1c5c9efd5534575f09e775a16f629dfb"
+    },
+    {
+      "at": "2026-09-27T06:13:34.892Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: every top-level exclusion is printed with its reason",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 7,
+      "parent_hash": "7e50976b8ffd1c98ab80cd5958599dba1c5c9efd5534575f09e775a16f629dfb",
+      "entry_hash": "e85e6de5cda0c2898a791504753c09dd17dbe7ab9e598d8dfdeecb31da54133d"
+    },
+    {
+      "at": "2026-09-27T06:13:34.957Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: an unparseable registry is a GATE_DEFECT, not a stack trace",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 8,
+      "parent_hash": "e85e6de5cda0c2898a791504753c09dd17dbe7ab9e598d8dfdeecb31da54133d",
+      "entry_hash": "19a4de9ffcb0a1814ee52da232f1fee53d35c2ce3d9d2910c8b5be898254bf40"
+    },
+    {
+      "at": "2026-09-27T06:13:35.020Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a claim with no evidence is refused",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 9,
+      "parent_hash": "19a4de9ffcb0a1814ee52da232f1fee53d35c2ce3d9d2910c8b5be898254bf40",
+      "entry_hash": "29b9374df515053990c3ffd48284e5edb6feae534e46ba78c8620bc8272d20c1"
+    },
+    {
+      "at": "2026-09-27T06:13:35.080Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a markdown corpus file keeps the prose after a URL",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 10,
+      "parent_hash": "29b9374df515053990c3ffd48284e5edb6feae534e46ba78c8620bc8272d20c1",
+      "entry_hash": "71f9a95c4becd3667c5614cbffb1f1156eafa689f775ab28aadd0b38463ced8b"
+    },
+    {
+      "at": "2026-09-27T06:13:35.138Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a tracked file deleted in the working tree is a GATE_DEFECT, not a crash",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38573f3706d0",
+      "seq": 11,
+      "parent_hash": "71f9a95c4becd3667c5614cbffb1f1156eafa689f775ab28aadd0b38463ced8b",
+      "entry_hash": "dd92b3aeab833defc640d5b7d10a5c5c2555337f04393eb1b1e52237db6dbbe2"
+    },
+    {
+      "at": "2026-09-27T06:16:58.292Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a helper called only from selfTest code leaked into the corpus",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "71fa63178911",
+      "seq": 12,
+      "parent_hash": "dd92b3aeab833defc640d5b7d10a5c5c2555337f04393eb1b1e52237db6dbbe2",
+      "entry_hash": "045463882ebcd3eccb986f149c47e1d6619ab19f7410316dbda3074bd917a54a"
+    },
+    {
+      "at": "2026-09-27T06:16:58.355Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a destructured parameter list ended the cut early",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "71fa63178911",
+      "seq": 13,
+      "parent_hash": "045463882ebcd3eccb986f149c47e1d6619ab19f7410316dbda3074bd917a54a",
+      "entry_hash": "a20d3bcc4df61e5b2361d36a544622d8465325a39cfa8d36c53530be68496700"
+    },
+    {
+      "at": "2026-09-27T06:16:58.415Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a comparison inside a return was read as a PRODUCER",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "71fa63178911",
+      "seq": 14,
+      "parent_hash": "a20d3bcc4df61e5b2361d36a544622d8465325a39cfa8d36c53530be68496700",
+      "entry_hash": "a5edce7584aaf96f95bfb9b06059c9f713c0070289c85a27a679fb6ab86cef74"
+    },
+    {
+      "at": "2026-09-27T06:16:58.477Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a verdict drifted under an accepted row and the baseline stayed green",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "71fa63178911",
+      "seq": 15,
+      "parent_hash": "a5edce7584aaf96f95bfb9b06059c9f713c0070289c85a27a679fb6ab86cef74",
+      "entry_hash": "2128eca6c327a2c841c1715478396a1749145f75f303810ecd284d1feebc0472"
+    },
+    {
+      "at": "2026-09-27T06:16:58.539Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: an accepted row that names no verdict must fail closed",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "71fa63178911",
+      "seq": 16,
+      "parent_hash": "2128eca6c327a2c841c1715478396a1749145f75f303810ecd284d1feebc0472",
+      "entry_hash": "4e6d344a7e346b03261cb66066d2bfa723bdf0c7da09ffda61afe9667f109930"
+    },
+    {
+      "at": "2026-09-27T06:30:13.774Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a \\.ts comment is still masked in evidence",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "faeb03d0970a",
+      "seq": 17,
+      "parent_hash": "4e6d344a7e346b03261cb66066d2bfa723bdf0c7da09ffda61afe9667f109930",
+      "entry_hash": "3d06436eb17a062cad552e794848a3efe4589917627bda811ad4efed60a3128e"
+    },
+    {
+      "at": "2026-09-27T06:30:13.844Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: the [a-z-]+ fix command runs from any cwd",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "faeb03d0970a",
+      "seq": 18,
+      "parent_hash": "3d06436eb17a062cad552e794848a3efe4589917627bda811ad4efed60a3128e",
+      "entry_hash": "975c4607d253dc454b621acc99355c07ff04912eaa76fa2085ae315e5b3e60f7"
+    },
+    {
+      "at": "2026-09-27T07:15:06.173Z",
+      "type": "red-check",
+      "expect": "self-test FAILED: a (grep|count|repo-count) pattern that does not compile is refused",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "be729e6e810c",
+      "seq": 19,
+      "parent_hash": "975c4607d253dc454b621acc99355c07ff04912eaa76fa2085ae315e5b3e60f7",
+      "entry_hash": "0fcdfdfb3afc55d98f075fb1a74ac4ced7b65f5f03a737a1e0f65b073e7a0e84"
+    },
+    {
+      "at": "2026-09-27T07:24:06.754Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a (count|repo-count) spec with no whole-number tail",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "71f042e9d088",
+      "seq": 20,
+      "parent_hash": "0fcdfdfb3afc55d98f075fb1a74ac4ced7b65f5f03a737a1e0f65b073e7a0e84",
+      "entry_hash": "b0b369fb8d570072b8f8de6cefd3cdadeeadb90472646c997659efcf48725f36"
+    }
+  ]
+}
