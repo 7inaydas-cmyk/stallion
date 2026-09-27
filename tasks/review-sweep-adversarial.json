@@ -160,6 +160,113 @@
       "seq": 14,
       "parent_hash": "d9988d65b1de08544c49788225afaee2aea2dd324d15562a91e9a24fed91cd87",
       "entry_hash": "41c7854baa09b0b4395c02616f3e2b524cbac0f923d769859055615e49746303"
+    },
+    {
+      "at": "2026-09-27T08:02:45.234Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 15,
+      "parent_hash": "41c7854baa09b0b4395c02616f3e2b524cbac0f923d769859055615e49746303",
+      "entry_hash": "3cb0f09d27f0b8a06a9f4b5e356ddda2905b3667dc1035a8c4c3eb64427f1aed"
+    },
+    {
+      "at": "2026-09-27T09:46:00.735Z",
+      "type": "red-check",
+      "expect": "a register whose swept range is not two pinned shas refuses before git reads it",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "20b9807b46ce",
+      "seq": 16,
+      "parent_hash": "3cb0f09d27f0b8a06a9f4b5e356ddda2905b3667dc1035a8c4c3eb64427f1aed",
+      "entry_hash": "ee1f3f6def73669af1f2e701cf2b6d86ed0040d9eb839242cc2f2da6abb5ab34"
+    },
+    {
+      "at": "2026-09-27T09:46:00.822Z",
+      "type": "red-check",
+      "expect": "a graded dispatch is CLOSED — a calibration write after its verdict refuses",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "20b9807b46ce",
+      "seq": 17,
+      "parent_hash": "ee1f3f6def73669af1f2e701cf2b6d86ed0040d9eb839242cc2f2da6abb5ab34",
+      "entry_hash": "d6d577a04252505ba020d014eb4e79bd5a18d6db4f6209718a5a08bf51b92214"
+    },
+    {
+      "at": "2026-09-27T09:46:00.914Z",
+      "type": "red-check",
+      "expect": "a re-calibrate keeps the closed epoch's verdict and boundary in its history",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "20b9807b46ce",
+      "seq": 18,
+      "parent_hash": "d6d577a04252505ba020d014eb4e79bd5a18d6db4f6209718a5a08bf51b92214",
+      "entry_hash": "6604bc559b7b783b3b5414dc62706172cbbdaf318811608a40dad36d526acdbd"
+    },
+    {
+      "at": "2026-09-27T09:46:00.986Z",
+      "type": "red-check",
+      "expect": "a register that HOLDS findings never prints the rm-and-remint repair",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "20b9807b46ce",
+      "seq": 19,
+      "parent_hash": "6604bc559b7b783b3b5414dc62706172cbbdaf318811608a40dad36d526acdbd",
+      "entry_hash": "06f3fd01084c5577b61db85b6ab10aa5a5c1d3f505356cef90811240f6bdcc90"
+    },
+    {
+      "at": "2026-09-27T09:46:01.071Z",
+      "type": "red-check",
+      "expect": "forget --landed refuses when the landing check finds the draft not held",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9002c360e23",
+      "seq": 20,
+      "parent_hash": "06f3fd01084c5577b61db85b6ab10aa5a5c1d3f505356cef90811240f6bdcc90",
+      "entry_hash": "9195d1e1230eb2fc167ef77cabfde8816d39f61ebb5cb04c54458788603379bc"
+    },
+    {
+      "at": "2026-09-27T09:46:01.138Z",
+      "type": "red-check",
+      "expect": "the landing law's export covers the WHOLE draft stack \\(fork point to task-<id>@\\)",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9002c360e23",
+      "seq": 21,
+      "parent_hash": "9195d1e1230eb2fc167ef77cabfde8816d39f61ebb5cb04c54458788603379bc",
+      "entry_hash": "730e530ee44df5d0cc8943127ab262f854af7d4a7a5561bd4a6c78cc00552499"
+    },
+    {
+      "at": "2026-09-27T09:46:01.199Z",
+      "type": "red-check",
+      "expect": "the landing law applies the patch at the repo root and into the index",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d9002c360e23",
+      "seq": 22,
+      "parent_hash": "730e530ee44df5d0cc8943127ab262f854af7d4a7a5561bd4a6c78cc00552499",
+      "entry_hash": "02b0880f3fa1752b7063d0793edc4f15239d3441a6acef4ae7a5642914e2eb22"
+    },
+    {
+      "at": "2026-09-27T10:04:54.133Z",
+      "type": "red-check",
+      "expect": "forget --landed run from INSIDE the workspace refuses, naming the PRIMARY copy",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "50ef6a2d67a9",
+      "seq": 23,
+      "parent_hash": "02b0880f3fa1752b7063d0793edc4f15239d3441a6acef4ae7a5642914e2eb22",
+      "entry_hash": "b02e4eb183e36f907c13836757040633d1304044391d9c557aef1fbf1fc78ca9"
+    },
+    {
+      "at": "2026-09-27T10:06:24.718Z",
+      "type": "red-check",
+      "expect": "a calibrate-verdict after earlier dispatches prints how they fared",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "094a42f8d1bc",
+      "seq": 24,
+      "parent_hash": "b02e4eb183e36f907c13836757040633d1304044391d9c557aef1fbf1fc78ca9",
+      "entry_hash": "1e4daa6af4cc98f7a223fdda130ca7cd871c918b4a7abcb09edc4916f3ad1fc5"
     }
   ]
 }

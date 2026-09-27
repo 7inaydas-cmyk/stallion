@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, loadFindings, missingResolveEvidence, mutateJson, normalizedEvidenceOf, raiseSeverity, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
+import { aggregateFindings, appendFinding, duplicateEvidenceOf, emptyFindings, findingsRepair, loadFindings, missingResolveEvidence, mutateJson, normalizedEvidenceOf, raiseSeverity, setFindingStatus, validateFindings, SEVERITIES } from "./task-findings.mjs";
 import { bundleBlock, lessonsIndex, loadRegisters } from "./retrospective.mjs";
 import { evidencePathIsFile, findingsPath, TASK_ID } from "./task-state.mjs";
 
@@ -137,9 +137,9 @@ function requireKebabId(id) {
   if (!TASK_ID.test(id)) die(`task id must be kebab-case (a-z, 0-9, -): ${id} — a traversal-bearing id must never reach a path join`);
 }
 
-function requireTask(id) {
+function requireTask(id, stateDir = STATE_DIR) {
   requireKebabId(id);
-  if (!existsSync(`${STATE_DIR}/${id}.json`)) die(`no such task: ${id} — prepare/record against a real task-state record (task-state new)`);
+  if (!existsSync(`${stateDir}/${id}.json`)) die(`no such task: ${id} — prepare/record against a real task-state record (task-state new)`);
 }
 
 /**
@@ -151,13 +151,13 @@ function requireTask(id) {
  */
 function parseRegisterForWrite(text, id, path = findingsPath(id)) {
   if (text === null) die(`no findings register for ${id} — a pass begins with 'prepare ${id}', not with a write\n  fix: node tools/adversarial-runner.mjs prepare ${id}`);
-  const restore = registerRepair(path, id);
   let register;
   try {
     register = JSON.parse(text);
   } catch (e) {
-    die(`findings register is not valid JSON: ${e.message}${restore}`);
+    die(`findings register is not valid JSON: ${e.message}${registerRepair(path, id)}`);
   }
+  const restore = registerRepair(path, id, register);
   const error = validateFindings(register);
   if (error) die(`${error}${restore}`);
   if (register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'${restore}`);
@@ -180,7 +180,7 @@ function diffUnderAudit(args) {
  * Only prepare mints a register, and only with the pass marker: verdict and the done-gate
  * require it, so "no findings" can never stand in for "no pass".
  */
-function mintPassMarker(id, base, head, sweptContent) {
+function mintPassMarker(id, base, head, sweptContent, path = findingsPath(id)) {
   // A re-prepare is a NEW sweep of a possibly-new range: the marker re-pins to what this pass
   // will audit (findings stay append-only; the marker is pass metadata). An existing register is
   // read under the same law as every write path.
@@ -189,7 +189,7 @@ function mintPassMarker(id, base, head, sweptContent) {
     sweptBase: base, sweptHead: head,
     sweptDiffDigest: createHash("sha256").update(sweptContent).digest("hex").slice(0, 12),
   };
-  mutateJson(findingsPath(id), (text) => ({ ...(text === null ? emptyFindings(id) : parseRegisterForWrite(text, id)), ...marker }));
+  mutateJson(path, (text) => ({ ...(text === null ? emptyFindings(id) : parseRegisterForWrite(text, id, path)), ...marker }));
 }
 
 /**
@@ -209,19 +209,25 @@ function checklistLanes(path = CHECKLIST) {
   return lanes;
 }
 
-function cmdPrepare(args) {
+/**
+ * The command bodies take their paths and diff reader as a `seam` whose defaults are the live
+ * repo, so the self-test drives the BODIES against temp fixtures: pinning only the helpers let a
+ * revert that dropped a call (calibrate opening no dispatch, a verdict grading the whole
+ * register, prepare reading the checklist raw) keep the battery green.
+ */
+function cmdPrepare(args, { stateDir = STATE_DIR, checklist, bundleDir = BUNDLE_DIR, diffOf = diffUnderAudit, registerPath } = {}) {
   const id = args._[0];
   if (!id) die("usage: prepare <task-id> [--base <rev>] [--head <rev>]");
-  requireTask(id);
-  const diff = diffUnderAudit(args);
-  const lanes = checklistLanes();
-  const dir = `${BUNDLE_DIR}/${id}`;
+  requireTask(id, stateDir);
+  const diff = diffOf(args);
+  const lanes = checklistLanes(checklist);
+  const dir = `${bundleDir}/${id}`;
   mkdirSync(dir, { recursive: true });
-  const { registers: lessonRegisters, skipped } = loadRegisters(STATE_DIR);
+  const { registers: lessonRegisters, skipped } = loadRegisters(stateDir);
   if (skipped > 0) console.error(`adversarial prepare: retrospective skipped ${skipped} malformed register(s) — the standing lessons in the bundles are INCOMPLETE until they parse`);
   const lessons = bundleBlock(lessonsIndex(lessonRegisters));
   for (const lane of lanes) writeFileSync(`${dir}/lane-${String(lane.n).padStart(2, "0")}-${lane.slug}.md`, renderBundle(lane, id, diff, lessons));
-  mintPassMarker(id, diff.base, diff.head, diff.content);
+  mintPassMarker(id, diff.base, diff.head, diff.content, registerPath);
   console.log(`${lanes.length} refute bundles written to adversarial/${id}/ — pinned range ${diff.base.slice(0, 10)}..${diff.head.slice(0, 10)}`);
   console.log(`next: dispatch each bundle to a FRESH-context reviewer, then record findings here, then 'verdict ${id}'`);
 }
@@ -297,15 +303,13 @@ function duplicateEscapeOf(register, candidate, id) {
 }
 
 /**
- * The repair a register that fails its read owes: evidence plus a NON-destructive fix. The old
- * `git checkout -- <register>` failed on the untracked register of a pass in flight, and on a
- * tracked one silently dropped every finding since the last commit — UNRESOLVED blockers
- * included — so a verdict could turn CLEAN. Only a register holding no findings is re-minted.
+ * The repair a register that fails its read owes — task-findings' ONE law, which task-state prints
+ * too (a diverged copy here let the two readers hand one register two repairs). This site names
+ * only the mint: a calibration register re-mints with calibrate. The re-mint is offered only for a
+ * `register` the caller PARSED and counted empty; an unparsable register's count is unknown.
  */
-function registerRepair(path, id) {
-  const rel = relative(ROOT, path);
-  const mint = path.endsWith(".calibration.json") ? "calibrate" : "prepare";
-  return `\n  evidence: ${rel} — git diff -- ${rel} shows what changed since its last commit, if it has one\n  fix: repair ${rel} by hand, keeping every recorded finding (append-only: a dropped finding is a blocker silently cleared); if it holds no findings yet: rm ${rel} && node tools/adversarial-runner.mjs ${mint} ${id}`;
+function registerRepair(path, id, register = null) {
+  return findingsRepair(relative(ROOT, path), id, path.endsWith(".calibration.json") ? "calibrate" : "prepare", register);
 }
 
 /** The one normalization evidence dedup uses, applied to a claim (no evidence ⇒ the claim is the key). */
@@ -362,7 +366,7 @@ function cmdWontFix(args) {
  *  only a register that exists, belongs to the task, and carries a prepared-pass marker. */
 function markerRefusal(register, id, path = findingsPath(id)) {
   if (!register) return `FAIL — no adversarial findings register for ${id}: the pass was never recorded, and absent is not clean\n  fix: node tools/adversarial-runner.mjs prepare ${id}`;
-  if (register.task !== id) return `FAIL — findings register belongs to task '${register.task}', not '${id}'${registerRepair(path, id)}`;
+  if (register.task !== id) return `FAIL — findings register belongs to task '${register.task}', not '${id}'${registerRepair(path, id, register)}`;
   if (!register.passStartedAt) return `FAIL — register for ${id} carries no pass marker: only a prepared pass counts, and an empty register is not a completed pass\n  fix: node tools/adversarial-runner.mjs prepare ${id}`;
   return null;
 }
@@ -502,6 +506,20 @@ function shellWord(printed) {
   }
 }
 
+/** What `fn` prints through console.log, captured — a command body's success lines are the case's
+ *  to read, never self-test output. */
+function printedBy(fn) {
+  const log = console.log;
+  const lines = [];
+  console.log = (...parts) => lines.push(parts.join(" "));
+  try {
+    fn();
+  } finally {
+    console.log = log;
+  }
+  return lines.join("\n");
+}
+
 /** A temp checklist of `n` escape-class headings under `dir`; returns its path. */
 function checklistFixture(dir, n) {
   const path = join(dir, `c${n}.md`);
@@ -515,11 +533,12 @@ function selfTestChecklist(fail) {
   try {
     const checklist = (n) => checklistFixture(dir, n);
     const cases = [
-      ["a missing checklist REFUSES with a fix line — never a stack trace", refuses(() => checklistLanes(join(dir, "absent.md")))],
+      ["a missing checklist REFUSES with a fix line — never a stack trace", /\n {2}fix: .*docs\/ADVERSARIAL-CHECKLIST\.md/.test(refusalOf(() => checklistLanes(join(dir, "absent.md"))) ?? "")],
       ["a nine-heading checklist refuses the eight-lane pin", refuses(() => checklistLanes(checklist(9)))],
       ["an eight-heading checklist yields its eight lanes", checklistLanes(checklist(8)).length === 8],
       ["calibrate-record reads the checklist's own lane law — a missing checklist refuses, never a hard-coded eight", refuses(() => calibrationRecordArgs({ lane: "3", severity: "LOW", claim: "x" }, [], join(dir, "absent.md")))],
       ["calibrate-record takes a lane within the checklist's eight", calibrationRecordArgs({ lane: "3", severity: "LOW", claim: "x" }, [], checklist(8)).lane === 3],
+      ["calibrate-record refuses a nine-heading checklist — the eight-lane pin, never a bare heading count", refuses(() => calibrationRecordArgs({ lane: "3", severity: "LOW", claim: "x" }, [], checklist(9)))],
     ];
     for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
     return cases.length;
@@ -541,16 +560,22 @@ function selfTestRegisterFiles(fail) {
   };
   try {
     const at = "2026-09-27T00:00:00.000Z";
+    const sha = (tag) => createHash("sha1").update(tag).digest("hex");
     const letters = ["alpha", "bravo", "charlie"];
-    const wave = letters.reduce((r, l, i) => appendFinding(r, { id: `f${i + 1}`, lane: 1, severity: "HIGH", claim: `the walker coordinates defect variant ${l} manifests in manifests`, proof: "fixture proof" }), { ...emptyFindings("t9"), passStartedAt: at, sweptBase: "b1", sweptHead: "h1" });
+    const wave = letters.reduce((r, l, i) => appendFinding(r, { id: `f${i + 1}`, lane: 1, severity: "HIGH", claim: `the walker coordinates defect variant ${l} manifests in manifests`, proof: "fixture proof" }), { ...emptyFindings("t9"), passStartedAt: at, sweptBase: sha("b1"), sweptHead: sha("h1") });
     const registerPath = put("t9.findings.json", wave);
     const firstDispatch = letters.reduce((c, l, i) => appendFinding(c, { id: `f${i + 1}`, lane: 1, severity: "LOW", claim: `walker coordinates variant ${l} restated inside manifests` }), openDispatch(null, wave, "t9", at));
     const calPath = put("t9.calibration.json", { ...firstDispatch, calibrationVerdict: { passed: true } });
     const corrupt = refusalOf(() => loadMarkedRegister("t9", put("corrupt.findings.json", "{ bad"))) ?? "";
     const onDisk = (path) => JSON.parse(readFileSync(path, "utf8"));
     const recordPath = put("record.findings.json", { ...emptyFindings("t9"), passStartedAt: at });
-    const standing = put("standing.calibration.json", { ...firstDispatch, sweptBase: "b0", sweptHead: "h0", calibrationVerdict: { passed: true } });
+    const standing = put("standing.calibration.json", { ...firstDispatch, sweptBase: sha("b0"), sweptHead: sha("h0"), calibrationVerdict: { passed: true } });
     const replay = { registerPath, path: standing, checklist: checklistFixture(dir, 8), diffOf: () => ({}) };
+    const cmdCal = put("cmd.calibration.json", { ...firstDispatch, calibrationVerdict: { passed: false, at } });
+    const bodies = { registerPath, path: cmdCal, checklist: replay.checklist };
+    const epoch = (verdict) => ({ from: 0, to: 0, sweptBase: sha("b0"), sweptHead: sha("h0"), passStartedAt: at, verdict });
+    const retried = put("retried.calibration.json", { ...firstDispatch, epochs: [epoch({ passed: false, at }), epoch(null)] });
+    const refailed = put("refailed.calibration.json", { ...firstDispatch, dispatchFrom: 3, epochs: [epoch({ passed: false, at })] });
     const cases = [
       ["record's write raises the same claim on the same evidence to the stricter severity — no new lane spent", (() => {
         recordFinding("t9", { severity: "LOW", claim: "stale comment in parseArgs", evidence: "tools/x.mjs:361" }, 3, recordPath);
@@ -575,20 +600,54 @@ function selfTestRegisterFiles(fail) {
       ["a re-calibrate through the command's seam opens a new epoch on disk — dispatchFrom moves past the closed claims and the sweep re-pins", (() => {
         openReplay("t9", replay);
         const reopened = onDisk(standing);
-        return reopened.dispatchFrom === 3 && reopened.sweptHead === "h1" && !("calibrationVerdict" in reopened);
+        return reopened.dispatchFrom === 3 && reopened.sweptHead === sha("h1") && !("calibrationVerdict" in reopened);
       })()],
       ["verdict refuses an UNMARKED register at its die site — empty is not a pass", refusalOf(() => loadMarkedRegister("t9", put("unmarked.findings.json", emptyFindings("t9"))))?.includes("carries no pass marker") === true],
       ["verdict loads a marked register of this task", loadMarkedRegister("t9", registerPath).task === "t9"],
-      ["verdict refuses a corrupt register with the non-destructive repair", corrupt.includes("keeping every recorded finding") && corrupt.includes("prepare t9") && !corrupt.includes("git checkout")],
-      ["calibrate-verdict refuses at its die site a calibration pinned to a sweep the register no longer records", refusalOf(() => gradeCalibration("t9", put("moved.findings.json", { ...wave, sweptHead: "h9" }), calPath))?.includes("different sweep") === true],
+      ["verdict refuses a corrupt register with the non-destructive repair — never the re-mint, its findings count is unknown", corrupt.includes("keeping every recorded finding") && !corrupt.includes("rm ") && !corrupt.includes("git checkout")],
+      ["calibrate-verdict refuses at its die site a calibration pinned to a sweep the register no longer records", refusalOf(() => gradeCalibration("t9", put("moved.findings.json", { ...wave, sweptHead: sha("h9") }), calPath))?.includes("different sweep") === true],
+      ["a register whose swept range is not two pinned shas refuses before git reads it — a '-'-led value is a git option (--output= overwrote a file outside the repo)", refusalOf(() => replayFactsOf("t9", put("forged.findings.json", { ...wave, sweptBase: "--output=/nonexistent/x" })))?.includes("not two pinned commit shas") === true],
       ["calibrate-verdict grades a dispatch pinned to the register's sweep", gradeCalibration("t9", registerPath, calPath).rediscovered === 3],
       ["a re-calibration opened ON DISK grades only its own dispatch — the closed epoch's claims and pass never carry", (() => {
         const reopened = openCalibrationDispatch("t9", wave, calPath);
         const graded = gradeCalibration("t9", registerPath, calPath);
         return reopened.dispatchFrom === 3 && !("calibrationVerdict" in JSON.parse(readFileSync(calPath, "utf8"))) && graded.refuse && graded.rediscovered === 0;
       })()],
+      ["the calibrate COMMAND opens a new epoch on disk — its body, not only openReplay, reaches the dispatch write", (() => {
+        printedBy(() => cmdCalibrate({ _: ["t9"] }, { ...bodies, diffOf: () => ({}), bundleDir: dir, stateDir: dir }));
+        const opened = onDisk(cmdCal);
+        return opened.dispatchFrom === 3 && opened.epochs?.[0]?.verdict?.passed === false && !("calibrationVerdict" in opened);
+      })()],
+      ["the calibrate-verdict COMMAND grades only the open dispatch — the closed epoch's claims alone would clear the bar", (() => {
+        const refusal = refusalOf(() => cmdCalibrateVerdict({ _: ["t9"] }, bodies));
+        return refusal?.startsWith("CALIBRATION FAILED — rediscovered 0 of 3") === true && onDisk(cmdCal).calibrationVerdict?.passed === false;
+      })()],
+      ["a calibrate-verdict after earlier dispatches prints how they fared — a pass after a failed dispatch never reads as a first try", (() => {
+        const passed = printedBy(() => cmdCalibrateVerdict({ _: ["t9"] }, { registerPath, path: retried }));
+        const failed = refusalOf(() => cmdCalibrateVerdict({ _: ["t9"] }, { registerPath, path: refailed })) ?? "";
+        return passed.includes("CALIBRATION PASSED") && passed.includes("dispatch 3, after 1 failed and 1 ungraded earlier dispatch(es)") && failed.includes("dispatch 2, after 1 failed and 0 ungraded earlier dispatch(es)");
+      })()],
+      ["the calibrate-record COMMAND refuses a dispatch its verdict closed — the FAIL survives on disk, nothing piles in", (() => {
+        const refusal = refusalOf(() => cmdCalibrateRecord({ _: ["t9"], lane: "1", severity: "LOW", claim: "walker coordinates variant alpha restated inside manifests" }, bodies));
+        const kept = onDisk(cmdCal);
+        return refusal?.includes("is CLOSED") === true && kept.findings.length === 3 && kept.calibrationVerdict?.passed === false;
+      })()],
+      ["the calibrate-record COMMAND with no dispatch open refuses, naming calibrate — it never mints one", (() => {
+        const absent = join(dir, "absent.calibration.json");
+        const refusal = refusalOf(() => cmdCalibrateRecord({ _: ["t9"], lane: "1", severity: "LOW", claim: "x" }, { ...bodies, path: absent }));
+        return refusal?.includes("fix: node tools/adversarial-runner.mjs calibrate t9") === true && !existsSync(absent);
+      })()],
+      ["the prepare COMMAND refuses a missing checklist through its law — never a stack trace, and no pass is minted", (() => {
+        put("t9.json", {});
+        const minted = join(dir, "prepared.findings.json");
+        const refusal = refusalOf(() => cmdPrepare({ _: ["t9"] }, { stateDir: dir, checklist: join(dir, "absent.md"), bundleDir: dir, diffOf: () => ({ base: sha("b1"), head: sha("h1"), content: "" }), registerPath: minted }));
+        return refusal?.includes("cannot read the checklist") === true && !existsSync(minted);
+      })()],
       ["a first calibrate mints its dispatch file at zero", openCalibrationDispatch("t9", wave, join(dir, "fresh.calibration.json")).dispatchFrom === 0 && existsSync(join(dir, "fresh.calibration.json"))],
-      ["a corrupt calibration register refuses to reopen, naming the calibrate repair", refusalOf(() => openCalibrationDispatch("t9", wave, put("bad.calibration.json", "{ bad")))?.includes("adversarial-runner.mjs calibrate t9") === true],
+      ["a corrupt calibration register refuses to reopen with the hand repair — never the re-mint, its findings count is unknown", (() => {
+        const refusal = refusalOf(() => openCalibrationDispatch("t9", wave, put("bad.calibration.json", "{ bad"))) ?? "";
+        return refusal.includes("keeping every recorded finding") && !refusal.includes("rm ");
+      })()],
     ];
     for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner (register files): ${name}`);
     return cases.length;
@@ -627,6 +686,14 @@ function selfTestCliRefusals(fail) {
     ["a write to an unparsable register refuses", refuses(() => parseRegisterForWrite("{ bad", "t9"))],
     ["a write to this task's own register proceeds", parseRegisterForWrite(own, "t9").task === "t9"],
     ["a calibration write with no open dispatch refuses, naming calibrate — only calibrate opens one", refusalOf(() => parseCalibrationForWrite(null, "t9"))?.includes("fix: node tools/adversarial-runner.mjs calibrate t9") === true],
+    ["a graded dispatch is CLOSED — a calibration write after its verdict refuses, naming calibrate (a FAIL never piles into the next verdict)", refusalOf(() => parseCalibrationForWrite(JSON.stringify({ ...marked, dispatchFrom: 0, calibrationVerdict: { passed: false, at: marked.passStartedAt } }), "t9"))?.includes("fix: node tools/adversarial-runner.mjs calibrate t9") === true],
+    ["a register that HOLDS findings never prints the rm-and-remint repair — only a parsed, empty one does", (() => {
+      const holding = appendFinding(marked, { id: "f1", lane: 1, severity: "LOW", claim: "x" });
+      const typo = JSON.stringify({ ...holding, findings: holding.findings.map((f) => ({ ...f, status: "Unresolved" })) });
+      const refusals = [refusalOf(() => parseRegisterForWrite(typo, "t9")), refusalOf(() => parseRegisterForWrite("{ bad", "t9")), markerRefusal({ ...holding, task: "other" }, "t9")];
+      return refusals.every((m) => m?.includes("keeping every recorded finding") && !m.includes("rm tasks/"));
+    })()],
+    ["the runner's register repair IS task-findings' one law, the text task-state prints — two readers of one register never print two repairs", [null, { findings: [] }, { findings: [{ id: "f1" }] }].every((r) => registerRepair(findingsPath("t9"), "t9", r) === findingsRepair("tasks/t9.findings.json", "t9", "prepare", r))],
     ["a repeated flag refuses — never last-one-wins", refuses(() => parseArgs(["--lane", "1", "--lane", "2"]))],
     ["a flag followed by a flag refuses — never coerced to a value", refuses(() => parseArgs(["--lane", "--severity", "HIGH"]))],
     ["flags parse in both spellings", (() => { const a = parseArgs(["t9", "--lane", "3", "--claim=a=b"]); return a._[0] === "t9" && a.lane === "3" && a.claim === "a=b"; })()],
@@ -635,8 +702,9 @@ function selfTestCliRefusals(fail) {
     ["verdict refuses another task's register", markerRefusal({ ...marked, task: "other" }, "t9") !== null],
     ["verdict refuses an UNMARKED register — empty is not a pass", markerRefusal(emptyFindings("t9"), "t9")?.includes("fix: node tools/adversarial-runner.mjs prepare t9") === true],
     ["verdict scores a marked register of this task", markerRefusal(marked, "t9") === null],
-    ["a broken register's repair never prints a git checkout — it fails on the untracked register of a pass in flight, and on a tracked one drops every finding since the last commit", [refusalOf(() => parseRegisterForWrite("{ bad", "t9")), markerRefusal({ ...marked, task: "other" }, "t9")].every((m) => m?.includes("rm tasks/t9.findings.json && node tools/adversarial-runner.mjs prepare t9") && !m.includes("git checkout"))
-      && refusalOf(() => parseCalibrationForWrite("{ bad", "t9"))?.includes("rm tasks/t9.calibration.json && node tools/adversarial-runner.mjs calibrate t9") === true],
+    ["a broken register's repair never prints a git checkout — it fails on the untracked register of a pass in flight, and on a tracked one drops every finding since the last commit; a parsed EMPTY one is offered the re-mint", [refusalOf(() => parseRegisterForWrite(JSON.stringify(emptyFindings("other")), "t9")), markerRefusal({ ...marked, task: "other" }, "t9")].every((m) => m?.includes("rm tasks/t9.findings.json && node tools/adversarial-runner.mjs prepare t9") && !m.includes("git checkout"))
+      && refusalOf(() => parseCalibrationForWrite(JSON.stringify(emptyFindings("other")), "t9"))?.includes("rm tasks/t9.calibration.json && node tools/adversarial-runner.mjs calibrate t9") === true
+      && !refusalOf(() => parseRegisterForWrite("{ bad", "t9"))?.includes("git checkout")],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`adversarial-runner: ${name}`);
   return cases.length;
@@ -754,28 +822,35 @@ function calibrationPath(id) {
   return `${STATE_DIR}/${id}.calibration.json`;
 }
 
+/** A commit sha as prepare pins it (rev-parse output: sha-1 or sha-256). */
+const PINNED_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
 /** Load a wave's register and its known-defect set, or die with the law that stops a bad calibration. */
 function replayFactsOf(id, path = findingsPath(id)) {
   const { ok, register, error } = loadFindings(path);
   if (!ok || register === null) die(`no parsable findings register for '${id}'${error ? ` — ${error}` : ""}\n  rule: calibration replays a RECORDED wave — the known defects are the register's own CRITICAL/HIGH findings\n  fix: calibrate a task whose adversarial pass completed`);
   const known = knownDefectsOf(register);
   if (known.length < 3) die(`only ${known.length} CRITICAL/HIGH finding(s) on '${id}'s register — fewer than three known defects pins nothing\n  fix: calibrate a wave whose lanes found at least three CRITICAL/HIGH escapes`);
-  if (!register.sweptBase || !register.sweptHead) die(`'${id}'s register records no swept range — the replay diff cannot be reconstructed`);
+  // prepare pins rev-parse output; anything else is a hand edit, and a '-'-led value reached
+  // `git diff` as an option (--output= overwrote a file outside the repo).
+  if (![register.sweptBase, register.sweptHead].every((rev) => PINNED_SHA.test(rev))) {
+    die(`'${id}'s register records a swept range that is not two pinned commit shas (${String(register.sweptBase)}..${String(register.sweptHead)}) — the replay diff cannot be reconstructed, and an unpinned value never reaches git\n  evidence: ${relative(ROOT, path)}\n  fix: restore sweptBase/sweptHead to the shas its prepare pinned (git log -p -- ${relative(ROOT, path)}), or calibrate a wave whose register is intact`);
+  }
   return { register, known };
 }
 
-function cmdCalibrate(args) {
+function cmdCalibrate(args, { bundleDir = BUNDLE_DIR, stateDir = STATE_DIR, ...replay } = {}) {
   const id = args._[0];
   if (!id) die("usage: calibrate <past-task-id>");
   requireKebabId(id);
-  const { register, known, diff, lanes } = openReplay(id);
-  const dir = `${BUNDLE_DIR}/${id}-calibration`;
+  const { register, known, diff, lanes } = openReplay(id, replay);
+  const dir = `${bundleDir}/${id}-calibration`;
   mkdirSync(dir, { recursive: true });
   // Production-shaped (the f8 finding): the bundles carry the standing lessons like every
   // normal pass — EXCLUDING the replayed task's own register, which is the answer key (the f7
   // finding). The one calibration-specific difference is the tree note below: the graded lanes
   // must read the SWEPT HEAD, not the live tree, because the live tree carries the register.
-  const { registers: lessonRegisters } = loadRegisters(STATE_DIR);
+  const { registers: lessonRegisters } = loadRegisters(stateDir);
   const lessons = bundleBlock(lessonsIndex(lessonRegisters.filter((r) => r.task !== id)));
   const treeNote = [
     "## The tree under audit",
@@ -811,14 +886,14 @@ function calibrationRecordArgs(args, known, checklist = CHECKLIST) {
   return { lane, severity: args.severity, claim: args.claim, rediscoverOf };
 }
 
-function cmdCalibrateRecord(args) {
+function cmdCalibrateRecord(args, { registerPath, path, checklist } = {}) {
   const id = args._[0];
   if (!id) die("usage: calibrate-record <past-task-id> --lane <n> --severity <S> --claim <text>");
   requireKebabId(id);
-  const { register } = replayFactsOf(id);
-  const { lane, severity, claim, rediscoverOf } = calibrationRecordArgs(args, knownDefectsOf(register));
-  const registered = mutateJson(calibrationPath(id), (text) => {
-    const base = parseCalibrationForWrite(text, id);
+  const { register } = replayFactsOf(id, registerPath);
+  const { lane, severity, claim, rediscoverOf } = calibrationRecordArgs(args, knownDefectsOf(register), checklist);
+  const registered = mutateJson(path ?? calibrationPath(id), (text) => {
+    const base = parseCalibrationForWrite(text, id, path);
     const appended = appendFinding(base, { id: `f${base.findings.length + 1}`, lane, severity, claim, proof: args.proof, evidence: args.evidence, rediscoverOf });
     if (typeof appended === "string") die(appended);
     return appended;
@@ -834,9 +909,13 @@ function cmdCalibrateRecord(args) {
  * sweep mismatch could not be cleared by the refusal's own fix).
  */
 function openDispatch(calibration, register, id, at) {
-  // The closed epoch's verdict goes with it: kept, it paired the new sweep with a pass graded on another.
-  const { calibrationVerdict: _closed, ...base } = calibration ?? { ...emptyFindings(id), calibration: true };
-  return { ...base, passStartedAt: at, sweptBase: register.sweptBase, sweptHead: register.sweptHead, dispatchFrom: base.findings.length };
+  // The closed epoch leaves the live slot (kept there, its verdict paired the new sweep with a pass
+  // graded on another) but not the record: its boundary and verdict join the append-only history,
+  // so a pass after failed dispatches never reads as a first-try pass.
+  const { calibrationVerdict, ...base } = calibration ?? emptyFindings(id);
+  const closed = { from: base.dispatchFrom ?? 0, to: base.findings.length, sweptBase: base.sweptBase, sweptHead: base.sweptHead, passStartedAt: base.passStartedAt, verdict: calibrationVerdict ?? null };
+  const epochs = calibration ? [...(base.epochs ?? []), closed] : [];
+  return { ...base, epochs, passStartedAt: at, sweptBase: register.sweptBase, sweptHead: register.sweptHead, dispatchFrom: base.findings.length };
 }
 
 /** The one write `calibrate` makes: open a dispatch epoch on disk (`path` lets the self-test drive it). */
@@ -868,10 +947,17 @@ function sweepMismatch(register, calibration) {
   return calibration.sweptBase !== register.sweptBase || calibration.sweptHead !== register.sweptHead;
 }
 
-/** A calibration write needs an OPEN dispatch — only `calibrate` opens one, pinned to the sweep. */
-function parseCalibrationForWrite(text, id) {
+/**
+ * A calibration write needs an OPEN dispatch — only `calibrate` opens one, pinned to the sweep, and
+ * its verdict CLOSES it (found in review: claims recorded after a FAILED verdict piled into the
+ * same dispatch and the next verdict overwrote the FAIL with a PASS graded on the union).
+ */
+function parseCalibrationForWrite(text, id, path = calibrationPath(id)) {
   if (text === null) die(`no calibration dispatch open for '${id}' — a dispatch begins with 'calibrate ${id}', not with a write\n  fix: node tools/adversarial-runner.mjs calibrate ${id}`);
-  return parseRegisterForWrite(text, id, calibrationPath(id));
+  const calibration = parseRegisterForWrite(text, id, path);
+  const graded = calibration.calibrationVerdict;
+  if (graded) die(`the dispatch for '${id}' is CLOSED — its verdict is recorded (${graded.passed ? "PASSED" : "FAILED"} at ${String(graded.at)})\n  rule: one verdict per dispatch — a retry is a NEW dispatch, never more claims piled into a graded one\n  fix: node tools/adversarial-runner.mjs calibrate ${id}   (opens a fresh dispatch; the closed one's verdict stays in its epochs history)`);
+  return calibration;
 }
 
 /**
@@ -892,22 +978,33 @@ function gradeCalibration(id, registerPath = findingsPath(id), path = calibratio
   return calibrationVerdict(known, dispatchClaimsOf(calibration), barOf(known.length));
 }
 
-function cmdCalibrateVerdict(args) {
+/** Pure: which dispatch a verdict grades and how the closed ones fared — the reader of `epochs`, so
+ *  a pass after failed dispatches never prints like a first try (found in review: it did). */
+function dispatchHistoryOf(calibration) {
+  const epochs = calibration.epochs ?? [];
+  const failed = epochs.filter((e) => e.verdict?.passed === false).length;
+  const ungraded = epochs.filter((e) => !e.verdict).length;
+  return `dispatch ${epochs.length + 1}, after ${failed} failed and ${ungraded} ungraded earlier dispatch(es)`;
+}
+
+function cmdCalibrateVerdict(args, { registerPath, path } = {}) {
   const id = args._[0];
   if (!id) die("usage: calibrate-verdict <past-task-id>");
   requireKebabId(id);
   if (args.bar !== undefined) die(`--bar is refused: the bar is the law — two-thirds of the known defects, rounded up — and a knob that lowers it would make the grader's failure optional (the f1 finding, demonstrated live at --bar 1)\n  fix: calibrate against a wave whose lanes can genuinely clear barOf(known), or strengthen the checklist`);
-  const verdict = gradeCalibration(id);
+  const verdict = gradeCalibration(id, registerPath, path);
   // The verdict is DURABLE (the f1 finding: a pass with no trace is indistinguishable from a
-  // lawful one): the register records what was judged, at which bar, and when.
-  mutateJson(calibrationPath(id), (text) => {
-    const base = parseCalibrationForWrite(text, id);
+  // lawful one): the register records what was judged, at which bar, and when — and it CLOSES
+  // the dispatch, so a retry cannot overwrite it (the next calibrate files it under epochs).
+  const graded = mutateJson(path ?? calibrationPath(id), (text) => {
+    const base = parseCalibrationForWrite(text, id, path);
     return { ...base, calibrationVerdict: { rediscovered: verdict.rediscovered, known: verdict.known, bar: verdict.bar, passed: !verdict.refuse, at: new Date().toISOString() } };
   });
+  const history = dispatchHistoryOf(graded);
   if (verdict.refuse) {
-    die(`CALIBRATION FAILED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s), bar ${verdict.bar}\n  rule: the lanes are the grader, and a grader that cannot fail is not a grader — a wave dispatched by lanes that miss two-thirds of past escapes certifies nothing\n  fix: strengthen the checklist's escape classes (docs/ADVERSARIAL-CHECKLIST.md) or the bundle's audit law, then re-calibrate`);
+    die(`CALIBRATION FAILED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s), bar ${verdict.bar} — ${history}\n  rule: the lanes are the grader, and a grader that cannot fail is not a grader — a wave dispatched by lanes that miss two-thirds of past escapes certifies nothing\n  fix: strengthen the checklist's escape classes (docs/ADVERSARIAL-CHECKLIST.md) or the bundle's audit law, then re-calibrate`);
   }
-  console.log(`CALIBRATION PASSED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s) (bar ${verdict.bar}); the lanes can fail, so their verdicts certify`);
+  console.log(`CALIBRATION PASSED — rediscovered ${verdict.rediscovered} of ${verdict.known} known defect(s) (bar ${verdict.bar}) — ${history}; the lanes can fail, so their verdicts certify`);
   if (verdict.unmatched.length > 0) {
     console.log(`  unmatched by the token heuristic (human-review these): ${verdict.unmatched.join(", ")}`);
   }
@@ -951,8 +1048,8 @@ function selfTestCalibration(fail) {
     })()],
     ["fewer than three known defects refuses — insufficient signal pins nothing", calibrationVerdict([{ severity: "HIGH", claim: "a" }], ["a"], 1).refuse],
     ["an empty claim never matches", !rediscovers(walk, "")],
-    ["a re-calibration grades ONLY the new dispatch and re-pins the sweep — retries never pile up into a pass", (() => {
-      const earlier = [1, 2, 3, 4, 5].reduce((c, n) => appendFinding(c, { id: `f${n}`, lane: 1, severity: "LOW", claim: `first dispatch claim ${n}` }), { ...emptyFindings("t9"), calibration: true, sweptBase: "b1", sweptHead: "h1" });
+    ["a re-calibration grades ONLY the new dispatch and re-pins the sweep — reopening through calibrate isolates the new claims (a graded dispatch refusing more claims is its own case)", (() => {
+      const earlier = [1, 2, 3, 4, 5].reduce((c, n) => appendFinding(c, { id: `f${n}`, lane: 1, severity: "LOW", claim: `first dispatch claim ${n}` }), { ...emptyFindings("t9"), sweptBase: "b1", sweptHead: "h1" });
       const reopened = openDispatch(earlier, { sweptBase: "b2", sweptHead: "h2" }, "t9", "2026-09-27T00:00:00.000Z");
       const second = appendFinding(reopened, { id: "f6", lane: 2, severity: "LOW", claim: "second dispatch claim" });
       const graded = dispatchClaimsOf(second);
@@ -960,9 +1057,14 @@ function selfTestCalibration(fail) {
     })()],
     ["a first calibration opens its dispatch at zero, pinned to the register's sweep", (() => {
       const first = openDispatch(null, { sweptBase: "b1", sweptHead: "h1" }, "t9", "2026-09-27T00:00:00.000Z");
-      return first.task === "t9" && first.calibration === true && first.dispatchFrom === 0 && validateFindings(first) === null && !sweepMismatch({ sweptBase: "b1", sweptHead: "h1" }, first);
+      return first.task === "t9" && first.dispatchFrom === 0 && first.epochs.length === 0 && validateFindings(first) === null && !sweepMismatch({ sweptBase: "b1", sweptHead: "h1" }, first);
     })()],
-    ["a reopened dispatch carries no closed epoch's calibrationVerdict — a pass graded on another dispatch never sits beside the new sweep", !("calibrationVerdict" in openDispatch({ ...emptyFindings("t9"), calibration: true, calibrationVerdict: { passed: true } }, { sweptBase: "b2", sweptHead: "h2" }, "t9", "2026-09-27T00:00:00.000Z"))],
+    ["a reopened dispatch carries no closed epoch's calibrationVerdict — a pass graded on another dispatch never sits beside the new sweep", !("calibrationVerdict" in openDispatch({ ...emptyFindings("t9"), calibrationVerdict: { passed: true } }, { sweptBase: "b2", sweptHead: "h2" }, "t9", "2026-09-27T00:00:00.000Z"))],
+    ["a re-calibrate keeps the closed epoch's verdict and boundary in its history — a pass after failures never reads as first-try", (() => {
+      const failed = { ...[1, 2, 3].reduce((c, n) => appendFinding(c, { id: `f${n}`, lane: 1, severity: "LOW", claim: `claim ${n}` }), { ...emptyFindings("t9"), sweptBase: "b1", sweptHead: "h1" }), dispatchFrom: 1, calibrationVerdict: { passed: false, at: "2026-09-27T00:00:00.000Z" } };
+      const { epochs } = openDispatch(failed, { sweptBase: "b2", sweptHead: "h2" }, "t9", "2026-09-27T01:00:00.000Z");
+      return epochs?.length === 1 && epochs[0].from === 1 && epochs[0].to === 3 && epochs[0].sweptHead === "h1" && epochs[0].verdict?.passed === false;
+    })()],
     ["a legacy register with no dispatch mark is graded whole", dispatchClaimsOf({ findings: [{ id: "f1" }, { id: "f2" }] }).length === 2],
     ["a re-prepared wave's sweep mismatches the calibration it had", sweepMismatch({ sweptBase: "b1", sweptHead: "h9" }, { sweptBase: "b1", sweptHead: "h1" })],
   ];

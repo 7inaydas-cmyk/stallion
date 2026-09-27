@@ -18,7 +18,9 @@
  * (CI has no jj — the guards are still proven there, and the live jj path prints its own law).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, derivePhase, PHASES, TASK_ID } from "./task-state.mjs";
 
@@ -53,24 +55,74 @@ export function canAddWorkspace(record, dirExists) {
 }
 
 /**
- * Pure guard for workspace removal. Forgetting a workspace whose commits never landed orphans
- * them — jj's `workspace list` text does not reliably carry reachability, so the operator asserts
- * it explicitly: --landed (verified in the primary copy) or --yes-discard-unlanded-work (abandon
- * knowingly). Neither flag is exactly the refusal. The printed check is a CONTENT check: landing
- * re-applies the patch as a new git commit, so the draft never becomes an ancestor of trunk and a
- * `trunk()..task-<id>@` range stays non-empty after a correct landing; the draft's patch applying
- * in REVERSE is what proves the primary copy holds it (no trunk name needed). `<name>@` is the
- * workspace's working copy — `<name>@workspace` would be read as a remote bookmark.
+ * Pure: the revisions bounding a task's WHOLE draft stack — the fork point between the workspace
+ * and the primary copy, to the workspace's working copy (`<name>@`; `<name>@workspace` would be
+ * read as a remote bookmark). `-r 'task-<id>@'`, like a bare `jj diff`, is the tip commit alone:
+ * a draft split by `jj commit` landed only its tip and still verified. Landing re-applies the
+ * patch as a new git commit, so the fork point stays at the draft's base after a correct landing.
  */
-export function canForgetWorkspace(mode, id = "<id>") {
-  if (mode === "landed") return { ok: true };
+export function draftRange(id) {
+  return { from: `fork_point(task-${id}@ | @)`, to: `task-${id}@` };
+}
+
+/**
+ * Pure guard for workspace removal. Forgetting a workspace whose commits never landed orphans
+ * them, so the operator says which it is — --landed or --yes-discard-unlanded-work (abandon
+ * knowingly); neither flag is exactly the refusal. --landed is CHECKED, never trusted: `landing`
+ * is landingCheck's result, and only a HEAD that holds the whole draft stack forgets.
+ */
+export function canForgetWorkspace(mode, id = "<id>", landing = null) {
+  const { from, to } = draftRange(id);
+  const law = `jj diff --git --from '${from}' --to '${to}'`;
   if (mode === "discard") return { ok: true };
+  if (mode === "landed" && landing?.held === true) return { ok: true };
+  if (mode === "landed") {
+    return {
+      ok: false,
+      reason: `refusing to forget workspace 'task-${id}' — the primary copy's HEAD does not hold its whole draft stack, and forgetting unlanded drafts orphans them
+  evidence: ${landing?.evidence ?? "no landing check ran"}
+  fix: in the PRIMARY copy, ${law} > /tmp/task-${id}.patch && git -C "$(git rev-parse --show-toplevel)" apply --index /tmp/task-${id}.patch && git commit, then, still in the PRIMARY copy, node tools/task-workspace.mjs forget ${id} --landed   (or node tools/task-workspace.mjs forget ${id} --yes-discard-unlanded-work to abandon it knowingly)`,
+    };
+  }
   return {
     ok: false,
     reason: `refusing to forget workspace 'task-${id}' without a landing claim — forgetting unlanded drafts orphans them
-  verify: in the PRIMARY copy, jj diff --git -r 'task-${id}@' | git apply --check --reverse   (exits 0 only when the primary copy holds the workspace's change)
-  fix: node tools/task-workspace.mjs forget ${id} --landed   (after that check passes), or node tools/task-workspace.mjs forget ${id} --yes-discard-unlanded-work   (to abandon it knowingly)`,
+  evidence: the draft stack is ${law}   (run it in the PRIMARY copy to see what would be orphaned)
+  fix: in the PRIMARY copy, node tools/task-workspace.mjs forget ${id} --landed   (checks that HEAD holds that whole stack, and refuses unless it does), or node tools/task-workspace.mjs forget ${id} --yes-discard-unlanded-work   (to abandon it knowingly)`,
   };
+}
+
+/**
+ * Does the primary copy's HEAD hold the task's whole draft stack? The check `forget --landed` RUNS
+ * (it used to print one and trust the flag). It snapshots the workspace first — the primary copy
+ * sees only its last snapshot, so edits made after the workspace's last jj command were invisible —
+ * then reverse-applies the draftRange patch against HEAD's tree in a scratch index: not the working
+ * tree (an applied but uncommitted patch is not landed), and at `root`, never the caller's cwd
+ * (git apply in a subdirectory skips every path outside it and exits 0). Run from the workspace's
+ * own copy, `@` IS `task-<id>@`: the range was empty, the forget passed over unlanded drafts —
+ * a tip at or below `@` refuses before the empty-stack pass can read it as nothing to land.
+ */
+export function landingCheck(id, root = ROOT, env = process.env) {
+  const scratch = mkdtempSync(join(tmpdir(), "task-workspace-landing-"));
+  const run = (cmd, args, cwd, extra = {}) => execFileSync(cmd, args, { cwd, env, encoding: "utf8", stdio: "pipe", ...extra });
+  try {
+    const workspace = join(root, workspaceSiblingPath(root, id));
+    if (existsSync(workspace)) run("jj", ["status"], workspace);
+    const { from, to } = draftRange(id);
+    if (run("jj", ["log", "--no-graph", "-r", `${to} & ::@`, "-T", "commit_id"], root).trim() !== "") {
+      return { held: false, evidence: `${to} is the working copy the check runs in, or its ancestor — ${from}..${to} is empty by construction and checks nothing; run forget in the PRIMARY copy, never from the task's own workspace` };
+    }
+    const patch = run("jj", ["diff", "--git", "--from", from, "--to", to], root);
+    if (patch.trim() === "") return { held: true, evidence: `the draft stack ${from}..${to} is empty — nothing to land` };
+    const index = { ...env, GIT_INDEX_FILE: join(scratch, "index") };
+    run("git", ["read-tree", "HEAD"], root, { env: index });
+    run("git", ["apply", "--check", "--reverse", "--cached"], root, { env: index, input: patch });
+    return { held: true, evidence: `HEAD holds ${from}..${to}` };
+  } catch (e) {
+    return { held: false, evidence: String(e.stderr || e.message).trim() };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 function die(message) {
@@ -98,9 +150,12 @@ function loadTask(id) {
 const LANDING_LAW = `
 LANDING LAW (colocated jujutsu — this is the reason the tool exists):
   jj-native commits DO NOT run the git pre-commit hooks. Draft here; LAND in the primary copy:
-    1. in this workspace:  jj diff --git > /tmp/<task>.patch
-    2. in the PRIMARY copy: git apply /tmp/<task>.patch, then 'git commit' — hooks fire, markers checked
-    3. push only from the primary working copy, through your gated push path
+    1. in this workspace:  jj status   (snapshots your last edits — the primary copy sees only a snapshot)
+    2. in the PRIMARY copy: jj diff --git --from '${draftRange("<id>").from}' --to '${draftRange("<id>").to}' > /tmp/task-<id>.patch
+       (the WHOLE draft stack — a bare 'jj diff' exports the tip commit alone)
+    3. in the PRIMARY copy: git -C "$(git rev-parse --show-toplevel)" apply --index /tmp/task-<id>.patch, then 'git commit' — hooks fire, markers checked
+    4. push only from the primary working copy, through your gated push path
+    5. in the PRIMARY copy: node tools/task-workspace.mjs forget <id> --landed — re-runs step 2's range against HEAD, refuses unless HEAD holds it
   Never 'jj bookmark set' or push your trunk bookmark from a workspace.`;
 
 function cmdAdd(args) {
@@ -118,7 +173,7 @@ function cmdAdd(args) {
   }
   jjOut("workspace", "add", "--name", `task-${id}`, dir);
   console.log(`workspace 'task-${id}' added at ${sibling} (task phase: ${derivePhase(record.events)})`);
-  console.log(LANDING_LAW);
+  console.log(LANDING_LAW.replaceAll("<id>", id));
 }
 
 function cmdForget(args) {
@@ -128,7 +183,7 @@ function cmdForget(args) {
   const listing = jjOut("workspace", "list");
   if (!listing.includes(`task-${id}`)) die(`no workspace named 'task-${id}' — nothing to forget (${listing.split("\n").length} workspace(s) listed)`);
   const mode = args.landed === true ? "landed" : args["yes-discard-unlanded-work"] === true ? "discard" : "none";
-  const guard = canForgetWorkspace(mode, id);
+  const guard = canForgetWorkspace(mode, id, mode === "landed" ? landingCheck(id) : null);
   if (!guard.ok) die(`REFUSED — ${guard.reason}`);
   jjOut("workspace", "forget", `task-${id}`);
   console.log(`workspace 'task-${id}' forgotten (directory remains on disk until you delete it)`);
@@ -161,6 +216,73 @@ function parseArgs(argv) {
   return args;
 }
 
+/**
+ * The landing check against REAL jj and git — the refusal text alone was pinned as a string, and
+ * its promise was false in three ordinary workflows. A two-commit draft landed tip-only, an
+ * applied-but-uncommitted stack, and an edit made after the workspace's last jj command must all
+ * refuse; the whole stack committed must pass. Driven from a subdirectory, where git apply skips
+ * every path outside it. Returns null when jj is absent (CI) — the OK line says so, never silently.
+ */
+function liveLandingCases() {
+  try {
+    execFileSync("jj", ["--version"], { stdio: "ignore" });
+  } catch {
+    return null;
+  }
+  const base = mkdtempSync(join(tmpdir(), "task-workspace-live-"));
+  const cwd = process.cwd();
+  const primary = join(base, "primary");
+  const ws = join(base, "primary-task-t1");
+  const who = { GIT_AUTHOR_NAME: "self-test", GIT_AUTHOR_EMAIL: "self-test@example.invalid", GIT_COMMITTER_NAME: "self-test", GIT_COMMITTER_EMAIL: "self-test@example.invalid", JJ_USER: "self-test", JJ_EMAIL: "self-test@example.invalid" };
+  const env = { ...process.env, ...who, JJ_CONFIG: join(base, "jj.toml"), GIT_CONFIG_GLOBAL: join(base, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
+  const sh = (dir, cmd, ...args) => execFileSync(cmd, args, { cwd: dir, env, stdio: "pipe" });
+  const put = (path, text) => writeFileSync(path, text);
+  try {
+    put(env.JJ_CONFIG, "");
+    put(env.GIT_CONFIG_GLOBAL, "");
+    mkdirSync(join(primary, "sub"), { recursive: true });
+    put(join(primary, "f.txt"), "base\n");
+    put(join(primary, "sub", "keep.txt"), "keep\n");
+    sh(base, "git", "init", "-q", "-b", "main", primary);
+    sh(primary, "git", "add", "-A");
+    sh(primary, "git", "commit", "-qm", "base");
+    sh(primary, "jj", "git", "init", "--colocate");
+    sh(primary, "jj", "workspace", "add", "--name", "task-t1", ws);
+    put(join(ws, "a.txt"), "part one\n");
+    sh(ws, "jj", "commit", "-m", "part one");
+    put(join(ws, "b.txt"), "part two\n"); // never snapshotted by hand: the check's own snapshot must see it
+    process.chdir(join(primary, "sub"));
+    const held = () => landingCheck("t1", primary, env).held;
+    put(join(primary, "b.txt"), "part two\n");
+    sh(primary, "git", "add", "b.txt");
+    sh(primary, "git", "commit", "-qm", "tip only");
+    const tipOnly = held();
+    put(join(primary, "a.txt"), "part one\n");
+    const uncommitted = held();
+    sh(primary, "git", "add", "a.txt");
+    sh(primary, "git", "commit", "-qm", "the rest");
+    const whole = held();
+    put(join(ws, "b.txt"), "part two\nlate edit\n");
+    const late = held();
+    const inside = landingCheck("t1", ws, env); // the tool's own copy in the workspace: there @ IS task-t1@
+    sh(primary, "jj", "workspace", "add", "--name", "task-t2", join(base, "primary-task-t2"));
+    const untouched = landingCheck("t2", primary, env).held;
+    return [
+      ["live jj: a two-commit draft landed tip-only refuses — the check covers the whole stack, run from a subdirectory", tipOnly === false],
+      ["live jj: a stack applied to the working tree but never committed refuses — HEAD, not the working tree, must hold it", uncommitted === false],
+      ["live jj: the whole stack committed in the primary copy passes", whole === true],
+      ["live jj: an edit made after the workspace's last jj command refuses — the check snapshots the workspace first", late === false],
+      ["live jj: forget --landed run from INSIDE the workspace refuses, naming the PRIMARY copy — there @ is the draft tip, so the range is empty by construction", inside.held === false && inside.evidence.includes("PRIMARY copy")],
+      ["live jj: a workspace with no drafts forgets from the primary copy — its range is genuinely empty, nothing is orphaned", untouched === true],
+    ];
+  } catch (e) {
+    return [[`live jj: the fixture repo builds (${String(e.stderr || e.message).trim().split("\n")[0]})`, false]];
+  } finally {
+    process.chdir(cwd);
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
 export function selfTest() {
   const failures = [];
   const fail = (m) => failures.push(m);
@@ -184,19 +306,32 @@ export function selfTest() {
     ["done refused", !canAddWorkspace(mk("done"), false).ok],
     ["existing dir refused", !canAddWorkspace(mk("planned"), true).ok],
     ["forget without a claim refused", !canForgetWorkspace("none").ok],
-    ["forget landed allowed", canForgetWorkspace("landed").ok],
+    ["forget --landed allowed once the landing check finds HEAD holds the whole stack", canForgetWorkspace("landed", "t1", { held: true, evidence: "HEAD holds it" }).ok],
+    ["a --landed refusal carries the landing check's evidence", canForgetWorkspace("landed", "t1", { held: false, evidence: "error: a.txt: does not exist in index" }).reason?.includes("evidence: error: a.txt: does not exist in index") === true],
     ["forget discard acknowledged allowed", canForgetWorkspace("discard").ok],
-    ["the forget refusal's verify command names the real workspace revision (task-t1@, never <name>@workspace or a hard-coded master)", (() => {
+    ["the forget refusal's verify command names the real workspace revision (task-t1@, never <name>@workspace or a hard-coded master) and its whole stack", (() => {
       const { reason } = canForgetWorkspace("none", "t1");
-      return reason.includes("jj diff --git -r 'task-t1@' | git apply --check --reverse") && !reason.includes("@workspace") && !reason.includes("master");
+      return reason.includes("jj diff --git --from 'fork_point(task-t1@ | @)' --to 'task-t1@'") && !reason.includes("@workspace") && !reason.includes("master");
     })()],
-    ["the landing law exports a patch git apply accepts (jj diff --git; a secondary workspace has no .git for git diff)", LANDING_LAW.includes("jj diff --git > /tmp/<task>.patch") && !LANDING_LAW.includes("git diff)")],
+    ["the landing law exports a patch git apply accepts (jj diff --git; a secondary workspace has no .git for git diff)", LANDING_LAW.includes("jj diff --git --from") && !LANDING_LAW.includes("git diff)")],
+    ["forget --landed refuses when the landing check finds the draft not held — the claim is checked, never trusted", !canForgetWorkspace("landed", "t1", { held: false, evidence: "error: a.txt: patch does not apply" }).ok],
+    ["the landing law's export covers the WHOLE draft stack (fork point to task-<id>@), never the tip commit alone", LANDING_LAW.includes("jj diff --git --from 'fork_point(task-<id>@ | @)' --to 'task-<id>@' > /tmp/task-<id>.patch") && !LANDING_LAW.includes("jj diff --git >")],
+    ["the landing law applies the patch at the repo root and into the index — git apply in a subdirectory skips every path outside it, and an unstaged apply commits nothing", LANDING_LAW.includes(`git -C "$(git rev-parse --show-toplevel)" apply --index /tmp/task-<id>.patch`)],
+    ["the landing law and both forget refusals say forget runs in the PRIMARY copy — from the workspace itself the range is empty by construction", (() => {
+      const said = [
+        [LANDING_LAW, "5. in the PRIMARY copy: node tools/task-workspace.mjs forget <id> --landed"],
+        [canForgetWorkspace("landed", "t1", { held: false, evidence: "x" }).reason, "still in the PRIMARY copy, node tools/task-workspace.mjs forget t1 --landed"],
+        [canForgetWorkspace("none", "t1").reason, "fix: in the PRIMARY copy, node tools/task-workspace.mjs forget t1 --landed"],
+      ];
+      return said.every(([text, clause]) => text.includes(clause));
+    })()],
     ["workspace sibling derives from the repo's own name, not the harness's", workspaceSiblingPath("/x/clones/my-repo/", "t1") === "../my-repo-task-t1"],
     ["forged transition to an unknown phase is ignored (no fake-phase workspace)", canAddWorkspace({ ...mk("planned"), events: [...mk("planned").events, { type: "transition", to: "shipped" }] }, false).ok],
   ];
-  for (const [name, passes] of cases) if (!passes) fail(`task-workspace: ${name}`);
-
-  console.log(failures.length === 0 ? `task-workspace self-test: OK (${cases.length} guard cases — count derived; live jj path prints its own landing law)` : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
+  const live = liveLandingCases();
+  for (const [name, passes] of [...cases, ...(live ?? [])]) if (!passes) fail(`task-workspace: ${name}`);
+  const liveNote = live === null ? "live jj landing cases SKIPPED — jj is not on PATH" : `${live.length} live jj landing cases`;
+  console.log(failures.length === 0 ? `task-workspace self-test: OK (${cases.length} guard cases, ${liveNote} — count derived)` : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
