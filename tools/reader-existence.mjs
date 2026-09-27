@@ -43,9 +43,11 @@
  *      self-test INSIDE the production file (`function selfTestValidate() { ... }` in the same
  *      module that ships). A name filter cannot see that, and test code seeding members by hand is
  *      precisely the blindness this gate exists to remove — so the corpus cuts `selfTest*`
- *      FUNCTION BODIES, and every file-private helper only they reach (string-aware brace
- *      matching; on parser doubt the cut runs to EOF, which can only over-report findings, the
- *      fail-closed direction).
+ *      DECLARATIONS, and every file-private helper — a `function`, or a `const` arrow, function
+ *      expression or fixture table — that only they reach, or that nothing reaches (string-,
+ *      template- and regex-aware bracket matching; on parser doubt — no balanced end, or a quote
+ *      still open at a line's end — the cut runs to EOF, which can only over-report findings, the
+ *      fail-closed direction; see selfTestRanges for the doubt it cannot see).
  *   2. THE DECLARATION. Antitube excluded the contract FILE; stallion's contracts share files with
  *      their own producers (`RISK_CLASSES` lives in task-state.mjs, which also branches on its
  *      members), so excluding the file would gut the sweep. The corpus excludes exactly the
@@ -199,8 +201,16 @@ export function declarationRange(source, name) {
 
 const escapeRe = (literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** The shapes that READ a member: a comparison operand, a `case` label, a predicate call's argument. */
-const consumerShapes = (q) => [`[=!]==?\\s*"${q}"`, `"${q}"\\s*[=!]==`, `case\\s+"${q}"`, `\\.?(?:has|includes|indexOf|startsWith|endsWith)\\(\\s*"${q}"`];
+/** The shapes that READ a member: a comparison operand, a `case` label, a predicate call's argument, or
+ *  an element of the inline array a predicate is called on, whatever else it holds (`["X", Y].includes(m)`,
+ *  `[...BASE, "X"].some(f)`, `new Set(["X"]).has(m)`). */
+const consumerShapes = (q) => [
+  `[=!]==?\\s*"${q}"`,
+  `"${q}"\\s*[=!]==`,
+  `case\\s+"${q}"`,
+  `\\.?(?:has|includes|indexOf|startsWith|endsWith)\\(\\s*"${q}"`,
+  `\\[(?:[^\\[\\]]*,\\s*)?"${q}"(?:\\s*,[^\\[\\]]*)?\\]\\s*\\)?\\s*\\.(?:has|includes|indexOf|some|every|find|findIndex)\\(`,
+];
 
 function consumerRoles(line, literal) {
   const q = escapeRe(literal);
@@ -214,14 +224,14 @@ function consumerRoles(line, literal) {
 function producerRoles(line, literal) {
   const q = escapeRe(literal);
   const roles = new Set();
-  // A `return` supplies the literal only where it is not a READ: `return m === "GHOST"` produces
-  // nothing, and counting it would turn a read-never-written member green.
+  // A `return` or a spread supplies the literal only where it is not a READ: `return m === "GHOST"` and
+  // `[...BASE, "GHOST"].includes(m)` produce nothing, and counting them turned a read-never-written member green.
   const unread = line.replace(new RegExp(consumerShapes(q).join("|"), "g"), "");
   if (new RegExp(`return\\s+.*"${q}"`).test(unread)) roles.add("PRODUCER");
   if (new RegExp(`:\\s*"${q}"`).test(line)) roles.add("PRODUCER");
   if (new RegExp(`\\.push\\(\\s*"${q}"`).test(line)) roles.add("PRODUCER");
   if (new RegExp(`[^=!<>]=\\s*"${q}"`).test(line)) roles.add("PRODUCER");
-  if (new RegExp(`\\.\\.\\.[A-Za-z_][A-Za-z0-9_]*\\s*,\\s*"${q}"`).test(line)) roles.add("PRODUCER");
+  if (new RegExp(`\\.\\.\\.[A-Za-z_][A-Za-z0-9_]*\\s*,\\s*"${q}"`).test(unread)) roles.add("PRODUCER");
   return roles;
 }
 
@@ -278,14 +288,19 @@ function closingBracketLine(lines, from) {
  * Corpus
  * ---------------------------------------------------------------------------------------------- */
 
-const SELFTEST_DECL = /^(?:export\s+)?(?:async\s+)?function\s+selfTest\w*\s*\(/;
+/** A top-level `const|let|var NAME =` binding — an arrow helper, a function expression, a fixture table. */
+const BINDING_DECL = /^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/;
+const SELFTEST_DECL = /^(?:export\s+)?(?:(?:async\s+)?function\s+selfTest\w*\s*\(|(?:const|let|var)\s+selfTest\w*\s*=)/;
 
 /**
- * [startLine, endLine] (inclusive) of every inline `selfTest*` function body — stallion's test
+ * [startLine, endLine] (inclusive) of every inline `selfTest*` declaration — stallion's test
  * code lives INSIDE production files, so the corpus cuts the function, not the file. The brace
- * match is STRING-AWARE (a naive count ends the function at the first `}` inside a quoted string
- * or template); if no balanced end is found the cut runs to EOF, which can only REMOVE corpus and
- * therefore OVER-report findings — the fail-closed direction for a blocking gate.
+ * match is STRING- AND REGEX-AWARE (a naive count ends the function at the first `}` inside a
+ * quoted string or template); if no balanced end is found, or a quote is still open at a line's end
+ * (a misread the scan cannot resume from), the cut runs to EOF, which can only REMOVE corpus and
+ * therefore OVER-report findings — the fail-closed direction for a blocking gate. KNOWN LIMIT: the
+ * doubt must be visible — a regex right after `)` reads as division, and a quote-free bracket
+ * inside it is counted.
  */
 export function selfTestRanges(lines) {
   const ranges = [];
@@ -295,7 +310,7 @@ export function selfTestRanges(lines) {
       i += 1;
       continue;
     }
-    const end = functionEnd(lines, i);
+    const end = declarationEnd(lines, i);
     ranges.push([i, end]);
     i = end + 1;
   }
@@ -305,19 +320,22 @@ export function selfTestRanges(lines) {
 const PRIVATE_FN_DECL = /^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(/;
 
 /**
- * TEST CODE in a production file: every `selfTest*` body, plus — to a fixpoint — every FILE-PRIVATE
- * top-level function referenced only from test code. A helper is test code by what reaches it, not
- * by its name: `runLawRepairCases` and `bundleBlockCarriesAllRanked` escaped a name-only cut, and
- * their hand-seeded literals counted as production — hiding a DEAD member and flipping accepted
- * rows (the 2026-09-27 sweep). Exported functions are never cut this way: another module may be
- * their production caller. KNOWN LIMIT: any mention outside test code, a comment included, keeps a
- * helper in the corpus; naming it selfTest* cuts it outright.
+ * TEST CODE in a production file: every `selfTest*` declaration, plus — to a fixpoint — every
+ * FILE-PRIVATE top-level declaration (a `function`, or a `const|let|var` binding: arrow helper,
+ * function expression, fixture table) reached only from test code, or by nothing at all. A helper
+ * is test code by what reaches it, not by its name or its shape: `runLawRepairCases` and
+ * `bundleBlockCarriesAllRanked` escaped a name-only cut, and their hand-seeded literals counted as
+ * production — hiding a DEAD member and flipping accepted rows (the 2026-09-27 sweep); a const arrow
+ * or table then escaped the function-only cut the same way. Exported declarations are never cut
+ * this way: another module may be their production caller. KNOWN LIMIT: any mention outside test
+ * code, a comment included, keeps a helper in the corpus; naming it selfTest* cuts it outright.
+ * Class declarations and destructured bindings are not candidates.
  */
 export function testCodeRanges(lines) {
   const ranges = selfTestRanges(lines);
   const cut = new Set(ranges.flatMap(lineSpan));
   const refs = identifierLines(lines);
-  let pending = privateFunctions(lines);
+  let pending = privateDeclarations(lines);
   let reached = pending.filter((fn) => onlyTestReached(fn, refs, cut));
   while (reached.length > 0) {
     for (const fn of reached) {
@@ -332,12 +350,12 @@ export function testCodeRanges(lines) {
 
 const lineSpan = ([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
-/** Top-level, non-exported, non-selfTest function declarations, each with its line range. */
-function privateFunctions(lines) {
+/** Top-level, non-exported, non-selfTest declarations — functions and bindings — each with its line range. */
+function privateDeclarations(lines) {
   const found = [];
   lines.forEach((line, i) => {
-    const decl = PRIVATE_FN_DECL.exec(line);
-    if (decl !== null && !SELFTEST_DECL.test(line)) found.push({ name: decl[1], range: [i, functionEnd(lines, i)] });
+    const decl = PRIVATE_FN_DECL.exec(line) ?? BINDING_DECL.exec(line);
+    if (decl !== null && !SELFTEST_DECL.test(line)) found.push({ name: decl[1], range: [i, declarationEnd(lines, i)] });
   });
   return found;
 }
@@ -354,23 +372,29 @@ function identifierLines(lines) {
   return index;
 }
 
-/** Referenced at all, and only from lines already cut as test code (its own body aside). */
+/** Reached only from lines already cut as test code, or from nothing (its own body aside): a
+ *  file-private helper no line reaches never runs, and keeping it let a dead literal count as live. */
 function onlyTestReached(fn, refs, cut) {
   const [start, end] = fn.range;
   const outside = (refs.get(fn.name) ?? []).filter((i) => i < start || i > end);
-  return outside.length > 0 && outside.every((i) => cut.has(i));
+  return outside.every((i) => cut.has(i));
 }
 
-/** Index of the line where the function starting at `start` closes; EOF on parser doubt. */
-function functionEnd(lines, start) {
-  const st = { depth: 0, parens: 0, started: false, str: null, block: false };
+/** Index of the line where the declaration starting at `start` closes; EOF on parser doubt. A
+ *  function closes with its body's brace, a binding with its statement's `;`. Only a template or a
+ *  block comment spans lines: a quote still open at a line's end was misread, and resuming past it
+ *  one bracket short closed the cut EARLY — test code left in the corpus, the fail-open direction. */
+function declarationEnd(lines, start) {
+  const shape = BINDING_DECL.test(lines[start].replace(/^export\s+/, "")) ? statementStep : functionStep;
+  const st = { depth: 0, parens: 0, started: false, str: null, block: false, prev: null, holes: [], shape };
   for (let j = start; j < lines.length; j += 1) {
     if (scanLine(lines[j], st)) return j;
+    if (st.str === '"' || st.str === "'") break;
   }
   return lines.length - 1;
 }
 
-/** One line through the scanner; true when the tracked function closes on this line. */
+/** One line through the scanner; true when the tracked declaration closes on this line. */
 function scanLine(line, st) {
   for (let k = 0; k < line.length; ) {
     const step = consume(line, k, st);
@@ -397,6 +421,11 @@ function blockStep(line, k, st) {
 
 function stringStep(line, k, st) {
   if (line[k] === "\\") return { next: k + 2, ended: false }; // escaped char: skip its target
+  if (st.str === "`" && line.startsWith("${", k)) {
+    st.holes.push(0); // a template's hole is CODE — a template nested in it is its own string
+    st.str = null;
+    return { next: k + 2, ended: false };
+  }
   if (line[k] === st.str) st.str = null;
   return { next: k + 1, ended: false };
 }
@@ -405,14 +434,75 @@ const QUOTE_CHARS = new Set(['"', "'", "`"]);
 
 function codeStep(line, k, st) {
   const c = line[k];
-  if (c === "/") {
-    if (line[k + 1] === "/") return { next: line.length, ended: false }; // line comment: rest is prose
-    if (line[k + 1] === "*") st.block = true;
+  const slash = c === "/" ? slashStep(line, k, st) : null;
+  if (slash !== null) return slash;
+  if (holeCloses(c, st)) return { next: k + 1, ended: false };
+  if (QUOTE_CHARS.has(c)) st.str = c;
+  if (c.trim() !== "") st.prev = c;
+  return { next: k + 1, ended: st.shape(c, st) };
+}
+
+/** Inside a template's `${...}` hole braces nest; the one that closes the hole resumes the template. */
+function holeCloses(c, st) {
+  const top = st.holes.length - 1;
+  if (top < 0) return false;
+  if (c === "{") st.holes[top] += 1;
+  if (c !== "}") return false;
+  if (st.holes[top] > 0) {
+    st.holes[top] -= 1;
+    return false;
   }
-  if (QUOTE_CHARS.has(c)) st.str = c; // templates are opaque, holes included
+  st.holes.pop();
+  st.str = "`";
+  return true;
+}
+
+/** A `/` in code: a line comment (the rest is prose), a block comment, a regex literal skipped whole
+ *  where an operand may start, or null — division, an ordinary character. */
+function slashStep(line, k, st) {
+  if (line[k + 1] === "/") return { next: line.length, ended: false };
+  if (line[k + 1] === "*") {
+    st.block = true;
+    return { next: k + 2, ended: false };
+  }
+  const end = regexCanStart(line.slice(0, k), st.prev) ? regexEnd(line, k) : -1;
+  return end === -1 ? null : { next: end + 1, ended: false };
+}
+
+/** After an operator or opening punctuation, or a keyword that takes an operand, `/` opens a regex —
+ *  never after a postfix `++`/`--`, whose operand is finished. */
+const REGEX_AFTER = new Set([..."(,=:[!&|?{;+-*%<>~^"]);
+function regexCanStart(before, prev) {
+  if (/(?:\+\+|--)\s*$/.test(before)) return false;
+  return prev === null || REGEX_AFTER.has(prev) || /(?:^|[^\w$.])(?:return|typeof|case|void|throw|in|of|yield|await)\s*$/.test(before);
+}
+
+/** Index of the `/` closing the regex literal that opens at `k`, or -1. A regex cannot span lines, so
+ *  a `/` with no closing one on its line is division — read as a regex, it swallowed the rest of the
+ *  line and a bracket with it. Quotes and brackets inside are pattern; a class's `/` does not close. */
+function regexEnd(line, k) {
+  let cls = false;
+  for (let j = k + 1; j < line.length; j += 1) {
+    const c = line[j];
+    if (c === "\\") j += 1;
+    else if (c === "/" && !cls) return j;
+    else if (c === "[" || c === "]") cls = c === "[";
+  }
+  return -1;
+}
+
+/** A function: nothing counts until its body opens; it closes with that body's brace. */
+function functionStep(c, st) {
   if (st.started) bodyStep(c, st);
   else headerStep(c, st);
-  return { next: k + 1, ended: st.started && st.depth <= 0 };
+  return st.started && st.depth <= 0;
+}
+
+/** A binding: every bracket kind nests, and a `;` outside them all ends the statement. */
+function statementStep(c, st) {
+  if ("([{".includes(c)) st.depth += 1;
+  if (")]}".includes(c)) st.depth -= 1;
+  return c === ";" && st.depth <= 0;
 }
 
 /** Before the body: braces inside the PARAMETER list (destructuring, `= {}` defaults) are not the
@@ -649,7 +739,7 @@ function baselineVerdict(accepted, findings, out = console) {
   const stale = [...acceptedIds].filter((id) => !current.has(id));
   const drifted = findings.filter((f) => acceptedIds.has(f.id) && recordedVerdict(accepted[f.id]) !== f.verdict);
   for (const id of added) out.error(`  NEW dead wiring: ${id} — add a reader/producer, or accept it in ${CONFIG_PATH} WITH A REASON.`);
-  for (const id of stale) out.error(`  STALE accepted row: ${id} is no longer a finding — remove it from ${CONFIG_PATH}. A baseline nobody prunes becomes a permission slip.`);
+  for (const id of stale) out.error(`  STALE accepted row: ${id} is no longer a finding — first rule out a test-only producer that escaped the corpus cut (a row pruned as stale that way hid a live finding once), then remove it from ${CONFIG_PATH}. A baseline nobody prunes becomes a permission slip.`);
   for (const f of drifted) out.error(`  DRIFTED accepted row: ${f.id} was accepted as ${recordedVerdict(accepted[f.id])}, the sweep now says ${f.verdict} — fix the wiring, or re-justify the row in ${CONFIG_PATH} with a reason opening "${f.verdict} —".`);
   if (added.length + stale.length + drifted.length > 0) {
     out.error(`reader-existence: FAILED (${added.length} new, ${stale.length} stale, ${drifted.length} drifted).`);
@@ -701,6 +791,21 @@ function selfTestClassifier(fail) {
   // turns a read-never-written member green (the founding tier() shape, one statement over).
   const readInReturn = classifyLine('  return m === "GHOST";', "GHOST", false);
   check(!readInReturn.has("PRODUCER"), `a comparison inside a return was read as a PRODUCER: [${[...readInReturn].join(",")}]`);
+  // A literal ARGUMENT beside an unrelated predicate call is not that read: it stays unclassified.
+  const beside = classifyLine('  send("GHOST", list[0].has(x));', "GHOST", false);
+  check(!beside.has("CONSUMER"), `a literal argument beside a predicate call was read as a CONSUMER: [${[...beside].join(",")}]`);
+  // The same READ spelled as inline membership: the literal is the receiver's element, not the call's argument.
+  for (const line of ['  return ["GHOST", "X"].includes(m);', '  return new Set(["GHOST"]).has(m);', '  return ["GHOST"].some((x) => x === m);']) {
+    const roles = classifyLine(line, "GHOST", false);
+    check(roles.has("CONSUMER") && !roles.has("PRODUCER"), `an inline membership test inside a return was not read as a CONSUMER: ${line.trim()} -> [${[...roles].join(",")}]`);
+  }
+  // Mixed with an identifier or a spread, the inline array is still only the receiver of a read.
+  for (const line of ['  return [KIND, "GHOST"].includes(m);', '  return ["GHOST", KIND].includes(m);', '  return [...BASE, "GHOST"].includes(m);', '  if ([...BASE, "GHOST"].includes(m)) go();']) {
+    const roles = classifyLine(line, "GHOST", false);
+    check(roles.has("CONSUMER") && !roles.has("PRODUCER"), `an inline membership test over a mixed array was not read as a CONSUMER: ${line.trim()} -> [${[...roles].join(",")}]`);
+  }
+  const spread = classifyLine('  send([...BASE, "GHOST"]);', "GHOST", false);
+  check(spread.has("PRODUCER"), `a spread array that is not read lost its PRODUCER role: [${[...spread].join(",")}]`);
   const returned = classifyLine('  return ok ? "CLOSED" : null;', "CLOSED", false);
   check(returned.has("PRODUCER"), `a returned literal lost its PRODUCER role: [${[...returned].join(",")}]`);
   return asserted;
@@ -747,6 +852,53 @@ function selfTestDeclarationAndCut(fail) {
   // there leaves the whole body in the corpus — the under-cut, fail-open direction.
   const destructured = ['function selfTestD(fail, { a, b } = {}) {', '  fail(a, b);', '}', 'export const after = 1;'];
   if (JSON.stringify(selfTestRanges(destructured)) !== "[[0,2]]") fail(`a destructured parameter list ended the cut early: ${JSON.stringify(selfTestRanges(destructured))}`);
+  // A file-private helper NOTHING reaches never runs: its literals are not production either.
+  const stray = ["function stray() {", '  return { status: "X" };', "}", "export const y = 1;"];
+  if (JSON.stringify(testCodeRanges(stray)) !== "[[0,2]]") fail(`an unreferenced file-private helper stayed in the corpus: ${JSON.stringify(testCodeRanges(stray))}`);
+  selfTestBindingCut(fail);
+}
+
+/** Test code is test code in EVERY declaration shape: a const arrow helper and a fixture table reached
+ *  only from selfTest code, and a `const selfTest*` binding, are cut like a `function` is. */
+function selfTestBindingCut(fail) {
+  const sorted = (lines) => JSON.stringify(testCodeRanges(lines).sort((a, b) => a[0] - b[0]));
+  const shapes = [
+    ["a const arrow helper", ['const seed = () => ({ status: "X" });', "function selfTestX() {", "  seed();", "}"], "[[0,0],[1,3]]"],
+    ["a multi-line fixture table", ["const CASES = [", '  { status: "X" },', "];", "function selfTestX() {", "  for (const c of CASES) void c;", "}"], "[[0,2],[3,5]]"],
+    // main() dispatching --self-test is production reaching it: the NAME cuts it, as it cuts `function selfTest*`.
+    ["a const selfTest* binding", ['const selfTestSeed = () => ({ status: "X" });', "export function main() { return selfTestSeed(); }"], "[[0,0]]"],
+  ];
+  for (const [label, lines, want] of shapes) {
+    if (sorted(lines) !== want) fail(`${label} reached only from test code stayed in the corpus: ${sorted(lines)} (wanted ${want})`);
+  }
+  // A regex literal's quote or backtick is not a string: read as one, it swallowed the file — and every
+  // production reference with it, so a live helper looked reached by nothing and was cut.
+  const regexHelper = ["function helper(x) {", "  return /[\"'`]/.test(x);", "}", "export function f(x) { return helper(x); }"];
+  if (sorted(regexHelper) !== "[]") fail(`a regex literal's quote swallowed a production caller: ${sorted(regexHelper)}`);
+  const regexBrace = ["function helper(x) {", "  return /[{]/.test(x);", "}", "export function f(x) { return helper(x); }"];
+  if (sorted(regexBrace) !== "[]") fail(`a regex literal's brace unbalanced the scan past a production caller: ${sorted(regexBrace)}`);
+  // A template nested in a template's hole: an opaque hole closed the outer template on the inner one's backtick.
+  const nested = ["const quote = (w) => `'${w.replaceAll(\"'\", `'\\\\''`)}'`;", "export function f(w) { return quote(w); }"];
+  if (sorted(nested) !== "[]") fail(`a template nested in a template hole swallowed a production caller: ${sorted(nested)}`);
+  selfTestSlashDoubt(fail);
+}
+
+/** A misread `/` swallows a bracket, and a scan that resumes one bracket short closes the cut EARLY — test
+ *  literals left in the corpus, the fail-open direction. A regex cannot span lines and a postfix `++` is
+ *  followed only by division; a quote still open at a line's end is doubt, and doubt cuts to EOF. */
+function selfTestSlashDoubt(fail) {
+  // The odd quote in the comment re-syncs a scan that carried the open quote on, so only EOF passes.
+  const body = (line) => ["function selfTestA() {", line, '    seed("GHOST"); // a "quote', "  }", '  seed("GHOST2");', "}", "export const x = 1;"];
+  const shapes = [
+    ["division after a postfix ++", "  let i = 0; i++ / 2; if (i) {", "[[0,5]]"],
+    ["division after a postfix ++, a later slash on the line", "  let i = 0; i++ / 2; if (i) { i /= 2;", "[[0,5]]"],
+    ["division after an identifier spelled like a keyword", "  const of = 4; const h = of / 2; if (h) {", "[[0,5]]"],
+    ["a regex read as division, its quote left open", '  if (i) /"/.test(s); if (s) {', "[[0,6]]"],
+  ];
+  for (const [label, line, want] of shapes) {
+    const got = JSON.stringify(selfTestRanges(body(line)));
+    if (got !== want) fail(`a misread slash resumed the cut one bracket short (${label}): ${got}, wanted ${want}`);
+  }
 }
 
 function writeFixtureTree(dir) {
@@ -772,7 +924,16 @@ function writeFixtureTree(dir) {
       'function seedOrphan() {',
       '  return orphanStatus();',
       '}',
+      // Reached by nothing at all: dead code, whose literal must not turn ORPHAN produced.
+      'function strayOrphan() { return { status: "ORPHAN" }; }',
+      // The same seeding in the codebase's other helper shapes: a const arrow and a fixture table.
+      'const ghostRecord = () => ({ status: "GHOST" });',
+      'const ORPHAN_CASES = [',
+      '  { status: "ORPHAN" },',
+      '];',
       'function selfTestUnit() {',
+      '  ghostRecord();',
+      '  for (const c of ORPHAN_CASES) void c;',
       '  if (isGhost("GHOST") !== true) throw new Error("GHOST seeded by hand, like a test would");',
       '  if ("ORPHAN" === "ORPHAN") console.log("ORPHAN referenced only by test prose");',
       '  seedOrphan();',
@@ -822,6 +983,8 @@ function selfTestBaselineDirection(fail) {
     ["an unaccepted finding fails as NEW", { "MODES.ORPHAN": "DEAD — r" }, 1, "NEW dead wiring: MODES.GHOST"],
     ["an accepted row with no finding fails as STALE", { ...clean, "MODES.OPEN": "NO_CONSUMER — stale on purpose" }, 1, "STALE accepted row: MODES.OPEN"],
     ["a verdict drifted under an accepted row and the baseline stayed green", { ...clean, "MODES.ORPHAN": "NO_PRODUCER — r" }, 1, "DRIFTED accepted row: MODES.ORPHAN"],
+    // The verdict a row accepts is the one it OPENS with, not the first one its prose mentions.
+    ["a row naming an older verdict in its prose was read as drifted", { ...clean, "MODES.GHOST": "NO_PRODUCER — was DEAD before the reader landed" }, 0, "no new dead wiring"],
   ];
   for (const [label, accepted, code, needle] of cases) {
     const lines = [];
@@ -847,6 +1010,11 @@ function selfTestConfigFailClosed(fail) {
       "an accepted row without a reason must fail closed",
       loadConfigFromObject({ contracts: [{ path: "tools/task-state.mjs", symbol: "RISK_CLASSES" }], corpus: { roots: ["tools"] }, accepted: { "RISK_CLASSES.protected": "" } }),
       "no reason",
+    ],
+    [
+      "an accepted row that mentions a verdict without opening with one must fail closed",
+      loadConfigFromObject({ contracts: [{ path: "tools/task-state.mjs", symbol: "RISK_CLASSES" }], corpus: { roots: ["tools"] }, accepted: { "RISK_CLASSES.protected": "not DEAD: the reader lands next wave" } }),
+      "verdict",
     ],
     [
       "an accepted row that names no verdict must fail closed",

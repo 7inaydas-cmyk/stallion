@@ -60,10 +60,10 @@
  *   node tools/doc-reconcile.mjs --self-test prove the checker discriminates
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { matches } from "./pathspec.mjs";
@@ -72,8 +72,11 @@ const CLAIMS = "docs/gates/doc-claims.json";
 /** Every path is repo-relative and resolved from THIS FILE, like every sibling gate — never the cwd. */
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const fromRoot = (path) => resolve(ROOT, path);
+/** One shell word, quoted only when it must be: a path pasted into a printed fix carries a space, a quote
+ *  or a `$(`, and the operator's paste must run the fix — never the name. */
+const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
 /** Printed git fixes name the repo, so they run from the same subdirectory the gate was run from. */
-const GIT = `git -C ${ROOT}`;
+const GIT = `git -C ${shq(ROOT)}`;
 
 /**
  * Words that make a sentence a claim about the WHOLE repository rather than about one file.
@@ -106,6 +109,19 @@ export function scopeWordIn(text) {
 /** Evidence paths must be code. A claim whose proof lives in prose proves nothing (see header). */
 function evidencePathIsCode(path) {
   return !path.startsWith("docs/") && !path.endsWith(".md");
+}
+
+/**
+ * The evidence path in canonical repo-relative form, or null when it names nothing inside the repo.
+ * The prose check must judge the file that is READ: `./docs/x`, `tools/../docs/x` and an absolute
+ * path all resolved to a docs file while their spelling passed it, so a claim could cite the
+ * registry and be proved by its own text. Symlinks are followed for the same reason.
+ */
+function repoPath(spelled, root = ROOT) {
+  const abs = resolve(root, spelled);
+  const rel = existsSync(abs) ? relative(realpathSync(root), realpathSync(abs)) : relative(root, abs);
+  const slashed = rel.split(sep).join("/");
+  return slashed === "" || slashed === ".." || slashed.startsWith("../") || isAbsolute(slashed) ? null : slashed;
 }
 
 /**
@@ -151,15 +167,22 @@ function blankComment(match, literal) {
  */
 const HASH_TOKENS = /("(?:\\.|[^"\\\n])*"|'[^'\n]*')|((?<!\S)#[^\n]*)/g;
 
+/** `#!/bin/sh`, `#!/usr/bin/env bash`, ... — the interpreter is the shebang's own word, never a
+ *  directory that happens to be called `sh`. */
+const SHELL_SHEBANG = /^#!\s*(?:\S*\/)?(?:env\s+)?(?:ba|da|k|z)?sh(?=\s|$)/;
+
 /**
  * Comment masking by the file's OWN grammar. JavaScript masking run over every corpus file let a YAML or
  * shell `#` comment count as evidence (the WS2 lesson, one grammar over), and blanked markdown prose
  * after every bare `https://` — markdown is in the corpus precisely so its prose is visible. JSON has
- * no comments, so it passes through. Every grammar NOT named here (.ts, .tsx, .jsx, ...) keeps JS
- * masking: fail closed, since the WS2 founding case was a JSDoc in a .ts file.
+ * no comments, so it passes through. Shell is named by its SHEBANG as well as its extension: this
+ * repo's only shell is the extensionless hooks, and JS masking left their `#` comments standing as
+ * evidence. Every grammar NOT named here (.ts, .tsx, .jsx, ...) keeps JS masking — closed for the
+ * JS family (the WS2 founding case was a JSDoc in a .ts file), OPEN for any other `#`-comment
+ * language, which must be named here before its files can be trusted as evidence.
  */
 function corpusText(file, text) {
-  if (/\.(?:sh|ya?ml)$/.test(file)) return text.replace(HASH_TOKENS, blankComment);
+  if (/\.(?:sh|ya?ml)$/.test(file) || SHELL_SHEBANG.test(text)) return text.replace(HASH_TOKENS, blankComment);
   if (/\.(?:md|json)$/.test(file)) return text;
   return maskComments(text);
 }
@@ -176,21 +199,24 @@ function corpusText(file, text) {
  *
  * The LIST is the index; the TEXT is the working tree, like every other read this gate makes. A tracked
  * file deleted but not staged is in one and not the other, so it is a GATE_DEFECT with the two fixes —
- * never an ENOENT stack trace, and never a silent zero.
+ * never an ENOENT stack trace, and never a silent zero. NUL-separated (`-z`): the default listing
+ * C-quotes any path with a non-ASCII byte, `"` or `\`, and a quoted name failed the extension filter
+ * with nothing printed — a repo-count blind to a file by what it was named.
  */
-function trackedFiles() {
-  return execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n");
+function trackedFiles(cwd = ROOT, env = process.env) {
+  return execFileSync("git", ["ls-files", "-z"], { cwd, env, encoding: "utf8" }).split("\0").filter(Boolean);
 }
 
-function readCorpus(config, tracked = trackedFiles()) {
+function readCorpus(config, tracked = trackedFiles(), read = readTreeFile) {
   const extensions = new RegExp(`\\.(${config.extensions.join("|")})$`);
   const files = tracked.filter((f) => extensions.test(f)).filter((f) => !config.ignore.some((entry) => matches(f, entry.glob)));
-  const vanished = files.filter((f) => !existsSync(fromRoot(f)));
+  const raw = files.map((file) => ({ file, text: read(file) }));
+  const vanished = raw.filter((f) => f.text === null).map((f) => f.file);
   if (vanished.length > 0) {
-    const paths = vanished.join(" ");
-    return { error: `tracked file(s) missing from the working tree: ${paths} — the corpus cannot be read, so no repo-wide count can be trusted. Fix: stage the deletion (${GIT} rm -- ${paths}) or restore it (${GIT} checkout -- ${paths}).` };
+    const words = vanished.map(shq).join(" ");
+    return { error: `tracked file(s) missing from the working tree: ${vanished.join(" ")} — the corpus cannot be read, so no repo-wide count can be trusted. Fix: stage the deletion (${GIT} rm -- ${words}) or restore it (${GIT} checkout -- ${words}).` };
   }
-  return { corpus: files.map((file) => ({ file, text: corpusText(file, readFileSync(fromRoot(file), "utf8")) })) };
+  return { corpus: raw.map(({ file, text }) => ({ file, text: corpusText(file, text) })) };
 }
 
 /** Count every match of `re` across `files`, returning the total and a per-file breakdown. */
@@ -281,18 +307,26 @@ function patternOf({ kind, spec }) {
   return kind === "count" ? splitCount(rest).pattern : null;
 }
 
-function checkEvidence(evidence, corpus) {
+/** A repo path's working-tree text, or null when it is no readable file — missing, or a directory
+ *  (`tools:x` was an EISDIR stack trace mid-run instead of a refusal). */
+function readTreeFile(path) {
+  const abs = fromRoot(path);
+  return existsSync(abs) && statSync(abs).isFile() ? readFileSync(abs, "utf8") : null;
+}
+
+function checkEvidence(evidence, corpus, read = readTreeFile) {
   if (evidence.kind === "repo-count") return checkRepoCount(evidence, corpus);
 
-  const { path, rest } = splitPath(evidence.spec);
+  const { path: spelled, rest } = splitPath(evidence.spec);
+  const path = repoPath(spelled);
+  if (path === null) return { ok: false, why: `evidence path ${spelled} names no file inside the repo` };
 
   if (!evidencePathIsCode(path)) {
     return { ok: false, why: `evidence path ${path} is prose; a claim proved by a document proves nothing` };
   }
-  if (!existsSync(fromRoot(path))) {
-    return { ok: false, why: `evidence file ${path} does not exist` };
-  }
-  return checkInFile(evidence.kind, path, rest, corpusText(path, readFileSync(fromRoot(path), "utf8")));
+  const text = read(path);
+  if (text === null) return { ok: false, why: `evidence file ${path} does not exist or is not a file` };
+  return checkInFile(evidence.kind, path, rest, corpusText(path, text));
 }
 
 /**
@@ -369,9 +403,10 @@ function checkScopeBinding(claim) {
  * of the doc.
  */
 function checkAnchor(doc, anchor) {
-  if (!existsSync(fromRoot(doc))) return { ok: false, why: `doc ${doc} does not exist` };
+  const text = readTreeFile(doc);
+  if (text === null) return { ok: false, why: `doc ${doc} does not exist or is not a file` };
   const flat = (s) => s.replace(/\s+/g, " ");
-  return flat(readFileSync(fromRoot(doc), "utf8")).includes(flat(anchor))
+  return flat(text).includes(flat(anchor))
     ? { ok: true }
     : { ok: false, why: `anchor text not found in ${doc} — the doc changed but the claim did not` };
 }
@@ -385,9 +420,10 @@ function checkAnchor(doc, anchor) {
  * be guaranteed is that it is never quiet: the corpus size and every excluded glob with its reason
  * are printed beside the verdict, so a reviewer reading a green run reads the carve-outs too.
  */
-function describeCorpus(config, claims, corpus) {
-  console.log(`  corpus: ${corpus.length} tracked file(s) [${config.extensions.join(", ")}], minus ${config.ignore.length} declared ignore glob(s).`);
-  for (const line of exclusionLines(config, claims)) console.log(line);
+function describeCorpus(config, claims, corpus, out = console) {
+  const size = corpus === null ? "not read — no registered claim carries repo-count evidence" : `${corpus.length} tracked file(s)`;
+  out.log(`  corpus: ${size} [${config.extensions.join(", ")}], minus ${config.ignore.length} declared ignore glob(s).`);
+  for (const line of exclusionLines(config, claims)) out.log(line);
 }
 
 /** Every carve-out, top-level and per-evidence, as the line a reviewer reads beside the verdict. */
@@ -410,7 +446,15 @@ function settle(fn) {
 
 /** A printed git fix names the repo (`git -C <root>`), so it works from the subdirectory the gate ran in. */
 function rootedGitFix(message) {
-  return String(message).includes(`git -C ${ROOT} `) && !/\bgit (?:checkout|log|diff|rm)\b/.test(String(message));
+  return String(message).includes(`${GIT} `) && !/\bgit (?:checkout|log|diff|rm)\b/.test(String(message));
+}
+
+/** The argv a POSIX shell builds from a printed fix — what the operator's paste would actually run.
+ *  `printf` echoes the words instead of running git; a hostile name's payload is a harmless `printf`.
+ *  A fix the shell cannot even parse is null — a failed case by name, not a crashed self-test. */
+function shellWords(command) {
+  const out = settle(() => execFileSync("sh", ["-c", `printf '%s\\n' ${command}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
+  return typeof out === "string" ? out.split("\n").slice(0, -1) : null;
 }
 
 /** The repo is found from THIS FILE, never the cwd: from a subdirectory or a hook, the same answers. */
@@ -423,6 +467,7 @@ function selfTestRoot(t) {
         checkEvidence({ kind: "symbol", spec: "tools/pathspec.mjs:export function matches" }).ok === true &&
         checkAnchor("docs/TASK-LIFECYCLE.md", "Phase is derived from the last transition, never stored").ok === true &&
         !String(loadRegistry().error).includes("is missing") &&
+        readCorpus({ extensions: ["md"], ignore: [] }, ["README.md"]).corpus?.length === 1 &&
         Array.isArray(trackedFiles()),
     );
     t("the gate resolves the repo from its own location, not the cwd", found === true);
@@ -443,16 +488,30 @@ function selfTestRegistry(t) {
   };
   const refusal = (name, registry) => String(load(name, registry).error ?? "");
   try {
-    t("a well-formed registry loads", load("ok", { corpus, claims: [claim] }).error === undefined);
+    // Loaded means the success shape: a crash settled into { threw } has no .error either.
+    t("a well-formed registry loads", Array.isArray(load("ok", { corpus, claims: [claim] }).claims));
     t("a missing registry is refused with a restore-from-history fix", String(settle(() => loadRegistry(join(dir, "absent.json"))).error).includes("restore it from git history"));
     t("an empty registry is refused", refusal("empty", { corpus, claims: [] }).includes("empty"));
     t("a registry with no corpus block is refused", refusal("nocorpus", { claims: [claim] }).includes("no usable"));
     t("a reasonless corpus ignore is refused", refusal("reasonless", { corpus: { ...corpus, ignore: [{ glob: "gen/**" }] }, claims: [claim] }).includes("no usable"));
+    // Only repo-count applies an ignore list: on a file-local kind it was validated, printed as a carve-out, and did nothing.
+    t("an ignore list on a file-local evidence kind is refused", refusal("ignore-local", { corpus, claims: [{ ...claim, evidence: [{ kind: "grep", spec: "tools/pathspec.mjs:a", ignore: [{ glob: "x/**", why: "y" }] }] }] }).includes("ignore list"));
     t("a reasonless evidence ignore is refused", refusal("reasonless-ev", { corpus, claims: [{ ...claim, evidence: [{ kind: "repo-count", spec: "x:0", ignore: [{ glob: "gen/**" }] }] }] }).includes("ignore list"));
     t("an unparseable registry is a GATE_DEFECT, not a stack trace", refusal("broken", "{ not json").includes("not valid JSON"));
     t("a claim with no evidence is refused", refusal("hollow", { corpus, claims: [{ ...claim, evidence: [] }] }).includes("no evidence"));
     t("a claim missing its evidence field is refused", refusal("noevidence", { corpus, claims: [{ ...claim, evidence: undefined }] }).includes("no evidence"));
     t("a claim with a blank anchor is refused", refusal("blank", { corpus, claims: [{ ...claim, anchor: " " }] }).includes("non-blank anchor"));
+    for (const field of ["id", "doc", "why"]) {
+      t(`a claim with a blank ${field} is refused`, refusal(`blank-${field}`, { corpus, claims: [{ ...claim, [field]: " " }] }).includes(`non-blank ${field}`));
+    }
+    // HOLLOW evidence, the blank anchor's twin: every file "contains" an empty symbol and matches an
+    // empty-matching pattern, so the item certified nothing while counting toward the banner.
+    const hollow = [["symbol", "tools/pathspec.mjs:"], ["symbol", "tools/pathspec.mjs: "], ["grep", "tools/pathspec.mjs:"], ["grep", "tools/pathspec.mjs:noSuchToken|"], ["absent", "tools/pathspec.mjs:"], ["symbol", ":matches"], ["symbol", "tools/"], ["repo-count", ":0"], ["count", "tools/pathspec.mjs::0"]];
+    for (const [kind, spec] of hollow) {
+      t(`a hollow ${kind} spec (${spec}) is refused`, refusal(`hollow-${kind}-${spec.length}`, { corpus, claims: [{ ...claim, evidence: [{ kind, spec }] }] }).includes("needs a kind"));
+    }
+    t("an empty corpus extension list is refused", refusal("noext", { corpus: { ...corpus, extensions: [] }, claims: [claim] }).includes("no usable"));
+    t("an evidence path naming a directory is a refusal, not a crash", settle(() => checkEvidence({ kind: "symbol", spec: "tools:x" })).ok === false);
     for (const [kind, spec] of [["grep", "tools/pathspec.mjs:foo("], ["count", "tools/pathspec.mjs:foo(:1"], ["repo-count", "foo(:0"]]) {
       t(`a ${kind} pattern that does not compile is refused`, refusal(`badre-${kind}`, { corpus, claims: [{ ...claim, evidence: [{ kind, spec }] }] }).includes("pattern compiles"));
     }
@@ -460,16 +519,48 @@ function selfTestRegistry(t) {
       t(`a ${kind} spec with no whole-number tail (${spec}) is refused`, refusal(`nowant-${kind}-${spec.length}`, { corpus, claims: [{ ...claim, evidence: [{ kind, spec }] }] }).includes("whole-number count"));
     }
     const colonPatterns = [{ kind: "grep", spec: "tools/pathspec.mjs:(?:a)" }, { kind: "count", spec: "tools/pathspec.mjs:(?:a):1" }, { kind: "repo-count", spec: "(?:a):0" }];
-    t("a compiling grep, count and repo-count pattern with a colon in it loads", load("okre", { corpus, claims: [{ ...claim, evidence: colonPatterns }] }).error === undefined);
+    t("a compiling grep, count and repo-count pattern with a colon in it loads", Array.isArray(load("okre", { corpus, claims: [{ ...claim, evidence: colonPatterns }] }).claims));
     t("the missing-registry fix command runs from any cwd", rootedGitFix(settle(() => loadRegistry(join(dir, "absent.json"))).error));
     t("the unparseable-registry fix command runs from any cwd", rootedGitFix(refusal("broken", "{ not json")));
     t("the empty-registry fix command runs from any cwd", rootedGitFix(refusal("empty", { corpus, claims: [] })));
+    // The corpus is read for a repo-count, and only then: an unrelated unstaged deletion must not block
+    // a registry with no count, while a registry WITH one still refuses on it.
+    const gone = ["zz-deleted-in-the-worktree.md"];
+    const countClaim = { ...claim, evidence: [{ kind: "repo-count", spec: "x:0" }] };
+    writeFileSync(join(dir, "nocount.json"), JSON.stringify({ corpus: { extensions: ["md"], ignore: [] }, claims: [claim] }));
+    writeFileSync(join(dir, "count.json"), JSON.stringify({ corpus: { extensions: ["md"], ignore: [] }, claims: [countClaim] }));
+    t("a registry with no repo-count never reads the corpus", settle(() => loadGate(join(dir, "nocount.json"), gone)).error === undefined);
+    t("a registry with a repo-count still refuses a vanished corpus file", String(settle(() => loadGate(join(dir, "count.json"), gone)).error).includes("missing from the working tree"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
   const printed = (config, claims, glob, why) => exclusionLines(config, claims).some((line) => line.includes(glob) && line.includes(why));
   t("every top-level exclusion is printed with its reason", printed(corpus, [], "gen/**", "generated output"));
-  t("a per-evidence exclusion is printed with its reason", printed({ ignore: [] }, [{ id: "c", evidence: [{ ignore: [{ glob: "x/**", why: "one file" }] }] }], "x/**", "one file"));
+  const logged = [];
+  describeCorpus(corpus, [], null, { log: (line) => logged.push(line) });
+  t("the run banner prints every exclusion beside the verdict", logged.some((line) => line.includes("gen/**") && line.includes("generated output")));
+  t("a per-evidence exclusion is printed with its reason", printed({ ignore: [] }, [{ id: "c", evidence: [{ kind: "repo-count", spec: "x:0", ignore: [{ glob: "x/**", why: "one file" }] }] }], "x/**", "one file"));
+}
+
+/** The caller's env minus GIT_*, read at call time: inside a hook GIT_DIR / GIT_INDEX_FILE name the
+ *  HOST repo, so a fixture that inherits them writes the host's index. Fixtures only. */
+function fixtureEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+}
+
+/** The index listing, run for real: git C-quotes a non-ASCII, `"` or `\` path by default, and a
+ *  quoted name fails the extension filter — dropped from the corpus with nothing printed. */
+function selfTestTrackedNames(t) {
+  const dir = mkdtempSync(join(tmpdir(), "doc-reconcile-ls-"));
+  const env = fixtureEnv();
+  try {
+    writeFileSync(join(dir, "café.mjs"), "x\n");
+    execFileSync("git", ["init", "-q"], { cwd: dir, env });
+    execFileSync("git", ["add", "café.mjs"], { cwd: dir, env });
+    t("a tracked non-ASCII path reaches the corpus unquoted", trackedFiles(dir, env).includes("café.mjs"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** The corpus half: repo-count arithmetic on a SYNTHETIC corpus, masking by grammar, a vanished file. */
@@ -484,14 +575,80 @@ function selfTestCorpus(t) {
   t("a markdown corpus file keeps the prose after a URL", corpusText("a.md", "see https://example.com then keepme\n").includes("keepme"));
   t("a yaml # comment stops being evidence", !corpusText("a.yml", "k: 1 # onlyInComment\n").includes("onlyInComment"));
   t("a shell # comment stops being evidence", !corpusText("a.sh", "# onlyInComment\necho hi\n").includes("onlyInComment"));
+  // This repo's real shell has no extension: the hooks. Their grammar is named by the shebang.
+  for (const shebang of ["#!/bin/sh", "#!/usr/bin/env bash"]) {
+    t(`an extensionless ${shebang} hook's # comment stops being evidence`, !corpusText(".githooks/pre-push", `${shebang}\n# onlyInComment\nexit 0\n`).includes("onlyInComment"));
+  }
+  t("a directory named sh in a shebang does not make a node script shell", !corpusText("bin/tool", "#!/opt/sh/node\n// onlyInComment\n").includes("onlyInComment"));
+  t("an extensionless node script keeps JS masking", !corpusText("bin/tool", "#!/usr/bin/env node\n// onlyInComment\n").includes("onlyInComment"));
   t("a # inside a quoted yaml string survives", corpusText("a.yml", 'run: echo "a # keepme"\n').includes("keepme"));
   t("a shell length expansion is code, not a comment", corpusText("a.sh", "n=${#keepme}\n").includes("keepme"));
   t("js comments are still masked in the corpus", !corpusText("a.mjs", "// onlyInComment\n").includes("onlyInComment"));
   // Fail closed: a grammar nobody named (.ts, .tsx, ...) is masked as JS — the WS2 founding case was a .ts JSDoc.
   t("a .ts comment is still masked in evidence", !corpusText("a.ts", "/** onlyInComment */\n").includes("onlyInComment"));
+  // The two SEAMS that read a file must route it through corpusText — a pin on the helper alone let
+  // either call site fall back to JS masking with every case green.
+  const yml = () => "k: 1 # onlyInComment\nrealKey: 2\n";
+  t("a yaml # comment is not evidence at the checkEvidence seam", checkEvidence({ kind: "grep", spec: "a.yml:onlyInComment" }, [], yml).ok === false);
+  t("yaml code is still evidence at the checkEvidence seam", checkEvidence({ kind: "grep", spec: "a.yml:realKey" }, [], yml).ok === true);
+  t("a yaml # comment is not counted at the readCorpus seam", !String(readCorpus({ extensions: ["yml"], ignore: [] }, ["a.yml"], yml).corpus?.[0]?.text).includes("onlyInComment"));
   const vanished = settle(() => readCorpus({ extensions: ["md"], ignore: [] }, ["zz-deleted-in-the-worktree.md"]));
   t("a tracked file deleted in the working tree is a GATE_DEFECT, not a crash", String(vanished.error).includes("zz-deleted-in-the-worktree.md"));
   t("the vanished-file fix command runs from any cwd", rootedGitFix(vanished.error));
+}
+
+/**
+ * Every printed fix, pasted into a real shell. The ROOT half runs a COPY of this gate from a hostile
+ * root, because this checkout's root needs no quoting: a call site that dropped shq(ROOT) stayed green
+ * here and broke the paste everywhere else (the helper-not-call-site gap). The path half drives every
+ * command that names a file with a hostile name.
+ */
+function selfTestPastedFixes(t) {
+  const root = mkdtempSync(join(tmpdir(), "it's a $(printf X) "));
+  try {
+    mkdirSync(join(root, "tools"));
+    for (const file of ["doc-reconcile.mjs", "pathspec.mjs"]) copyFileSync(fromRoot(`tools/${file}`), join(root, "tools", file));
+    const gate = spawnSync(process.execPath, [join(root, "tools", "doc-reconcile.mjs")], { encoding: "utf8" }).stderr;
+    const [missing, broken, empty] = ["gone", "broken", "empty"].map((name) => join(root, `${name} $(printf X).json`));
+    writeFileSync(broken, "{ not json");
+    writeFileSync(empty, JSON.stringify({ claims: [] }));
+    const refusal = (path) => settle(() => loadRegistry(path)).error;
+    const vanished = "a$(printf X)b c.md";
+    const vanishedError = settle(() => readCorpus({ extensions: ["md"], ignore: [] }, [vanished])).error;
+    const cases = [
+      ["the missing-registry restore fix the gate prints from a hostile root", gate, /\((git -C .*?), or from before/, ["git", "-C", `${realpathSync(root)}/`, "checkout", "HEAD", "--", CLAIMS]],
+      ["the missing-registry restore fix for a hostile path", refusal(missing), /\((git -C .*?), or from before/, ["git", "-C", ROOT, "checkout", "HEAD", "--", missing]],
+      ["the missing-registry history fix for a hostile path", refusal(missing), /deleted it: (.*?)\) — its verified/, ["git", "-C", ROOT, "log", "--diff-filter=D", "--", missing]],
+      ["the unparseable-registry diff fix for a hostile path", refusal(broken), /repair it — (.*) shows the break/, ["git", "-C", ROOT, "diff", "--", broken]],
+      ["the empty-registry history fix for a hostile path", refusal(empty), /\((git -C .*)\)\.$/, ["git", "-C", ROOT, "log", "-p", "--", empty]],
+      ["the vanished-file stage fix for a hostile name", vanishedError, /stage the deletion \((.*?)\) or restore/, ["git", "-C", ROOT, "rm", "--", vanished]],
+      ["the vanished-file restore fix for a hostile name", vanishedError, /or restore it \((.*)\)\.$/, ["git", "-C", ROOT, "checkout", "--", vanished]],
+    ];
+    const pasted = (message, re) => shellWords(re.exec(String(message))?.[1] ?? "");
+    for (const [label, message, re, want] of cases) t(`${label} survives a shell paste`, JSON.stringify(pasted(message, re)) === JSON.stringify(want));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/** repoPath's two refusals on a tree built for them — a code-named symlink into docs/ is judged by the file
+ *  it reads, and a file that EXISTS outside the repo names no repo path — then the second at the call site. */
+function selfTestRepoPath(t) {
+  const base = mkdtempSync(join(tmpdir(), "doc-reconcile-rp-"));
+  const root = join(base, "repo");
+  const outside = join(base, "outside.mjs");
+  try {
+    mkdirSync(join(root, "docs"), { recursive: true });
+    mkdirSync(join(root, "tools"));
+    writeFileSync(join(root, "docs", "x.json"), "{}\n");
+    symlinkSync("../docs/x.json", join(root, "tools", "link.mjs"));
+    writeFileSync(outside, "OUTSIDE_TOKEN\n");
+    t("a code-named symlink into docs/ is judged by the file it reads", repoPath("tools/link.mjs", root) === "docs/x.json");
+    t("an existing file outside the repo names no repo path", repoPath("../outside.mjs", root) === null && repoPath(outside, root) === null);
+    t("an existing file outside the repo is refused as evidence", checkEvidence({ kind: "grep", spec: `${outside}:OUTSIDE_TOKEN` }).ok === false);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
 }
 
 function selfTest() {
@@ -502,6 +659,10 @@ function selfTest() {
   // that made two prior verifications of the upstream row wrong.
   t("rejects docs/ evidence", checkEvidence({ kind: "symbol", spec: "docs/gates/debt-register.md:RULE 7" }).ok === false);
   t("rejects .md evidence", evidencePathIsCode("README.md") === false);
+  // The prose check judges the file that is READ, not how its path was spelled.
+  for (const spelled of ["./docs/gates/doc-claims.json", "tools/../docs/gates/doc-claims.json", `${ROOT}docs/gates/doc-claims.json`]) {
+    t(`a docs/ path spelled ${spelled} is still refused as prose`, checkEvidence({ kind: "grep", spec: `${spelled}:claims` }).ok === false);
+  }
   t("accepts code evidence", evidencePathIsCode("tools/task-coverage.mjs") === true);
 
   // Each evidence kind must be able to FAIL, not merely to pass.
@@ -512,6 +673,7 @@ function selfTest() {
   t("missing file fails", checkEvidence({ kind: "symbol", spec: "tools/nope.mjs:x" }).ok === false);
   t("count mismatch fails", checkEvidence({ kind: "count", spec: "tools/pathspec.mjs:export function matches:99" }).ok === false);
   t("anchor miss fails", checkAnchor("README.md", "this sentence is not in README.md at all").ok === false);
+  t("an anchor doc naming a directory is a refusal, not a crash", settle(() => checkAnchor("docs", "x")).ok === false);
   // Reflow tolerance: a hard-wrapped sentence must still match when given on one line.
   //
   // ANCHORED ON A RULE ABOUT THE RECORD ITSELF, for the reason the upstream harness learned twice:
@@ -575,6 +737,9 @@ function selfTest() {
   selfTestRoot(t);
   selfTestRegistry(t);
   selfTestCorpus(t);
+  selfTestPastedFixes(t);
+  selfTestRepoPath(t);
+  selfTestTrackedNames(t);
 
   let ok = true;
   for (const [name, pass] of cases) {
@@ -596,7 +761,12 @@ function selfTest() {
  */
 function corpusOf(registry) {
   const config = registry?.corpus;
-  return Array.isArray(config?.extensions) && Array.isArray(config.ignore) && !config.ignore.some(isReasonless) ? config : null;
+  return extensionsAreDeclared(config?.extensions) && Array.isArray(config.ignore) && !config.ignore.some(isReasonless) ? config : null;
+}
+
+/** At least one extension, none blank: an empty list is a 0-file corpus every `<x>:0` count passes. */
+function extensionsAreDeclared(extensions) {
+  return Array.isArray(extensions) && extensions.length > 0 && !extensions.some(isBlank);
 }
 
 /**
@@ -629,22 +799,35 @@ function claimShapeError(claim) {
   if (blank !== undefined) return `needs a non-blank ${blank}`;
   if (!Array.isArray(claim.evidence) || claim.evidence.length === 0) return "carries no evidence — a claim proved by nothing certifies nothing";
   const bad = claim.evidence.find(isMalformedEvidence);
-  return bad === undefined ? null : `evidence ${JSON.stringify(bad)} needs a kind, a spec whose pattern compiles (a count kind ending in a whole-number count), and an ignore list whose every entry carries a glob and a why`;
+  return bad === undefined ? null : `evidence ${JSON.stringify(bad)} needs a kind, a spec with a path and a non-blank literal or whose pattern compiles and cannot match the empty string (a count kind ending in a whole-number count), and an ignore list only on repo-count, every entry carrying a glob and a why`;
 }
 
 /** An uncompilable pattern is a SyntaxError mid-run, naming no claim and no fix — so it is refused here. */
 function isMalformedEvidence(evidence) {
   if (isBlank(evidence?.kind) || isBlank(evidence.spec)) return true;
-  if (specIsMalformed(evidence)) return true;
-  return evidence.ignore !== undefined && (!Array.isArray(evidence.ignore) || evidence.ignore.some(isReasonless));
+  return specIsMalformed(evidence) || ignoreIsMalformed(evidence);
 }
 
-/** A spec its check would misread: a pattern that does not compile, or a count kind whose tail
- *  is not a whole number ("x:foo" once split to the pattern "fo" and a NaN count). */
+/** Only repo-count applies an `ignore` list: on a file-local kind it was validated and printed as a
+ *  carve-out that never happened — a false line in the banner the reviewer reads. */
+function ignoreIsMalformed({ kind, ignore }) {
+  if (ignore === undefined) return false;
+  return kind !== "repo-count" || !Array.isArray(ignore) || ignore.some(isReasonless);
+}
+
+/** A spec its check would misread, or one that proves nothing: a pattern that does not compile or
+ *  that matches the empty string (every file matches it), a count kind whose tail is not a whole
+ *  number ("x:foo" once split to the pattern "fo" and a NaN count), or a hollow file-local spec. */
 function specIsMalformed(evidence) {
   const pattern = patternOf(evidence);
-  if (pattern !== null && !compiles(pattern)) return true;
-  return !countTailIsWhole(evidence);
+  if (pattern !== null && (!compiles(pattern) || new RegExp(pattern).test(""))) return true;
+  return !countTailIsWhole(evidence) || fileSpecIsHollow(evidence);
+}
+
+/** A file-local spec needs a path before its first colon and a non-blank literal after it: every
+ *  file "contains" the empty symbol — the blank anchor's twin, one field over. */
+function fileSpecIsHollow({ kind, spec }) {
+  return kind !== "repo-count" && (spec.indexOf(":") <= 0 || isBlank(splitPath(spec).rest));
 }
 
 /** A count or repo-count spec must END in a whole-number count (an empty or signed tail is not
@@ -666,21 +849,21 @@ function claimsError(claims, path) {
 /** Read the registry, or return the GATE_DEFECT message that says why it cannot be used. */
 function loadRegistry(path = CLAIMS) {
   if (!existsSync(fromRoot(path))) {
-    return { error: `${path} is missing; the gate has nothing to check. Fix: restore it from git history (${GIT} checkout HEAD -- ${path}, or from before the commit that deleted it: ${GIT} log --diff-filter=D -- ${path}) — its verified whyHash stamps are the audit trail; do not re-seed it blind.` };
+    return { error: `${path} is missing; the gate has nothing to check. Fix: restore it from git history (${GIT} checkout HEAD -- ${shq(path)}, or from before the commit that deleted it: ${GIT} log --diff-filter=D -- ${shq(path)}) — its verified whyHash stamps are the audit trail; do not re-seed it blind.` };
   }
   let registry;
   try {
     registry = JSON.parse(readFileSync(fromRoot(path), "utf8"));
   } catch (e) {
-    return { error: `${path} is not valid JSON (${e.message}). Fix: repair it — ${GIT} diff -- ${path} shows the break.` };
+    return { error: `${path} is not valid JSON (${e.message}). Fix: repair it — ${GIT} diff -- ${shq(path)} shows the break.` };
   }
   const claims = registry?.claims;
   if (!Array.isArray(claims) || claims.length === 0) {
-    return { error: `the claim registry in ${path} is empty, so this gate is a no-op that reports success. Fix: restore its claims from git history (${GIT} log -p -- ${path}).` };
+    return { error: `the claim registry in ${path} is empty, so this gate is a no-op that reports success. Fix: restore its claims from git history (${GIT} log -p -- ${shq(path)}).` };
   }
   const config = corpusOf(registry);
   if (config === null) {
-    return { error: `${path} declares no usable \`corpus\` block — extensions[] and ignore[], every ignore entry a { "glob", "why" } with a non-empty why. A repo-wide claim has nothing to be repo-wide ABOUT. Fix: add or repair "corpus": { "extensions": [...], "ignore": [{ "glob": "...", "why": "..." }] } in ${path}.` };
+    return { error: `${path} declares no usable \`corpus\` block — a non-empty extensions[] and ignore[], every ignore entry a { "glob", "why" } with a non-empty why. A repo-wide claim has nothing to be repo-wide ABOUT. Fix: add or repair "corpus": { "extensions": [...], "ignore": [{ "glob": "...", "why": "..." }] } in ${path}.` };
   }
   const shape = claimsError(claims, path);
   return shape === null ? { claims, config } : { error: shape };
@@ -703,11 +886,16 @@ function collectFailures(claims, corpus) {
   return failures;
 }
 
-/** The registry, then the corpus it declares — either can be the GATE_DEFECT. */
-function loadGate() {
-  const registry = loadRegistry();
+/**
+ * The registry, then the corpus it declares — either can be the GATE_DEFECT. The corpus is read only
+ * when a repo-count will count it: read for nothing, it was dead work that still let an unrelated
+ * unstaged deletion block the gate over a count no claim makes. `describeCorpus` says it was skipped.
+ */
+function loadGate(path = CLAIMS, tracked = undefined) {
+  const registry = loadRegistry(path);
   if (registry.error !== undefined) return registry;
-  const read = readCorpus(registry.config);
+  if (!registry.claims.some((claim) => claim.evidence.some((e) => e.kind === "repo-count"))) return { ...registry, corpus: null };
+  const read = readCorpus(registry.config, tracked);
   return read.error !== undefined ? read : { ...registry, corpus: read.corpus };
 }
 

@@ -225,6 +225,179 @@
       "seq": 20,
       "parent_hash": "0fcdfdfb3afc55d98f075fb1a74ac4ced7b65f5f03a737a1e0f65b073e7a0e84",
       "entry_hash": "b0b369fb8d570072b8f8de6cefd3cdadeeadb90472646c997659efcf48725f36"
+    },
+    {
+      "at": "2026-09-27T08:03:19.253Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 21,
+      "parent_hash": "b0b369fb8d570072b8f8de6cefd3cdadeeadb90472646c997659efcf48725f36",
+      "entry_hash": "de5bff4f606111cb6409331fe4ec8e4f16b7ac22647558aee29e146cbe74b5be"
+    },
+    {
+      "at": "2026-09-27T09:44:40.495Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a tracked non-ASCII path reaches the corpus unquoted",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "e27b76c0c828",
+      "seq": 22,
+      "parent_hash": "de5bff4f606111cb6409331fe4ec8e4f16b7ac22647558aee29e146cbe74b5be",
+      "entry_hash": "5818eb942d72c023bcf9b191cdcad3af1d15806c55b5c1a32e1a89d5455c463b"
+    },
+    {
+      "at": "2026-09-27T09:45:07.519Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a docs/ path spelled \\S+ is still refused as prose",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a1d3804981b8",
+      "seq": 23,
+      "parent_hash": "5818eb942d72c023bcf9b191cdcad3af1d15806c55b5c1a32e1a89d5455c463b",
+      "entry_hash": "dc8eeeab10db8b55f31771925d9c0ad3ae758291379946a370135a719adbe405"
+    },
+    {
+      "at": "2026-09-27T09:45:47.909Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: the [a-z-]+ restore fix survives a shell paste of a hostile (name|path)",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5bed739c4267",
+      "seq": 24,
+      "parent_hash": "dc8eeeab10db8b55f31771925d9c0ad3ae758291379946a370135a719adbe405",
+      "entry_hash": "96c28d020a79e7f43ec530de75b09902bc71d4ba50103d8bae699a228a13d100"
+    },
+    {
+      "at": "2026-09-27T09:46:35.052Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a registry with no repo-count never reads the corpus",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b0f40d5bb120",
+      "seq": 25,
+      "parent_hash": "96c28d020a79e7f43ec530de75b09902bc71d4ba50103d8bae699a228a13d100",
+      "entry_hash": "ea89fb48091f7fcfbd408d237b92632d37f45d0147aa32c0070f1ff70fceab77"
+    },
+    {
+      "at": "2026-09-27T09:46:52.909Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: an ignore list on a file-local evidence kind is refused",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "c6f9ef7ffafe",
+      "seq": 26,
+      "parent_hash": "ea89fb48091f7fcfbd408d237b92632d37f45d0147aa32c0070f1ff70fceab77",
+      "entry_hash": "badc679dfa5e64b8d2d7a64473e6496edb526228eb3c62337a09ccd52562e633"
+    },
+    {
+      "at": "2026-09-27T09:47:13.437Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: an extensionless #!\\S+( bash)? hook's # comment stops being evidence",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1544ed0d6541",
+      "seq": 27,
+      "parent_hash": "badc679dfa5e64b8d2d7a64473e6496edb526228eb3c62337a09ccd52562e633",
+      "entry_hash": "f3c588233b224ef4822fa97ba55672d41d6b12b2c06487965de273ad39364100"
+    },
+    {
+      "at": "2026-09-27T09:47:44.905Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: a hollow [a-z-]+ spec \\(.*\\) is refused",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "97642a714cec",
+      "seq": 28,
+      "parent_hash": "f3c588233b224ef4822fa97ba55672d41d6b12b2c06487965de273ad39364100",
+      "entry_hash": "8c2ac488fd71dbbef0cfe259be4e04a63fa4b9383530f49d842e3b1831c654e2"
+    },
+    {
+      "at": "2026-09-27T09:49:32.114Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: an unreferenced file-private helper stayed in the corpus",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "083d1a619661",
+      "seq": 29,
+      "parent_hash": "8c2ac488fd71dbbef0cfe259be4e04a63fa4b9383530f49d842e3b1831c654e2",
+      "entry_hash": "b98ab84b1500f593b0e6e80727033ba1aff975bd4591d4c5f6193cbc47c30b9c"
+    },
+    {
+      "at": "2026-09-27T09:51:36.992Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: (a const arrow helper|a multi-line fixture table|a const selfTest\\* binding) reached only from test code stayed in the corpus",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f21da496958f",
+      "seq": 30,
+      "parent_hash": "b98ab84b1500f593b0e6e80727033ba1aff975bd4591d4c5f6193cbc47c30b9c",
+      "entry_hash": "d8a16cd1e630dcb597776dfd7e60fc6b72f9b945615aaced59d7d8b9d9c61588"
+    },
+    {
+      "at": "2026-09-27T09:51:37.065Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a regex literal's quote swallowed a production caller",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "f21da496958f",
+      "seq": 31,
+      "parent_hash": "d8a16cd1e630dcb597776dfd7e60fc6b72f9b945615aaced59d7d8b9d9c61588",
+      "entry_hash": "78b56b9218a9591fb9f28f4c70b14b689eb35b0fb4b50a693d656aaf138784b7"
+    },
+    {
+      "at": "2026-09-27T09:52:47.076Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a template nested in a template hole swallowed a production caller",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "72f334eb289b",
+      "seq": 32,
+      "parent_hash": "78b56b9218a9591fb9f28f4c70b14b689eb35b0fb4b50a693d656aaf138784b7",
+      "entry_hash": "787e3584364b254bc42828c0c78e9d258dd566f75ebe69f76a1c2e815ba06631"
+    },
+    {
+      "at": "2026-09-27T09:53:55.330Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: an inline membership test inside a return was not read as a CONSUMER",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ca2f24676d48",
+      "seq": 33,
+      "parent_hash": "787e3584364b254bc42828c0c78e9d258dd566f75ebe69f76a1c2e815ba06631",
+      "entry_hash": "c879aa8cdee4638da0cec3f39f9945280c00d72985d7ad021dbbad8664979ece"
+    },
+    {
+      "at": "2026-09-27T10:15:54.023Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: a misread slash resumed the cut one bracket short",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2dfbda5074db",
+      "seq": 34,
+      "parent_hash": "c879aa8cdee4638da0cec3f39f9945280c00d72985d7ad021dbbad8664979ece",
+      "entry_hash": "7f471b92586cdbc67525bd24dcac3cbabde6abf05220d637baf0e899dcb32d55"
+    },
+    {
+      "at": "2026-09-27T10:15:54.092Z",
+      "type": "red-check",
+      "expect": "reader-existence self-test FAIL: an inline membership test over a mixed array was not read as a CONSUMER",
+      "command": "node tools/reader-existence.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2dfbda5074db",
+      "seq": 35,
+      "parent_hash": "7f471b92586cdbc67525bd24dcac3cbabde6abf05220d637baf0e899dcb32d55",
+      "entry_hash": "acc90d0092f2bb7a49d9e7b287c37ffc1a031dc879ad26d230e576e38bc6b94d"
+    },
+    {
+      "at": "2026-09-27T10:18:09.821Z",
+      "type": "red-check",
+      "expect": "doc-reconcile self-test FAILED: an anchor doc naming a directory is a refusal, not a crash",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "120adf2a7290",
+      "seq": 36,
+      "parent_hash": "acc90d0092f2bb7a49d9e7b287c37ffc1a031dc879ad26d230e576e38bc6b94d",
+      "entry_hash": "8ba4fd31d7f6702f828518fdf0ec3fac0782a8e7cff0c75726c0019326108cf7"
     }
   ]
 }
