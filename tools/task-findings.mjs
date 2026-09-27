@@ -196,8 +196,22 @@ export function loadFindings(path) {
 /** Self-test: drive every refusal AND every allowance — a validator nobody has watched refuse is decoration. */
 function selfTestValidate(fail) {
   const base = emptyFindings("self-test");
+  // Each refusal below changes exactly ONE field of this valid finding — the first case is the
+  // discriminator, so a refusal case can never pass on a fixture that was already broken.
+  const ok = { id: "f1", severity: "LOW", status: "UNRESOLVED", claim: "x" };
+  const { passStartedAt, ...unmarked } = base;
   const cases = [
     ["clean empty register validates", validateFindings(base) === null],
+    ["the base finding every one-field case derives from validates (discriminator)", validateFindings({ ...base, findings: [ok] }) === null],
+    ["a register with no pass marker at all is named as predating it", validateFindings(unmarked) === "register predates the pass marker"],
+    ["a non-string pass marker refused", validateFindings({ ...base, passStartedAt: 123 }) !== null],
+    ["a register with an empty task id refused", validateFindings({ ...base, task: "" }) !== null],
+    ["a finding id that is not kebab-shaped refused", validateFindings({ ...base, findings: [{ ...ok, id: "-x" }] }) !== null],
+    ["a non-string finding id refused", validateFindings({ ...base, findings: [{ ...ok, id: 7 }] }) !== null],
+    ["an empty proof refused (whitespace is not a proof)", validateFindings({ ...base, findings: [{ ...ok, proof: "  " }] }) !== null],
+    ["an unknown status refused (FIXED would aggregate as clean)", validateFindings({ ...base, findings: [{ ...ok, status: "FIXED" }] }) !== null],
+    ["an empty claim refused", validateFindings({ ...base, findings: [{ ...ok, claim: "  " }] }) !== null],
+    ["a non-string claim refused", validateFindings({ ...base, findings: [{ ...ok, claim: 7 }] }) !== null],
     ["unknown schema refused", validateFindings({ ...base, schema: "nope" }) !== null],
     ["findings non-array refused", validateFindings({ ...base, findings: {} }) !== null],
     ["WONT-FIX without justification refused", validateFindings({ ...base, findings: [{ id: "f1", severity: "LOW", status: "WONT-FIX", claim: "x" }] }) !== null],
@@ -271,7 +285,25 @@ function selfTestStatusRepair(fail) {
 }
 
 export function selfTestFindings(fail) {
-  return selfTestValidate(fail) + selfTestAppendResolve(fail) + selfTestStatusGuards(fail) + selfTestStatusRepair(fail) + selfTestResolveEvidence(fail) + selfTestChain(fail) + selfTestProofLaw(fail) + selfTestDedup(fail);
+  return selfTestValidate(fail) + selfTestAppendResolve(fail) + selfTestStatusGuards(fail) + selfTestStatusRepair(fail) + selfTestResolveEvidence(fail) + selfTestChain(fail) + selfTestProofLaw(fail) + selfTestDedup(fail) + selfTestLockCause(fail);
+}
+
+/** Only contention retries: a lock that cannot be created for any other reason (its directory is
+ *  missing, unwritable) fails at once with its real cause — never a 6s spin that then blames
+ *  another writer who does not exist. */
+function selfTestLockCause(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "stallion-lock-"));
+  let code = "no error";
+  try {
+    withLock(join(dir, "missing", "x.json"), () => null);
+  } catch (e) {
+    code = e?.code;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  const cases = [["a lock in a missing directory fails with its real cause (ENOENT), not as contention", code === "ENOENT"]];
+  for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
+  return cases.length;
 }
 
 function selfTestDedup(fail) {
@@ -281,6 +313,8 @@ function selfTestDedup(fail) {
   const closed = typeof first === "string" ? first : setFindingStatus(first, "f1", { status: "WONT-FIX", justification: "x" });
   const claimKeyed = appendFinding(base, { id: "f2", lane: 1, severity: "LOW", claim: "stored has no evidence" });
   const raised = typeof first === "string" ? first : raiseSeverity(first, "f1", "HIGH");
+  // Pre-cutover and proofless: only raiseSeverity's own proof law stands between it and a HIGH.
+  const grandfathered = { ...base, findings: [{ id: "f1", severity: "LOW", status: "UNRESOLVED", claim: "x", recordedAt: "2026-09-17T00:00:00.000Z" }] };
   const cases = [
     ["the dedup fixture appends", typeof first !== "string"],
     ["normalized evidence collides across case and whitespace", typeof first !== "string" && duplicateEvidenceOf(first, { evidence: "  Tools/A.mjs:1  " }) === "f1"],
@@ -292,6 +326,9 @@ function selfTestDedup(fail) {
     ["the strictest severity wins on duplicate evidence", typeof raised !== "string" && raised.findings[0].severity === "HIGH"],
     ["weakening or equal severity on a duplicate refuses", typeof first !== "string" && typeof raiseSeverity(first, "f1", "LOW") === "string"],
     ["a closed finding's severity is closed", typeof closed !== "string" && typeof raiseSeverity(closed, "f1", "CRITICAL") === "string"],
+    ["an unknown severity refuses by name, before any lookup", raiseSeverity(first, "f1", "MAXIMUM") === "unknown severity: MAXIMUM"],
+    ["raising a proofless (grandfathered) finding to HIGH without a proof refuses — the law travels with the severity", typeof raiseSeverity(grandfathered, "f1", "HIGH") === "string"],
+    ["raising it WITH a proof is accepted", typeof raiseSeverity(grandfathered, "f1", "HIGH", "the input that breaks it") !== "string"],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-findings: ${name}`);
   return cases.length;
@@ -488,12 +525,16 @@ export function withLock(path, fn) {
   }
 }
 
+/** Only contention (EEXIST) retries: any other failure to create the lockfile — a missing
+ *  directory, no write permission — surfaces at once with its real cause, never a 6s spin that
+ *  then blames another writer who does not exist. */
 function acquireLock(lock) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       closeSync(openSync(lock, "wx"));
       return;
-    } catch {
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
       try {
         if (existsSync(lock) && statSync(lock).mtimeMs < Date.now() - 60_000) rmSync(lock, { force: true }); // stale writer
       } catch (e) {

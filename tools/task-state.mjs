@@ -2,27 +2,15 @@
 /**
  * Task state — the TASK-LIFECYCLE as an executable state machine .
  *
- * The lifecycle's 13 phases are prose followed by reading; every rule in it was learned from a
- * dated escape, and prose rules escape: a written list drifts from what it counts, and readers
- * copy the list instead of checking the machine. The cure is making the declaration executable.
- * This tool is that cure for the lifecycle itself.
+ * The lifecycle's six phases (intake → planned → executing → verified → adversarial → done) and
+ * its two terminal states (done by transition, retired by event) are prose followed by reading;
+ * every rule in it was learned from a dated escape, and prose rules escape: a written list drifts
+ * from what it counts, and readers copy the list instead of checking the machine. The cure is
+ * making the declaration executable. This tool is that cure for the lifecycle itself.
  *
- * Phase model (mapping to TASK-LIFECYCLE.md sections):
- *   intake      — steps 1-2  (restate, state verification)
- *   planned     — steps 3-6  (authority, skills, orientation, planning spec)
- *   executing   — steps 7-10 (smallest patch, targeted then full gates)
- *   verified    — step 11 gate evidence: RED-checks recorded, evidence ON DISK
- *   adversarial — adversarial pass recorded in the findings register
- *   done        — steps 12-13 (terminal; report + retrospective)
- *
- * Law encoded (each line refuses where prose used to merely ask):
- *   - planning-only and experiment tasks can NEVER reach executing.
- *   - protected and migration tasks need a recorded owner approval that cross-references a
- *     real line of docs/decisions/DECISIONS.md before executing.
- *   - executing -> verified requires recorded RED-check evidence paths, re-verified to EXIST at
- *     transition time (a pin is not a pin if the evidence file has since vanished).
- *   - adversarial -> done requires a findings register that aggregates clean (zero UNRESOLVED).
- *   - no phase skips, no backwards moves, nothing leaves done.
+ * The law it encodes is docs/TASK-LIFECYCLE.md §"The law the machine enforces" — not re-listed
+ * here, because a copied list is the drift this tool exists to end. The executable list is the
+ * --self-test: every refusal and every allowance, driven.
  *
  * Records are append-only event logs: phase is DERIVED from the last transition, never stored.
  * Honest trust boundary: the records are plain, unsigned JSON — the tool refuses illegal
@@ -30,12 +18,13 @@
  * the tamper evidence (editing events to skip obligations is a deliberate act against the register
  * and shows in the diff). Storage: tasks/<id>.json
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { aggregateFindings, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
+import { aggregateFindings, atomicWriteJson, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
 import { lessonsIndex, loadRegisters, summaryLine } from "./retrospective.mjs";
 import { matches } from "./pathspec.mjs";
 
@@ -140,13 +129,20 @@ export function globRefusal(pattern) {
     if (segment === "." || segment === "..") return `'${segment}' segment — scope stays inside the repo, relative to its root`;
   }
   if (pattern === "**") return "a scope of everything is no scope — name at least one top-level tree (e.g. 'tools/**')";
-  if (segments[0] === "**" || segments[0] === "*") {
-    return "the first segment must name a top-level tree ('**/' or '*/' could start anywhere and covers everything — e.g. 'tools/**')";
+  // A first segment of wildcards alone ('**', '*', '?*', '*?', ...) names no tree: it matches
+  // every top-level name, so the scope covers the whole repo (a sweep scoped '?*/**' past the
+  // literal-'*' check this line used to be).
+  if (/^[*?]+$/.test(segments[0])) {
+    return "the first segment must name a top-level tree (a wildcard-only first segment — '**', '*', '?*' — could start anywhere and covers everything — e.g. 'tools/**')";
   }
   return null;
 }
 
-const FENCE_SURFACE_ROOTS = new Set([".githooks", ".github", "docs/gates"]);
+/** The fence's own surface, declared ONCE: directory roots, and root-level files. Exported so the
+ *  sibling classifiers (task-coverage's fence path, path-obligations' tier rule) derive from it
+ *  instead of re-typing it — a surface added to one copy only let a runtime-code task self-scope
+ *  over it through the other. */
+export const FENCE_SURFACE = { roots: [".githooks", ".github", "docs/gates"], files: [".stallion-base"] };
 /**
  * Does a scope PATTERN cover fence surface? Three laws in order of trust, each pure where it
  * can be — the disk-dependent half is LAST and fail-closed, because the gated party controls
@@ -165,9 +161,9 @@ const FENCE_SURFACE_ROOTS = new Set([".githooks", ".github", "docs/gates"]);
 function coversFenceSurface(p) {
   const pattern = String(p);
   const segments = pattern.split("/");
-  if (FENCE_SURFACE_ROOTS.has(segments[0])) return true;
-  if (surfaceFileReached(".stallion-base", segments)) return true;
-  return [...FENCE_SURFACE_ROOTS].some((root) => rootReachesPattern(root, pattern));
+  if (FENCE_SURFACE.roots.includes(segments[0])) return true;
+  if (FENCE_SURFACE.files.some((name) => surfaceFileReached(name, segments))) return true;
+  return FENCE_SURFACE.roots.some((root) => rootReachesPattern(root, pattern));
 }
 
 /** Pure: does a pattern reach a fence-surface FILE at the repo root (.stallion-base)? The first
@@ -234,7 +230,7 @@ function rootTouchesPattern(rootDir, pattern) {
  * with a runtime-code self-serve amendment (the law isCodePath already states for the push fence).
  */
 export function fenceSurfaceRefusal(record, patterns) {
-  const reaching = (patterns ?? []).filter((p) => p === ".stallion-base" || coversFenceSurface(p));
+  const reaching = (patterns ?? []).filter(coversFenceSurface);
   if (reaching.length === 0) return null;
   if (!APPROVAL_REQUIRED.has(record.riskClass)) {
     return {
@@ -255,35 +251,55 @@ function hasApproval(record) {
   return record.events.some((e) => e.type === "approval");
 }
 
-/** Pure: the write-seam half of the retirement law — NO command may append to a retired record.
- *  Without this guard the tool itself writes the post-retirement-event shape its own fence then
- *  refuses as a hand-forgery (an adversarial finding, live-proven on four commands), poisoning
- *  the tamper narrative for a record the machine lawfully wrote. null = append is lawful. */
-export function retiredAppendRefusal(record) {
-  if (derivePhase(record.events ?? []) !== "retired") return null;
-  return `task '${record.id}' is retired — terminal at the write seam too; no command appends to it (the fence would call this very append a hand-forgery)`;
+/** Pure: the write seam's terminal law — NO command appends to a done or retired record. Every
+ *  mutating command judges here, once, so terminality is not re-decided per command. Retired:
+ *  without the guard the tool itself writes the post-retirement shape its own fence refuses as a
+ *  hand-forgery (an adversarial finding, live-proven on four commands). Done: a pin or exemption
+ *  appended after the done gate never faced it, yet the handoff reported it GREEN and the fence's
+ *  pin-parity check read it as settled (a 2026-09-27 sweep finding). null = the append is lawful. */
+export function terminalAppendRefusal(record) {
+  const phase = derivePhase(record.events ?? []);
+  if (phase === "done") {
+    return {
+      reason: `done is terminal — task '${record.id}' is finished; a done record accepts no new events (an event appended after the done gate never faced it)`,
+      remedy: `reopen the concern as a new task: node tools/task-state.mjs new <new-id> --risk-class ${record.riskClass}`,
+    };
+  }
+  if (phase === "retired") {
+    return {
+      reason: `retired is terminal — task '${record.id}' accepts no events at the write seam (the fence would call this very append a hand-forgery)`,
+      remedy: `record it under the successor task (the retirement's reason names it: node tools/task-state.mjs status ${record.id}) — or open one: node tools/task-state.mjs new <successor-id> --risk-class ${record.riskClass}`,
+    };
+  }
+  return null;
 }
 
 /** Pure: the retirement law. A task that never executed (intake or planned) may retire with a
  *  recorded reason — the honest alternative to a planned record that misleads every future
  *  status read. A task that has begun landing code must finish its lifecycle honestly (its
- *  commits cite it; retirement would orphan them), done is terminal, and retirement is
- *  once-only. null = the retirement is lawful. */
+ *  commits cite it; retirement would orphan them). Done and retired (once-only) are the write
+ *  seam's terminal law, judged first and in its words — the CLI's seam refuses before this runs,
+ *  so a bespoke terminal text here would be one the CLI never prints. null = the retirement is
+ *  lawful; otherwise { reason, remedy }. */
 export function retirementRefusal(record, because) {
+  const terminal = terminalAppendRefusal(record);
+  if (terminal) return terminal;
   if (typeof because !== "string" || because.trim().length === 0) {
-    return "retire requires --because — retiring a task without a reason is deleting evidence";
+    return { reason: "retire requires --because — retiring a task without a reason is deleting evidence", remedy: `node tools/task-state.mjs retire ${record.id} --because "<why — name the successor or the fulfilled-by work>"` };
   }
   const phase = derivePhase(record.events ?? []);
-  if (phase === "retired") return `task '${record.id}' is already retired — retirement is once-only`;
-  if (phase === "done") return "done is terminal — a finished task retires nothing; reopen the concern as a new task";
   if (PHASES.indexOf(phase) > PHASES.indexOf("planned")) {
-    return `task '${record.id}' is '${phase}' — a task that has begun landing code must finish its lifecycle honestly; retirement is for tasks that never executed`;
+    return { reason: `task '${record.id}' is '${phase}' — a task that has begun landing code must finish its lifecycle honestly; retirement is for tasks that never executed`, remedy: `node tools/task-state.mjs status ${record.id}   — then advance it through the remaining phases to done` };
   }
   return null;
 }
 
+function retiredPinCommands(record) {
+  return new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
+}
+
 function redCheckEvidence(record) {
-  const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
+  const retired = retiredPinCommands(record);
   const paths = [];
   for (const e of record.events) if (e.type === "red-check" && !retired.has(e.command)) paths.push(...(e.evidence ?? []));
   return paths;
@@ -292,15 +308,15 @@ function redCheckEvidence(record) {
 /** Command pins: red-check events that RAN a command and recorded a nonzero integer exit —
  *  the only machine-verified form. A recorded pin without a nonzero integer exitCode is not a
  *  pin (hand-forged or killed events refuse, they do not pass). A pin retired with a recorded
- *  justification no longer counts and no longer re-runs at done. */
-export function hasValidPin(record) {
-  const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
-  return record.events.some((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0 && pinCarriesExpectLaw(e));
+ *  justification no longer counts and no longer re-runs at done. The ONE pin predicate: the
+ *  verified gate, the done gate, and the push fence (via hasValidPin) all judge through it. */
+function commandPins(record) {
+  const retired = retiredPinCommands(record);
+  return record.events.filter((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0 && pinCarriesExpectLaw(e));
 }
 
-function commandPins(record) {
-  const retired = new Set(record.events.filter((e) => e.type === "pin-retire").map((e) => e.command));
-  return record.events.filter((e) => e.type === "red-check" && typeof e.command === "string" && e.command.length > 0 && !retired.has(e.command) && Number.isInteger(e.exitCode) && e.exitCode !== 0 && pinCarriesExpectLaw(e));
+export function hasValidPin(record) {
+  return commandPins(record).length > 0;
 }
 
 export function hasPinExemption(record) {
@@ -335,10 +351,19 @@ function executionGuard(record) {
 
 const NON_CODE_CLASSES = new Set(["planning-only", "docs-only", "experiment"]);
 
-function verificationGuard(record, _findings, evidenceOnDisk, _facts = {}) {
-  const { batteryGreen = true } = _facts;
+/** The red-check command a remedy prints — with --expect, because a pin without it refuses
+ *  since PIN_EXPECT_CUTOVER (a printed fix that refuses too is no fix). */
+function redCheckFix(record) {
+  return `node tools/task-state.mjs red-check ${record.id} --command "<the failing check>" --expect "<a regex matching a line the check prints only when it ran and failed>"`;
+}
+
+/** The verified gate. The battery verdict arrives as a fact (the caller RUNS the battery, outside
+ *  the lock — batteryFacts shapes it), so this guard is the one place the red-battery refusal
+ *  lives: the copy cmdAdvance once printed left this arm dead wiring its self-test still pinned. */
+function verificationGuard(record, _findings, evidenceOnDisk, facts = {}) {
+  const { batteryGreen = true, batteryOutput = "" } = facts;
   if (!batteryGreen) {
-    return { reason: "the selftest battery is not green — verification runs the whole battery at the phase boundary (ECC's stop-time batching: checks once at the boundary, not per edit)", remedy: "npm run selftest   — fix every failing tool, then advance" };
+    return { reason: `the selftest battery is not green — verification runs the whole battery at the phase boundary (ECC's stop-time batching: checks once at the boundary, not per edit)\n  evidence: ${batteryOutput}`, remedy: "npm run selftest   — fix every failing tool, then advance" };
   }
   const evidence = redCheckEvidence(record);
   const pins = commandPins(record);
@@ -346,22 +371,42 @@ function verificationGuard(record, _findings, evidenceOnDisk, _facts = {}) {
   if (evidence.length === 0 && pins.length === 0) {
     return {
       reason: "no RED-check recorded — a pin is not a pin until it has been run RED against pre-fix source",
-      remedy: `node tools/task-state.mjs red-check ${record.id} --command "<the failing check>"`,
+      remedy: redCheckFix(record),
     };
   }
   if (needsPin && pins.length === 0 && !hasPinExemption(record)) {
     return {
       reason: "code tasks need at least one COMMAND pin (red-check --command) — a path only proves a file exists, not that a check ran RED",
-      remedy: `node tools/task-state.mjs red-check ${record.id} --command "<the failing check>"   (or record an exemption: node tools/task-state.mjs pin-exempt ${record.id} --justification "<why>")`,
+      remedy: `${redCheckFix(record)}   (or record an exemption: node tools/task-state.mjs pin-exempt ${record.id} --justification "<why>")`,
     };
   }
   if (evidence.length > 0 && !evidenceOnDisk) {
     return {
       reason: "recorded RED-check evidence no longer exists on disk — evidence must be present at verification time, not just remembered",
-      remedy: `re-run the pin against the broken code, then re-record: node tools/task-state.mjs red-check ${record.id} --evidence <path>`,
+      remedy: `restore every vanished file at its recorded path (recorded: ${evidence.join(", ")}) — every recorded path is judged, so re-recording ADDS a path and never replaces one (a path recorded with a --command leaves with that pin: node tools/task-state.mjs pin-retire ${record.id} --command "<the exact pin command>" --justification "<why>")`,
     };
   }
   return null;
+}
+
+/** Shape one battery run into the verified guard's facts: green, or red with its first failing
+ *  lines as evidence. */
+function batteryFacts(run) {
+  if (run.exitCode === 0) return { batteryGreen: true, batteryOutput: "" };
+  const lines = run.output.split("\n").filter((l) => /FAILED|Error/.test(l)).slice(0, 3).join(" | ");
+  return { batteryGreen: false, batteryOutput: `exit ${run.exitCode} — ${lines || "(no FAILED lines captured — run npm run selftest)"}` };
+}
+
+/** Pure: the pin law holds at done too. verified judged it, but pin-retire at verified or
+ *  adversarial can retire the LAST pin afterwards — and the done record that followed failed the
+ *  fence's pin-parity check as a hand-forgery (a 2026-09-27 sweep finding: the done refusal's own
+ *  printed remedy walked a task there). null = the task carries a live pin or an exemption. */
+function pinlessDoneRefusal(record) {
+  if (NON_CODE_CLASSES.has(record.riskClass) || commandPins(record).length > 0 || hasPinExemption(record)) return null;
+  return {
+    reason: "no live command pin remains (every pin was retired) and no pin-exempt is recorded — a code task reaches done with a RED→GREEN arc or an accountable exemption; the fence refuses a pin-less done record",
+    remedy: `node tools/task-state.mjs pin-exempt ${record.id} --justification "<why this task cannot carry a runnable pin>"   (or pin a check that still fails: ${redCheckFix(record)})`,
+  };
 }
 
 function doneGuard(record, findings, _evidenceOnDisk, facts = {}) {
@@ -394,12 +439,14 @@ function doneGuard(record, findings, _evidenceOnDisk, facts = {}) {
       remedy: `re-resolve with evidence that exists: node tools/adversarial-runner.mjs resolve ${record.id} <finding-id> --evidence <file-paths-that-exist>`,
     };
   }
+  const pinless = pinlessDoneRefusal(record);
+  if (pinless) return pinless;
   // The GREEN half of the arc: every command pin must PASS by done. The caller re-runs them and
   // passes the failures here, so this judge stays pure (issue #9).
   if (greenFailures.length > 0) {
     return {
       reason: `command pin(s) no longer pass at done: ${greenFailures.join("; ")}`,
-      remedy: `the fix must make every pin GREEN before done — repair the code, or retire a genuinely wrong pin: node tools/task-state.mjs pin-retire ${record.id} --command "<the exact pin command>" --justification "<why the pin is wrong>"`,
+      remedy: `the fix must make every pin GREEN before done — repair the code, or retire a genuinely wrong pin: node tools/task-state.mjs pin-retire ${record.id} --command "<the exact pin command>" --justification "<why the pin is wrong>"   (retiring the LAST pin also needs a justified pin-exempt — done refuses a code task with no live pin)`,
     };
   }
   return null;
@@ -425,7 +472,6 @@ function terminalAdvanceRefusal(record, current) {
  * Returns { ok: true } or { ok: false, reason } — the reason is the law being invoked.
  */
 export function evaluateTransition(record, findings, target, evidenceOnDisk, facts = {}) {
-  const { resolveEvidenceMissing = [], greenFailures = [], batteryGreen = true } = facts;
   if (!record || record.schema !== TASK_SCHEMA) return { ok: false, reason: "not a task-state record", remedy: "start a real one: node tools/task-state.mjs new <id> --risk-class <class>" };
   if (!PHASES.includes(target)) return { ok: false, reason: `unknown phase: ${target}`, remedy: `phases are exactly: ${PHASES.join(", ")}` };
   const current = derivePhase(record.events);
@@ -437,16 +483,12 @@ export function evaluateTransition(record, findings, target, evidenceOnDisk, fac
   }
   const guard = TRANSITION_GUARDS[`${current}->${target}`];
   if (guard) {
-    const refusal = guard(record, findings, evidenceOnDisk, { resolveEvidenceMissing, greenFailures, batteryGreen });
+    const refusal = guard(record, findings, evidenceOnDisk, facts);
     if (refusal) return { ok: false, reason: refusal.reason, remedy: refusal.remedy };
   }
   return { ok: true };
 }
 
-/** What blocks the next transition, computed from the SAME facts `advance` will check. The
- *  exceptions are the runs advance performs and a status read must not: `advance done` re-runs
- *  command pins, `advance verified` runs the selftest battery — status reports that each WILL
- *  happen instead (a sweep caught the silent fail-open before the note existed). */
 /** The terminal phases' status line — both close the record to further obligations. A retired
  *  task's reason is SURFACED here (an adversarial finding: a law whose namesake field nothing
  *  ever printed), flattened — client text cannot forge the machine's voice. */
@@ -459,12 +501,18 @@ function terminalObligations(record, current) {
   return null;
 }
 
-export function obligations(record, findings, evidenceOnDisk) {
+/** What blocks the next transition, computed from the SAME facts `advance` will check — the fs
+ *  facts ride in `facts` exactly as advance passes them (status once omitted resolve evidence and
+ *  read "unblocked" where advance refused). The exceptions are the runs advance performs and a
+ *  status read must not: `advance done` re-runs command pins, `advance verified` runs the selftest
+ *  battery — status reports that each WILL happen instead (a sweep caught the silent fail-open
+ *  before the note existed). */
+export function obligations(record, findings, evidenceOnDisk, facts = {}) {
   const current = derivePhase(record.events);
   const terminal = terminalObligations(record, current);
   if (terminal) return terminal;
   const target = PHASES[PHASES.indexOf(current) + 1];
-  const verdict = evaluateTransition(record, findings, target, evidenceOnDisk);
+  const verdict = evaluateTransition(record, findings, target, evidenceOnDisk, facts);
   if (verdict.ok && target === "done") {
     return [`advance to ${target} is unblocked`, `done will re-run ${commandPins(record).length} command pin(s) — each must pass`];
   }
@@ -474,6 +522,12 @@ export function obligations(record, findings, evidenceOnDisk) {
   return verdict.ok ? [`advance to ${target} is unblocked`] : [verdict.reason, `fix: ${verdict.remedy}`];
 }
 
+/** Client text is FLATTENED (newlines become ⏎) — a justification or claim cannot forge
+ *  section headings in the machine's voice (a sweep caught exactly that injection). */
+function flat(text) {
+  return String(text ?? "").replace(/[\r\n]+/g, " ⏎ ");
+}
+
 /**
  * Pure: the evidence-graded handoff (ECC's save-session shape, machine-generated from the
  * record and register): WORKED with evidence (green pins, resolved findings), FAILED with the
@@ -481,12 +535,6 @@ export function obligations(record, findings, evidenceOnDisk) {
  * 'didn't work' is not"), NOT TRIED (unresolved findings, unmet obligations). No free text
  * enters it that the tools did not already require somewhere.
  */
-/** Client text is FLATTENED (newlines become ⏎) — a justification or claim cannot forge
- *  section headings in the machine's voice (a sweep caught exactly that injection). */
-function flat(text) {
-  return String(text ?? "").replace(/[\r\n]+/g, " ⏎ ");
-}
-
 export function handoffReport(record, findings, evidenceOnDisk = true, resolveEvidenceMissing = []) {
   const phase = derivePhase(record.events);
   const pins = commandPins(record);
@@ -529,9 +577,29 @@ function die(message) {
   throw new Refused(message);
 }
 
+/** The task-id law: kebab-case, so a traversal-bearing id never reaches a path join. Exported
+ *  so the sibling tools judge ids (and name registers) with this one rule. */
+export const TASK_ID = /^[a-z0-9][a-z0-9-]*$/;
+
 function taskPath(id) {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) die(`task id must be kebab-case (a-z, 0-9, -): ${id}`);
+  if (!TASK_ID.test(id)) die(`task id must be kebab-case (a-z, 0-9, -): ${id}\n  fix: node tools/task-state.mjs status   — lists every recorded task's id`);
   return `${STATE_DIR}/${id}.json`;
+}
+
+/** Where a task's findings register lives — spelled once. */
+export function findingsPath(id) {
+  return `${STATE_DIR}/${id}.findings.json`;
+}
+
+/** The task's findings register as every gate reads it: validated, and OWNED by this task. A
+ *  register failing either refuses with its path and the restore fix (a bare validator reason
+ *  named no file and no way out). null = no adversarial pass recorded yet. */
+function loadOwnedFindings(id) {
+  const path = findingsPath(id);
+  const { ok, register, error } = loadFindings(path);
+  if (!ok) die(`${error}\n  evidence: ${path}\n  fix: git log -p -- tasks/${id}.findings.json   — restore the last valid version (its git history is the tamper trail)`);
+  if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'\n  evidence: ${path}\n  fix: git log -p -- tasks/${id}.findings.json   — restore this task's own register`);
+  return register;
 }
 
 function parseTaskRecord(text, id, path) {
@@ -542,7 +610,7 @@ function parseTaskRecord(text, id, path) {
   } catch (e) {
     die(`task record is not valid JSON: ${e.message}\n  evidence: ${path} — the git history of this file is the tamper trail`);
   }
-  if (record.schema !== TASK_SCHEMA) die(`task record has unknown schema: ${String(record.schema)}`);
+  if (record.schema !== TASK_SCHEMA) die(`task record has unknown schema: ${String(record.schema)}\n  evidence: ${path} — the git history of this file is the tamper trail\n  fix: git log -p -- tasks/${id}.json   — investigate before writing`);
   return record;
 }
 
@@ -551,15 +619,35 @@ function loadTask(id) {
   return parseTaskRecord(existsSync(path) ? readFileSync(path, "utf8") : null, id, path);
 }
 
+/** The record path a locked write opens — refused as "no such task" BEFORE the lock when the
+ *  record (or, in a fresh tree, tasks/ itself) is absent: a missing record is a fact to report,
+ *  not a lock to spin on. The check inside the lock stays authoritative. */
+function existingTaskPath(id) {
+  const path = taskPath(id);
+  if (!existsSync(path)) parseTaskRecord(null, id, path);
+  return path;
+}
+
+/** The terminal law as a CLI refusal. mutateTask judges it inside the lock (authoritative); a
+ *  command that RUNS something before its append (red-check's pin — arbitrary shell, possibly the
+ *  whole battery) judges it before the run too: a record that will refuse the append must not
+ *  cost a run first. */
+function refuseTerminalAppend(record) {
+  const terminal = terminalAppendRefusal(record);
+  if (terminal) die(`REFUSED — ${terminal.reason}\n  fix: ${terminal.remedy}`);
+}
+
 /**
  * The only way a record changes: parse, judge, and append all INSIDE the file lock. A load
  * outside the lock is the lost-update bug — two writers append to the same snapshot and the
- * second write silently erases the first's event.
+ * second write silently erases the first's event. The terminal law judges HERE, for every
+ * command at once: no command appends to a done or retired record.
  */
 function mutateTask(id, mutate) {
-  const path = taskPath(id);
+  const path = existingTaskPath(id);
   return mutateJson(path, (text) => {
     const current = parseTaskRecord(text, id, path);
+    refuseTerminalAppend(current);
     if (recordMustChain(current)) {
       const err = chainError(current.events);
       if (err) {
@@ -588,23 +676,28 @@ function cmdNew(args) {
   console.log(`task ${id}: intake (risk class ${riskClass}) — tasks/${id}.json`);
 }
 
+/** Pure over the register file: does a ref literally equal an entry heading (minus its '## ')? A
+ *  substring is not a decision. Exported so the fence judges approvals with this one law. */
+export function decisionHeadingExists(ref) {
+  if (typeof ref !== "string" || ref.length === 0 || !existsSync(DECISIONS)) return false;
+  return readFileSync(DECISIONS, "utf8").split("\n").some((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
+}
+
 function cmdApprove(args) {
   const id = args._[0];
   if (!id) die("usage: approve <id> --decision <ref>");
   const ref = args.decision;
   if (!ref || ref === true) die("approve requires --decision <ref> — the dated entry in docs/decisions/DECISIONS.md");
-  if (!existsSync(DECISIONS)) die("docs/decisions/DECISIONS.md is missing — cannot cross-reference an approval");
-  const heading = readFileSync(DECISIONS, "utf8").split("\n").find((l) => l.startsWith("## ") && l.slice(3).trim() === ref.trim());
-  if (!heading) {
+  if (!existsSync(DECISIONS)) die("docs/decisions/DECISIONS.md is missing — cannot cross-reference an approval\n  fix: git log --oneline -- docs/decisions/DECISIONS.md   — restore the register; an approval cites it verbatim");
+  if (!decisionHeadingExists(ref)) {
     die(`no decisions-register entry heading equals: ${ref}\n  rule: an approval cites a FULL entry heading from docs/decisions/DECISIONS.md verbatim, MINUS its '## ' prefix — a substring is not an act\n  fix: grep "^## " docs/decisions/DECISIONS.md | sed 's/^## //'   then: node tools/task-state.mjs approve ${id} --decision "<one full line of that output>"`);
   }
-  mutateTask(id, (record) => {
-    const retired = retiredAppendRefusal(record);
-    if (retired) die(`REFUSED — ${retired}`);
-    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] };
-  });
+  mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "approval", decision: ref }] }));
   console.log(`task ${id}: owner approval recorded (decision: ${ref})`);
 }
+
+/** The usage example cmdScope prints — self-tested to scope cleanly for a runtime-code task. */
+const SCOPE_EXAMPLE = "tools/**";
 
 /**
  * Declare or widen a task's scope — the append-only blast-radius amendment. The initial
@@ -616,15 +709,13 @@ function cmdScope(args) {
   const id = args._[0];
   if (!id) die("usage: scope <id> --add <glob>[,<glob>...]");
   const adds = typeof args.add === "string" ? args.add.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  if (adds.length === 0) die(`scope requires --add <glob>[,<glob>...] — the code blast radius this task may touch (e.g. 'tools/**,docs/*')`);
+  if (adds.length === 0) die(`scope requires --add <glob>[,<glob>...] — the code blast radius this task may touch (e.g. '${SCOPE_EXAMPLE}')`);
   for (const p of adds) {
     const refusal = globRefusal(p);
     if (refusal) die(`scope pattern refused: ${JSON.stringify(p)}\n  rule: ${refusal}\n  fix: node tools/task-state.mjs scope ${id} --add "<corrected glob>[,<glob>...]"`);
   }
   mutateTask(id, (record) => {
     const phase = derivePhase(record.events);
-    if (phase === "done") die("done is terminal — a finished task's scope is closed; new blast radius opens a new task");
-    if (phase === "retired") die("retired is terminal — a retired task's scope is closed forever; it never executes, so it never widens");
     if (PHASES.indexOf(phase) < PHASES.indexOf("planned")) {
       die(`task is '${phase}' — scope is declared once there is a plan to name a blast radius\n  fix: node tools/task-state.mjs advance ${id} planned   then re-run the scope amendment`);
     }
@@ -632,7 +723,7 @@ function cmdScope(args) {
     if (tier) die(`REFUSED — ${tier.reason}\n  fix: ${tier.remedy}`);
     const already = new Set(scopeOf(record));
     const novel = adds.filter((p) => !already.has(p));
-    if (novel.length === 0) die(`every pattern is already inside ${id}'s declared scope — amendments record NEW blast radius, not repetition`);
+    if (novel.length === 0) die(`every pattern is already inside ${id}'s declared scope — amendments record NEW blast radius, not repetition\n  evidence: declared scope is ${[...already].join(", ")}\n  fix: nothing to record — node tools/task-state.mjs status ${id} shows the scope already covers it`);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "scope", patterns: novel }] };
   });
   const written = loadTask(id);
@@ -640,8 +731,9 @@ function cmdScope(args) {
 }
 
 /** Pure: is this record adoptable? The window is BOUNDED — created in [CHAIN_CUTOVER,
- *  ADOPT_WINDOW_END] — so a later hand-forgery can never be blessed; done is terminal; a
- *  record that already carries a chain is once-only. Everything judges the locked snapshot. */
+ *  ADOPT_WINDOW_END] — so a later hand-forgery can never be blessed; a terminal record is never
+ *  rewritten (the write seam's law); a record that already carries a chain is once-only.
+ *  Everything judges the locked snapshot. */
 export function adoptionRefusal(record) {
   const created = recordCreatedAt(record);
   const strict = STRICT_UTC_STAMP.test(created);
@@ -651,8 +743,8 @@ export function adoptionRefusal(record) {
   if (Date.parse(created) > Date.parse(ADOPT_WINDOW_END)) {
     return `record was created after the adoption window closed (${ADOPT_WINDOW_END}) — the chain law has shipped, so an unchained record born now is a hand-forgery, not a window artifact; adoption refuses`;
   }
-  if (derivePhase(record.events) === "done") return "done is terminal — a finished record is not rewritten, even to be blessed";
-  if (derivePhase(record.events) === "retired") return "retired is terminal — a retired record is never rewritten, not even to be blessed";
+  const terminal = terminalAppendRefusal(record);
+  if (terminal) return terminal.reason;
   if (record.events.some((e) => typeof e.entry_hash === "string")) return "record already carries a chain — adoption is a once-only act";
   return null;
 }
@@ -667,15 +759,15 @@ export function adoptionRefusal(record) {
 function cmdAdoptChain(args) {
   const id = args._[0];
   if (!id) die("usage: adopt-chain <id>");
-  const path = taskPath(id);
+  const path = existingTaskPath(id);
   const written = mutateJson(path, (text) => {
     const record = parseTaskRecord(text, id, path);
     const refusal = adoptionRefusal(record);
-    if (refusal) die(`REFUSED — ${refusal}`);
+    if (refusal) die(`REFUSED — ${refusal}\n  fix: nothing to adopt — only an unchained, in-flight record created inside the implementation window (${CHAIN_CUTOVER} .. ${ADOPT_WINDOW_END}) is blessed; for any other record: git log -p -- tasks/${id}.json   — investigate before writing`);
     return { ...record, events: chainStampEvents([...record.events, { at: new Date().toISOString(), type: "chain-adopt" }]) };
   });
   const check = chainError(written.events);
-  if (check) die(`adoption produced an invalid chain (${check}) — investigate`);
+  if (check) die(`adoption produced an invalid chain (${check}) — investigate\n  evidence: ${path}\n  fix: git log -p -- tasks/${id}.json   — the last committed version is the pre-adoption record`);
   console.log(`task ${id}: chain adopted — ${written.events.length} events stamped, adoption recorded`);
 }
 
@@ -747,7 +839,7 @@ function outputDigest(output) {
 
 /**
  * Pure: does a RED run's output carry the assertion evidence the author expected? `--expect`
- * binds a pattern to a pin at RECORD time — the pattern should name a line the check prints only
+ * binds a regex (unanchored, not a literal) to a pin at RECORD time — it should match a line the check prints only
  * when tests RAN and FAILED (a runner's failure line, a self-test's FAIL print, a structural
  * assertion's own refusal). An uncollectable run — a suite that fails to resolve its imports, a
  * tool that dies on an unknown flag, a command that crashes before asserting — exits nonzero
@@ -771,15 +863,21 @@ export function expectationRefusal(pattern, output) {
 
 function cmdRedCheck(args) {
   const [id, ...paths] = args._;
-  if (!id) die(`usage: red-check <id> --command "<failing check>" [--expect "<output pattern>"] [--evidence <path>[,<paths>...]]`);
+  if (!id) die(`usage: red-check <id> --command "<failing check>" --expect "<a regex matching a line it prints only when it ran and failed>" [--evidence <path>[,<paths>...]]`);
   const command = typeof args.command === "string" && args.command.trim().length > 0 ? args.command.trim() : null;
   const expect = typeof args.expect === "string" && args.expect.trim().length > 0 ? args.expect.trim() : null;
   if (expect !== null && command === null) die("--expect binds to a command pin — pass it together with --command");
   const all = [...paths, ...(typeof args.evidence === "string" ? args.evidence.split(",") : [])].map((p) => p.trim()).filter(Boolean);
-  if (!command && all.length === 0) die(`red-check requires --command "<the failing check>" (and optionally --expect "<output pattern>" / --evidence <paths>)`);
+  if (!command && all.length === 0) die(`red-check requires --command "<the failing check>" --expect "<a regex matching a line it prints only when it ran and failed>" (--evidence <paths> supplements a pin; alone it records path evidence)`);
   for (const p of all) if (!evidencePathIsFile(p)) die(`evidence path is not a readable file: ${p}\n  fix: pass paths that exist, repo-relative or cwd-relative: node tools/task-state.mjs red-check ${id} --evidence <path>`);
+  // Judged BEFORE the run (a missing record too): the seam in mutateTask stays authoritative.
+  refuseTerminalAppend(loadTask(id));
   const event = { at: new Date().toISOString(), type: "red-check" };
   if (command) {
+    // Judged BEFORE the run: a pin the law will refuse must not cost a run of the command first.
+    if (expect === null && Date.now() >= Date.parse(PIN_EXPECT_CUTOVER)) {
+      die(`REFUSED — a command pin without --expect no longer records (pin-expect cutover ${PIN_EXPECT_CUTOVER})\n  rule: an uncollectable run red-pins nothing — the pattern is the proof the failure is an assertion failure, and the author names it for their own runner\n  fix: ${redCheckFix({ id })}   (structural pins use their own refusal text)`);
+    }
     const run = runPinCommand(command);
     if (run.exitCode === 0) {
       die(`REFUSED — the pin passed (exit 0): ${command}\n  rule: a pin is evidence only when it FAILS against pre-fix source\n  fix: run the red-check before the fix lands, or point the command at the pre-fix behavior`);
@@ -787,23 +885,16 @@ function cmdRedCheck(args) {
     if (expect !== null) {
       const refusal = expectationRefusal(expect, run.output);
       if (refusal !== null) {
-        die(`REFUSED — ${refusal}\n  rule: an uncollectable run red-pins nothing — a suite that fails to load, a tool that refuses on a flag, and a crash before the first assertion ALL exit nonzero while proving nothing\n  fix: point --expect at a line your check prints only when it ran and failed for the asserted reason (a runner's failure line, a SELF-TEST FAIL print), or restructure the pin as a structural assertion on the defect itself`);
+        die(`REFUSED — ${refusal}\n  rule: an uncollectable run red-pins nothing — a suite that fails to load, a tool that refuses on a flag, and a crash before the first assertion ALL exit nonzero while proving nothing\n  fix: point --expect at a regex matching a line your check prints only when it ran and failed for the asserted reason (a runner's failure line, a SELF-TEST FAIL print; --expect is an unanchored regex over the whole output, no m flag, so ^ and $ bind to the output's ends — escape every metacharacter . * + ? ^ $ { } ( ) [ ] | \\ in a pasted line), or restructure the pin as a structural assertion on the defect itself`);
       }
       event.expect = expect;
-    }
-    if (expect === null && Date.now() >= Date.parse(PIN_EXPECT_CUTOVER)) {
-      die(`REFUSED — a command pin without --expect no longer records (pin-expect cutover ${PIN_EXPECT_CUTOVER})\n  rule: an uncollectable run red-pins nothing — the pattern is the proof the failure is an assertion failure, and the author names it for their own runner\n  fix: red-check ${id} --command "<cmd>" --expect "<a line the check prints only when it ran and failed>" (structural pins use their own refusal text)`);
     }
     event.command = command;
     event.exitCode = run.exitCode;
     event.outputDigest = outputDigest(run.output);
   }
   if (all.length > 0) event.evidence = all;
-  mutateTask(id, (record) => {
-    const retired = retiredAppendRefusal(record);
-    if (retired) die(`REFUSED — ${retired}\n  fix: the pin was run, but a retired record accepts no events; record it under the successor task`);
-    return { ...record, events: [...record.events, event] };
-  });
+  mutateTask(id, (record) => ({ ...record, events: [...record.events, event] }));
   console.log(command
     ? `task ${id}: command pin recorded RED (exit ${event.exitCode}, digest ${event.outputDigest}${event.expect ? `, expects /${event.expect}/` : ""}) — ${command}`
     : `task ${id}: RED-check evidence recorded (${all.length} path(s)) — supplementary, not a substitute for a command pin`);
@@ -817,13 +908,10 @@ function cmdPinRetire(args) {
   if (typeof command !== "string" || command.trim().length === 0) die("pin-retire requires --command — the exact command of the pin being retired");
   if (typeof justification !== "string" || justification.trim().length === 0) die("pin-retire requires --justification — retiring a pin without a reason is deleting evidence");
   mutateTask(id, (record) => {
-    const retired = retiredAppendRefusal(record);
-    if (retired) die(`REFUSED — ${retired}`);
-    if (derivePhase(record.events) === "done") die("done is terminal — a finished task's pins cannot be retired; reopen the concern as a new task");
     const recorded = record.events.some((e) => e.type === "red-check" && e.command === command);
-    if (!recorded) die(`no command pin records exactly: ${command}\n  evidence: the task's pin commands are ${commandPins(record).map((p) => JSON.stringify(p.command)).join(", ") || "none"}`);
+    if (!recorded) die(`no command pin records exactly: ${command}\n  evidence: the task's pin commands are ${commandPins(record).map((p) => JSON.stringify(p.command)).join(", ") || "none"}\n  fix: node tools/task-state.mjs pin-retire ${id} --command "<one pin command above, verbatim>" --justification "<why this pin is wrong>"`);
     const alreadyRetired = record.events.some((e) => e.type === "pin-retire" && e.command === command);
-    if (alreadyRetired) die(`pin already retired: ${command}`);
+    if (alreadyRetired) die(`pin already retired: ${command}\n  fix: nothing to retire — node tools/task-state.mjs handoff ${id} lists it, with its justification, under FAILED`);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "pin-retire", command, justification }] };
   });
   console.log(`task ${id}: pin retired (justification in the register, forever) — ${command}`);
@@ -834,11 +922,7 @@ function cmdPinExempt(args) {
   if (!id) die("usage: pin-exempt <id> --justification \"<why this task cannot carry a runnable pin>\"");
   const justification = args.justification;
   if (typeof justification !== "string" || justification.trim().length === 0) die("pin-exempt requires --justification — an exemption without a reason is not accountability");
-  mutateTask(id, (record) => {
-    const retired = retiredAppendRefusal(record);
-    if (retired) die(`REFUSED — ${retired}`);
-    return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "pin-exemption", justification }] };
-  });
+  mutateTask(id, (record) => ({ ...record, events: [...record.events, { at: new Date().toISOString(), type: "pin-exemption", justification }] }));
   console.log(`task ${id}: pin exemption recorded (justification in the register, forever)`);
 }
 
@@ -853,7 +937,7 @@ function cmdRetire(args) {
   if (!id) die("usage: retire <id> --because \"<why this task never executes — name the successor or the fulfilled-by work>\"");
   mutateTask(id, (record) => {
     const refusal = retirementRefusal(record, args.because);
-    if (refusal) die(`REFUSED — ${refusal}`);
+    if (refusal) die(`REFUSED — ${refusal.reason}\n  fix: ${refusal.remedy}`);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "retired", because: String(args.because).trim() }] };
   });
   console.log(`task ${id}: retired (reason in the register, forever) — never executed, authorizes nothing`);
@@ -868,19 +952,10 @@ function cmdAdvance(args) {
   // (an adversarial finding — the exact bug the lock exists to prevent).
   let greenFailures = [];
   // The verified boundary runs the WHOLE battery once (ECC's stop-time batching): checks land
-  // at the phase boundary, not per edit — and a red tool blocks the phase, not the commit.
-  let batteryGreen = true;
-  let batteryOutput = "";
-  if (target === "verified" && derivePhase(loadTask(id).events) === "executing") {
-    const run = runPinCommand("npm run selftest");
-    if (run.exitCode !== 0) {
-      batteryGreen = false;
-      batteryOutput = run.output.split("\n").filter((l) => /FAILED|Error/.test(l)).slice(0, 3).join(" | ");
-      die(`REFUSED — the selftest battery is not green (exit ${run.exitCode}) — verification runs the whole battery at the phase boundary
-  evidence: ${batteryOutput || "(no FAILED lines captured — run npm run selftest)"}
-  fix: npm run selftest   — fix every failing tool, then advance`);
-    }
-  }
+  // at the phase boundary, not per edit — and a red tool blocks the phase, not the commit. Its
+  // verdict rides into verificationGuard as a fact: the refusal lives there, once.
+  let battery = {};
+  if (target === "verified" && derivePhase(loadTask(id).events) === "executing") battery = batteryFacts(runPinCommand("npm run selftest"));
   if (target === "done" && derivePhase(loadTask(id).events) === "adversarial") {
     const pins = commandPins(loadTask(id));
     for (const pin of pins) {
@@ -890,11 +965,9 @@ function cmdAdvance(args) {
     }
   }
   mutateTask(id, (record) => {
-    const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
-    if (!ok) die(error);
-    if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
-    const resolveMissing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
-    const verdict = evaluateTransition(record, register, target, redCheckEvidence(record).every(evidencePathIsFile), { resolveEvidenceMissing: resolveMissing, greenFailures, batteryGreen });
+    const register = loadOwnedFindings(id);
+    const { evidenceOnDisk, resolveEvidenceMissing } = diskFacts(record, register);
+    const verdict = evaluateTransition(record, register, target, evidenceOnDisk, { resolveEvidenceMissing, greenFailures, ...battery });
     if (!verdict.ok) die(`REFUSED — ${verdict.reason}\n  fix: ${verdict.remedy}`);
     from = derivePhase(record.events);
     return { ...record, events: [...record.events, { at: new Date().toISOString(), type: "transition", to: target }] };
@@ -902,9 +975,16 @@ function cmdAdvance(args) {
   console.log(`task ${id}: ${from} -> ${target}`);
 }
 
+/** The fs facts every judge of a record reads — advance, status, and handoff compute them the
+ *  SAME way, so a status read cannot report "unblocked" where advance refuses. */
+function diskFacts(record, register) {
+  return { evidenceOnDisk: redCheckEvidence(record).every(evidencePathIsFile), resolveEvidenceMissing: missingResolveEvidence(register, evidencePathIsFile) };
+}
+
 function statusObligations(record) {
-  const { ok, register } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
-  return obligations(record, ok ? register : null, redCheckEvidence(record).every(evidencePathIsFile));
+  const register = loadOwnedFindings(record.id);
+  const { evidenceOnDisk, resolveEvidenceMissing } = diskFacts(record, register);
+  return obligations(record, register, evidenceOnDisk, { resolveEvidenceMissing });
 }
 
 /** The pure half of one metrics row: span and density from a record and its findings. */
@@ -923,7 +1003,7 @@ export function metricDerivation(record, findings) {
  * A register that does not parse is VISIBLE, never silently zeroed (the f12 finding: a corrupt
  * register must not render its task the cleanest wave in the ranking). */
 function metricRow(record) {
-  const { ok, register, error } = loadFindings(`${STATE_DIR}/${record.id}.findings.json`);
+  const { ok, register, error } = loadFindings(findingsPath(record.id));
   if (!ok) {
     console.error(`task-state metrics: the findings register for '${record.id}' does not parse (${error}) — its row is INCOMPLETE until it does`);
   }
@@ -937,6 +1017,7 @@ function metricRow(record) {
  * never stored. Wave ranking finally has a measured basis.
  */
 function cmdMetrics() {
+  if (!existsSync(STATE_DIR)) return console.log("no tasks recorded");
   const rows = [];
   for (const f of readdirSync(STATE_DIR).filter((x) => x.endsWith(".json") && !x.includes(".findings."))) {
     let record;
@@ -960,14 +1041,11 @@ function cmdHandoff(args) {
   const id = args._[0];
   if (!id) die("usage: handoff <id>");
   const record = loadTask(id);
-  const { ok, register, error } = loadFindings(`${STATE_DIR}/${id}.findings.json`);
-  if (!ok) die(error);
-  if (register && register.task !== id) die(`findings register belongs to task '${register.task}', not '${id}'`);
+  const register = loadOwnedFindings(id);
   // Real fs facts, the same ones advance judges with — a handoff that assumes the disk
   // understates what remains (a sweep caught the stubbed-true version).
-  const onDisk = redCheckEvidence(record).every(evidencePathIsFile);
-  const missing = register ? missingResolveEvidence(register, evidencePathIsFile) : [];
-  console.log(handoffReport(record, ok ? register : null, onDisk, missing));
+  const { evidenceOnDisk, resolveEvidenceMissing } = diskFacts(record, register);
+  console.log(handoffReport(record, register, evidenceOnDisk, resolveEvidenceMissing));
 }
 
 function cmdStatus(args) {
@@ -1035,7 +1113,9 @@ export function selfTest() {
   const cleanFindings = { schema: "stallion/task-findings@1", task: "t", passStartedAt: "2026-01-01T00:00:00.000Z", findings: [{ id: "f1", severity: "LOW", status: "RESOLVED", claim: "x", evidence: ["e"] }] };
   const dirtyFindings = { schema: "stallion/task-findings@1", task: "t", passStartedAt: "2026-01-01T00:00:00.000Z", findings: [{ id: "f1", severity: "HIGH", status: "UNRESOLVED", claim: "x" }] };
   const executing = at(base, "planned");
-  const adversarial = at(at(at(executing, "executing"), "verified"), "adversarial");
+  // A code task reaches done only carrying a live pin, so the done-side fixture carries one.
+  const pin = { type: "red-check", command: "npm test -- x", at: "2026-09-19T00:00:00.000Z", exitCode: 1, outputDigest: "abc" };
+  const adversarial = at(at({ ...at(executing, "executing"), events: [...at(executing, "executing").events, pin] }, "verified"), "adversarial");
 
   const cases = [
     ["fresh task derives intake", derivePhase(base.events) === "intake"],
@@ -1074,7 +1154,7 @@ export function selfTest() {
     ["unknown phase refused", !evaluateTransition(base, null, "shipped", true).ok],
     // The pin runner is the done gate's own capture seam; its streams join with a newline, never a
     // splice — a glued line can carry a recorded RED signature off line-start and defeat the
-    // line-anchored --expect match (the same glue class runGuard's separator law closes).
+    // ^-anchored --expect match (the same glue class runGuard's separator law closes).
     ["runPinCommand joins the capture streams with a newline (the glue law, sibling seam)", (() => {
       const run = runPinCommand("printf 'partial line'; echo signature >&2");
       return run.exitCode === 0 && run.output === "partial line\nsignature\n";
@@ -1157,11 +1237,109 @@ export function selfTest() {
 
   const retireCases = runRetireRefusalCases(fail, { base, at, executing, adversarial }) + runRetireTerminalCases(fail, { at, executing });
   const fenceSurfaceCases = selfTestFenceSurfaceCases(fail) + selfTestFenceSurfaceNegativeCases(fail);
+  const repairCases = runLawRepairCases(fail, { at, executing, adversarial, pin, cleanFindings }) + selfTestFreshTree(fail);
 
-  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin + ${retireCases} retire + ${fenceSurfaceCases} fence-surface cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
+  console.log(failures.length === 0 ? `task-state self-test: OK (${cases.length} transition + ${remedyCases.length} remedy + ${scopeCases.length} scope + ${greenPinCount} green-pin + ${retireCases} retire + ${fenceSurfaceCases} fence-surface + ${repairCases} law-repair cases — counts derived)` : `task-state self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
 }
 
+
+/** The 2026-09-27 sweep's repair family: each case is a refusal that fired wrongly, a printed fix
+ *  that could not clear its own refusal, or a status read that disagreed with advance. */
+function runLawRepairCases(fail, { at, executing, adversarial, pin, cleanFindings }) {
+  const inFlight = at(executing, "executing");
+  const retiredOnly = at(at({ ...inFlight, events: [...inFlight.events, pin, { type: "pin-retire", command: pin.command, justification: "the pin was wrong" }] }, "verified"), "adversarial");
+  const exempted = { ...retiredOnly, events: [...retiredOnly.events, { type: "pin-exemption", justification: "no runnable check exists for this seam" }] };
+  const pathOnly = { ...inFlight, events: [...inFlight.events, { type: "red-check", evidence: ["a.test.ts"] }] };
+  const pinned = { ...inFlight, events: [...inFlight.events, pin] };
+  const vanished = { ...inFlight, riskClass: "docs-only", events: [...inFlight.events, { type: "red-check", evidence: ["gone.test.ts"] }] };
+  const cases = [
+    ["a code task whose only pin was retired refuses done (the fence reads that record as a forgery)", !evaluateTransition(retiredOnly, cleanFindings, "done", true).ok],
+    ["a code task whose only pin was retired passes done WITH a recorded pin-exempt", evaluateTransition(exempted, cleanFindings, "done", true).ok],
+    ["the write seam refuses appends to a DONE record (a pin recorded after done never faced the gate)", terminalAppendRefusal(at(adversarial, "done")) !== null],
+    ["the no-pin remedy carries --expect (a printed fix that refuses is no fix)", evaluateTransition(inFlight, null, "verified", true).remedy?.includes("--expect")],
+    ["the path-only remedy carries --expect (a printed fix that refuses is no fix)", evaluateTransition(pathOnly, null, "verified", true).remedy?.includes("--expect")],
+    ["obligations carry the resolve-evidence fact (status never reads unblocked where advance refuses)", !obligations(adversarial, cleanFindings, true, { resolveEvidenceMissing: ["f1: gone.test.ts"] })[0].startsWith("advance to")],
+    ["the vanished-evidence remedy names the dead path (re-recording adds a path, never replaces one)", evaluateTransition(vanished, null, "verified", false).remedy?.includes("gone.test.ts")],
+    ["the scope usage example scopes cleanly for a runtime-code task", fenceSurfaceRefusal({ riskClass: "runtime-code", events: [] }, SCOPE_EXAMPLE.split(",")) === null],
+    ["globRefusal refuses a wildcard-only first segment ('?*/**' covers everything)", globRefusal("?*/**") !== null],
+    ["globRefusal refuses a wildcard-only first segment ('*?/**' covers everything)", globRefusal("*?/**") !== null],
+    ["globRefusal accepts a '?'-led first segment that still names a tree ('?ools/**')", globRefusal("?ools/**") === null],
+    ["a red battery run refuses verified with its failing lines as evidence (the one refusal — advance keeps no copy)", (evaluateTransition(pinned, null, "verified", true, batteryFacts({ exitCode: 1, output: "ok\nx FAILED" })).reason ?? "").includes("x FAILED")],
+    ["a green battery run shapes a green fact", batteryFacts({ exitCode: 0, output: "anything" }).batteryGreen === true],
+    ["an in-flight record still appends at the write seam", terminalAppendRefusal(inFlight) === null],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
+}
+
+/** The CLI's write seam, driven through the real CLI in a scratch copy (STATE_DIR is the fact).
+ *  A fresh vendored tree (the tools, no tasks/ yet): the read side reports no tasks, and a locked
+ *  write refuses as "no such task" — never a stack trace, never a lock spin blaming a writer that
+ *  does not exist. Then a DONE record: an append refuses at the seam every command shares. */
+function selfTestFreshTree(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "stallion-fresh-"));
+  try {
+    mkdirSync(join(dir, "tools"));
+    const here = fileURLToPath(new URL(".", import.meta.url));
+    for (const f of ["task-state.mjs", "task-findings.mjs", "retrospective.mjs", "pathspec.mjs"]) copyFileSync(join(here, f), join(dir, "tools", f));
+    const run = (...argv) => spawnSync(process.execPath, [join(dir, "tools", "task-state.mjs"), ...argv], { encoding: "utf8", timeout: 30_000 });
+    const metrics = run("metrics");
+    const write = run("pin-exempt", "probe", "--justification", "x");
+    mkdirSync(join(dir, "tasks"));
+    writeCliRecord(dir, "probe", ["planned", "executing", "verified", "adversarial", "done"]);
+    const afterDone = run("pin-exempt", "probe", "--justification", "after the fact");
+    const cases = [
+      ["a fresh tree (no tasks/) reads metrics as empty, not a crash", metrics.status === 0 && metrics.stdout.includes("no tasks recorded")],
+      ["a fresh tree refuses a write as 'no such task', not a lock spin blaming another writer", write.status === 1 && write.stderr.includes("no such task: probe")],
+      ["the CLI refuses a pin-exempt appended to a DONE record, with the new-task fix", afterDone.status === 1 && afterDone.stderr.includes("done is terminal") && afterDone.stderr.includes("fix: reopen the concern as a new task")],
+    ];
+    for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+    return cases.length + selfTestCliJudges(fail, dir, run);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** A chained CLI fixture record: created, the given transitions, and a live pin once executing. */
+function writeCliRecord(dir, id, phases) {
+  const at = new Date().toISOString();
+  const pin = { at, type: "red-check", command: "exit 1", expect: "FAILED", exitCode: 1, outputDigest: "d" };
+  const events = phases.flatMap((to) => (to === "executing" ? [{ at, type: "transition", to }, pin] : [{ at, type: "transition", to }]));
+  atomicWriteJson(join(dir, "tasks", `${id}.json`), { schema: TASK_SCHEMA, id, riskClass: "runtime-code", events: chainStampEvents([{ at, type: "created", riskClass: "runtime-code" }, ...events]) });
+}
+
+/** The CLI judges driven end to end — each seam here once passed every pure case while the
+ *  production path around it was wrong or unwatched: the battery's hand-off into the verified
+ *  guard, red-check's terminal law before its run, and status's facts and register ownership. */
+function selfTestCliJudges(fail, dir, run) {
+  atomicWriteJson(join(dir, "package.json"), { private: true, scripts: { selftest: "echo 'x FAILED'; exit 1" } });
+  writeCliRecord(dir, "bat", ["planned", "executing"]);
+  const battery = run("advance", "bat", "verified");
+  const redCheck = run("red-check", "probe", "--command", "touch ran.txt; echo FAILED; exit 1", "--expect", "FAILED");
+  const cases = [
+    ["advance verified on a red battery refuses through the CLI with its failing line as evidence", battery.status === 1 && battery.stderr.includes("selftest battery is not green") && battery.stderr.includes("x FAILED")],
+    ["red-check on a DONE record refuses BEFORE its pin command runs", redCheck.status === 1 && redCheck.stderr.includes("done is terminal") && !existsSync(join(dir, "ran.txt"))],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length + selfTestCliStatus(fail, dir, run);
+}
+
+/** status judges with advance's facts and advance's register-ownership law, through the CLI. */
+function selfTestCliStatus(fail, dir, run) {
+  writeCliRecord(dir, "stat", ["planned", "executing", "verified", "adversarial"]);
+  const register = (task) => ({ schema: "stallion/task-findings@1", task, passStartedAt: new Date().toISOString(), findings: [{ id: "f1", severity: "LOW", status: "RESOLVED", claim: "x", evidence: ["gone-resolve-evidence.probe"] }] });
+  atomicWriteJson(join(dir, "tasks", "stat.findings.json"), register("stat"));
+  const status = run("status", "stat");
+  atomicWriteJson(join(dir, "tasks", "stat.findings.json"), register("someone-else"));
+  const foreign = run("status", "stat");
+  const cases = [
+    ["status never reads unblocked where advance refuses (vanished resolve evidence)", status.status === 0 && !status.stdout.includes("advance to done is unblocked") && status.stdout.includes("gone-resolve-evidence.probe")],
+    ["status refuses a register owned by another task, naming the owner", foreign.status === 1 && foreign.stderr.includes("belongs to task 'someone-else'")],
+  ];
+  for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
+  return cases.length;
+}
 
 /** The over-arm family: root-level file globs and unrelated name-shapes must NOT read as fence
  *  surface — a walker seeded root-relatively once matched bare entry names against repo globs
@@ -1222,12 +1400,12 @@ function runRetireRefusalCases(fail, { base, at, executing, adversarial }) {
   const cases = [
     ["an intake task retires lawfully", retirementRefusal(base, "superseded by y") === null],
     ["a planned task retires lawfully", retirementRefusal(executing, "superseded by y") === null],
-    ["an executing task refuses retirement — its commits cite it", (retirementRefusal(at(executing, "executing"), "x") ?? "").includes("finish its lifecycle")],
-    ["done refuses retirement (terminal twice over)", (retirementRefusal(at(adversarial, "done"), "x") ?? "").includes("done is terminal")],
-    ["a retired task refuses re-retirement (once-only)", (retirementRefusal({ ...base, events: [...base.events, { type: "retired", because: "first" }] }, "again") ?? "").includes("already retired")],
-    ["retirement without --because refuses", (retirementRefusal(executing, "   ") ?? "").includes("--because")],
-    ["the write seam refuses appends to a retired record", retiredAppendRefusal({ ...base, events: [...base.events, { type: "retired", because: "superseded" }] }) !== null],
-    ["the write seam leaves every non-retired record alone", retiredAppendRefusal(executing) === null && retiredAppendRefusal(at(adversarial, "done")) === null],
+    ["an executing task refuses retirement — its commits cite it", (retirementRefusal(at(executing, "executing"), "x")?.reason ?? "").includes("finish its lifecycle")],
+    ["done refuses retirement (the seam's terminal law, judged first)", (retirementRefusal(at(adversarial, "done"), "x")?.reason ?? "").includes("done is terminal")],
+    ["a retired task refuses re-retirement (once-only, in the seam's terminal words)", (retirementRefusal({ ...base, events: [...base.events, { type: "retired", because: "first" }] }, "again")?.reason ?? "").includes("retired is terminal")],
+    ["retirement without --because refuses", (retirementRefusal(executing, "   ")?.reason ?? "").includes("--because")],
+    ["the write seam refuses appends to a retired record", terminalAppendRefusal({ ...base, events: [...base.events, { type: "retired", because: "superseded" }] }) !== null],
+    ["the write seam leaves an in-flight record alone", terminalAppendRefusal(executing) === null],
   ];
   for (const [n, passes] of cases) if (!passes) fail(`task-state: ${n}`);
   return cases.length;

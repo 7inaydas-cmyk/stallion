@@ -1,0 +1,153 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-state",
+  "title": "2026-09-27 code-review sweep: the state group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:08.693Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "3ff9f70d25b1539d45df73a169fd1e39b6334384be3ef03af67049e53ef17719"
+    },
+    {
+      "at": "2026-09-27T05:54:08.724Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "3ff9f70d25b1539d45df73a169fd1e39b6334384be3ef03af67049e53ef17719",
+      "entry_hash": "fc352594acec814f405d40879568c5283098563b7c0864cb822df94c0dfea120"
+    },
+    {
+      "at": "2026-09-27T05:54:08.757Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-state.mjs",
+        "tools/task-findings.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "fc352594acec814f405d40879568c5283098563b7c0864cb822df94c0dfea120",
+      "entry_hash": "f4fab89a0c5ffff827d4fb820dce196f1bc9ad4d1ef66eea50957681d07ddce9"
+    },
+    {
+      "at": "2026-09-27T05:54:08.793Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "f4fab89a0c5ffff827d4fb820dce196f1bc9ad4d1ef66eea50957681d07ddce9",
+      "entry_hash": "267a18f43d0572186242181b4adbc1a6329445b3c825ab5b601841c74e956d6f"
+    },
+    {
+      "at": "2026-09-27T06:11:48.550Z",
+      "type": "red-check",
+      "expect": "a code task whose only pin was retired refuses done",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 4,
+      "parent_hash": "267a18f43d0572186242181b4adbc1a6329445b3c825ab5b601841c74e956d6f",
+      "entry_hash": "4f176833fd4d255d76e8ca6784baafdb07e007158ecbc0fa269130d1043cdf0e"
+    },
+    {
+      "at": "2026-09-27T06:11:54.697Z",
+      "type": "red-check",
+      "expect": "the write seam refuses appends to a DONE record",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 5,
+      "parent_hash": "4f176833fd4d255d76e8ca6784baafdb07e007158ecbc0fa269130d1043cdf0e",
+      "entry_hash": "07df27bcb76409ec1715e8885b6f7e135661d3b1e81aa63410f2d30a802b41db"
+    },
+    {
+      "at": "2026-09-27T06:12:00.840Z",
+      "type": "red-check",
+      "expect": "remedy carries --expect",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 6,
+      "parent_hash": "07df27bcb76409ec1715e8885b6f7e135661d3b1e81aa63410f2d30a802b41db",
+      "entry_hash": "a6ba364b11d21179411e41771ed0385674670937eccc78b8f699f650dbe714bf"
+    },
+    {
+      "at": "2026-09-27T06:12:06.986Z",
+      "type": "red-check",
+      "expect": "obligations carry the resolve-evidence fact",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 7,
+      "parent_hash": "a6ba364b11d21179411e41771ed0385674670937eccc78b8f699f650dbe714bf",
+      "entry_hash": "a2abb9f8928f47afabca09ddc55a539e62fcaf9edc7b2cce681b2b1d4baad0f1"
+    },
+    {
+      "at": "2026-09-27T06:12:13.132Z",
+      "type": "red-check",
+      "expect": "the vanished-evidence remedy names the dead path",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 8,
+      "parent_hash": "a2abb9f8928f47afabca09ddc55a539e62fcaf9edc7b2cce681b2b1d4baad0f1",
+      "entry_hash": "73323d7a276d8f7638282c880e518015dbb2f737dc876e31640ffcbb544f1c7b"
+    },
+    {
+      "at": "2026-09-27T06:12:19.276Z",
+      "type": "red-check",
+      "expect": "the scope usage example scopes cleanly",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 9,
+      "parent_hash": "73323d7a276d8f7638282c880e518015dbb2f737dc876e31640ffcbb544f1c7b",
+      "entry_hash": "0badb0c6344b8e5161970e01052737af773c1bba98f589104c6a2cb16ea4fccd"
+    },
+    {
+      "at": "2026-09-27T06:12:25.429Z",
+      "type": "red-check",
+      "expect": "globRefusal refuses a wildcard-only first segment",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 10,
+      "parent_hash": "0badb0c6344b8e5161970e01052737af773c1bba98f589104c6a2cb16ea4fccd",
+      "entry_hash": "3ac456386773d4b41eb3350773f5d833dcd78a20715de1d5af80498a51132d88"
+    },
+    {
+      "at": "2026-09-27T06:12:31.578Z",
+      "type": "red-check",
+      "expect": "a fresh tree",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d6d2ba95254e",
+      "seq": 11,
+      "parent_hash": "3ac456386773d4b41eb3350773f5d833dcd78a20715de1d5af80498a51132d88",
+      "entry_hash": "2dca8bc70e179c6d9c5c13622cfb6b9b1a460e1ee8bfc46808c274abf60bd6ce"
+    },
+    {
+      "at": "2026-09-27T06:12:37.728Z",
+      "type": "red-check",
+      "expect": "a lock in a missing directory fails with its real cause",
+      "command": "node tools/task-findings.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9d49181f4c91",
+      "seq": 12,
+      "parent_hash": "2dca8bc70e179c6d9c5c13622cfb6b9b1a460e1ee8bfc46808c274abf60bd6ce",
+      "entry_hash": "3a4728c3d2afcd8b20667db382ee448802ca5c09f20a83e41f73b4a2512fb188"
+    },
+    {
+      "at": "2026-09-27T06:31:55.922Z",
+      "type": "red-check",
+      "expect": "red-check on a DONE record refuses BEFORE its pin command runs",
+      "command": "node tools/task-state.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "129f51c685e2",
+      "seq": 13,
+      "parent_hash": "3a4728c3d2afcd8b20667db382ee448802ca5c09f20a83e41f73b4a2512fb188",
+      "entry_hash": "e218f3898fe5e38059555d1a72c834a90987648182a675a768377d2df023ce08"
+    }
+  ]
+}
