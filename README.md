@@ -48,7 +48,8 @@ from a real trap: jj-native commits bypass git hooks, so a workspace drafts and 
 working copy lands.
 
 `task-gate` refuses at the act, not the transport. Wire it through your agent's PreToolUse
-hooks (docs/WIRING.md §7; the mechanism study is from ECC). The first edit of a file demands
+hooks (docs/WIRING.md §7; `--stdin` reads Claude Code's PreToolUse payload as-is; the mechanism
+study is from ECC). The first edit of a file demands
 facts before it proceeds: importers, affected surface, the user's instruction verbatim.
 Gate-bypassing git commands (`--no-verify`, re-pointed `core.hooksPath`) refuse outright.
 Destructive commands owe a rollback line, asked once per session, then out of the way.
@@ -57,7 +58,8 @@ repetition loops they are meant to stop.
 
 `task-coverage` closes the loop at the push. Any commit in the push range that touches code
 must carry a `task: <id>` footer naming a record the machine authorized. Wire it into your
-pre-push hook and CI; see `docs/WIRING.md`.
+pre-push hook as `--pre-push` (it also refuses a pushed ref outside the checked-out history,
+read from git's own stdin) and into CI; see `docs/WIRING.md`.
 
 Three more fences ship with it. `--staged` refuses a commit that stages code while no task is
 in flight, so the refusal lands at the mistake, not at the push. `--commit-msg` (wired as a
@@ -67,7 +69,8 @@ DECLARED SCOPE. Scope globs are recorded on the task record
 (`task-state scope <id> --add "tools/**"`) and re-judged by the push fence, so a hookless
 clone is still fenced. `--doctor` checks the wiring itself. It fails when the hooks, the CI
 step, the push base, a register, or the enforcement plugin's hook manifest is missing or
-de-fanged, so a clone that quietly lost its fence cannot pretend to have one.
+de-fanged, and it runs gate-registry's liveness law outside the battery it judges, so a clone
+that quietly lost its fence, or a battery that dropped or swallowed a gate, cannot pretend.
 
 Two more things ship in the tree. `tools/zcode-plugin/` is the enforcement plugin for ZCode:
 a PreToolUse authoring gate that denies a code edit unless an in-flight, scoped task covers
