@@ -170,8 +170,9 @@ export function checklistLaneCount(text) {
 export function invokesMode(text, mode) {
   const test = MODE_TESTS.get(mode);
   if (typeof text !== "string" || typeof test !== "function") return false;
-  const live = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith("#"));
-  const errexit = errexitBefore(live);
+  const raw = text.split("\n").filter((l) => l.trim().length > 0 && !l.trim().startsWith("#"));
+  const live = raw.map((l) => l.trim());
+  const errexit = errexitBefore(raw);
   const reachesGit = (inv, i) => mode === "fence" || inv.blocking || i === live.length - 1 || errexit[i];
   return live.some((line, i) => {
     const inv = hookInvocation(line);
@@ -179,16 +180,57 @@ export function invokesMode(text, mode) {
   });
 }
 
-/** Pure: per live hook line, whether `set -e` is in force as it runs. A later `set +e` (or
- *  `set +o errexit`) undoes it — an earlier set -e alone once certified a bare line that ran after
- *  set +e and lost its verdict (a review finding). */
-function errexitBefore(live) {
-  let on = false;
-  return live.map((line) => {
+/** Pure: per live hook line (RAW, indentation kept), whether `set -e` is in force as it runs. Any
+ *  `set` word carrying `+e` (or `+o errexit`) undoes it — turning errexit off is the fail-closed
+ *  direction, so it needs no reading of where a command starts, and one that did missed `if set +e`,
+ *  `! set +e` and `eval set +e` (review findings). `set -e` turns it on only at column 0 on a line
+ *  the shell starts fresh — indented it may sit in a branch or a function that never runs (the
+ *  trimmed read certified `if false; then\n  set -e\nfi`), and inside a quote or after a trailing
+ *  `\` it is data (`echo "\nset -e\n"` certified; review findings). Options end at `--` (`set -- -e`
+ *  sets $1). Stated residual: a heredoc body reads as shell, and an unindented set -e in a dead
+ *  branch counts. gate-registry's errexitAt is a sibling reading, not this one: it has no
+ *  trailing-`\` state. */
+function errexitBefore(raw) {
+  let [on, carried] = [false, null];
+  return raw.map((line) => {
     const before = on;
-    if (/^set\s/.test(line)) on = !/\s\+[a-zA-Z]*e|\s\+o\s+errexit/.test(line) && (on || /\s-[a-zA-Z]*e|\s-o\s+errexit/.test(line));
+    for (const m of line.matchAll(SET_COMMAND)) on = setsErrexit(m, carried) ?? on;
+    carried = carriedState(line, carried);
     return before;
   });
+}
+
+/** A `set` word and its options, anywhere a word can stand. */
+const SET_COMMAND = /(?<![\w./$-])set((?:[ \t]+[^\s;&|]+)*)/g;
+
+/** One `set`'s effect on errexit: false, true, or null (none). `carried` is the line's start state. */
+function setsErrexit(m, carried) {
+  const options = ` ${m[1].split(/[ \t]--(?:[ \t]|$)/)[0]}`;
+  if (/\s\+(?:[A-Za-z]*e|o[ \t]+errexit\b)/.test(options)) return false;
+  return m.index === 0 && carried === null && /\s-(?:[A-Za-z]*e|o[ \t]+errexit\b)/.test(options) ? true : null;
+}
+
+/** Pure: what a hook line hands the next — the quote it leaves open, `\` when it ends in a
+ *  continuation, or null. A `#` starting a word outside quotes ends the line (`# it's` opens
+ *  nothing); `'` quotes to the next `'`, `"` honours backslash escapes (gate-registry's openQuote). */
+function carriedState(line, carried) {
+  let open = carried === "\\" ? null : carried;
+  for (let i = 0; i < line.length && !startsComment(line, i, open); i += 1) {
+    if (line[i] === "\\" && open !== "'") {
+      if (i === line.length - 1) return open ?? "\\";
+      i += 1;
+    } else open = nextQuote(line[i], open);
+  }
+  return open;
+}
+
+/** Does a comment start at `i` — a `#` beginning a word outside quotes? */
+const startsComment = (line, i, open) => open === null && line[i] === "#" && (i === 0 || /\s/.test(line[i - 1]));
+
+/** The quote open after an unescaped character `c`. */
+function nextQuote(c, open) {
+  if (open === null) return "'\"".includes(c) ? c : null;
+  return c === open ? null : open;
 }
 
 /** A harness hook tool's invocation: its arguments (words or quoted strings, `$VAR` included),
@@ -1203,6 +1245,28 @@ function gatesFamilyRefusal() {
   }
 }
 
+/**
+ * The battery's enforcement outside the battery: package.json carries `npm run selftest` yet is
+ * NOT fence surface (it is every vendor's product manifest — a protected task per dependency bump
+ * is out of proportion), so a footerless commit can drop or swallow a declared battery gate. The
+ * doctor runs where the gated party cannot reach (pre-push and CI, both fence surface) and re-runs
+ * the registry's both-direction check there. Returns null, or { evidence, fix }: the registry's own
+ * lines, or — none vendored — one line and the vendoring fix (a loader stack trace under a
+ * package.json fix was that refusal, and nothing pinned it; a review finding).
+ */
+function gateRegistryRefusal() {
+  if (!existsSync(`${ROOT}tools/gate-registry.mjs`)) {
+    return { evidence: "tools/gate-registry.mjs is absent — the battery (package.json) runs unguarded", fix: "vendor tools/gate-registry.mjs and docs/gates/gate-registry.json from stallion (docs/WIRING.md §11), then re-run: node tools/gate-registry.mjs" };
+  }
+  try {
+    execFileSync(process.execPath, ["tools/gate-registry.mjs"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return null;
+  } catch (e) {
+    const lines = `${e.stdout ?? ""}${e.stderr ?? ""}`.split("\n").filter((l) => l.trim().length > 0);
+    return { evidence: lines.length > 0 ? lines.join("\n    ") : String(e.message).split("\n")[0], fix: "bring the transports back to docs/gates/gate-registry.json — restore every declared battery gate to package.json's selftest script as one clean && chain (git log -p -- package.json names the commit that dropped it) — then re-run: node tools/gate-registry.mjs" };
+  }
+}
+
 function cmdDoctor() {
   const results = [];
   const check = (name, ok, fix, evidence = null) => results.push({ name, ok, fix, evidence });
@@ -1317,6 +1381,8 @@ function cmdDoctor() {
   // THE GATES FAMILY (2026-09-20 merge wave) — see gatesFamilyRefusal for the law.
   const gatesConfigRefusal = gatesFamilyRefusal();
   check("every gate config under docs/gates/ parses", gatesConfigRefusal === null, "repair the named config until it parses, or restore it: git checkout HEAD -- docs/gates/<the named file>   (docs/gates/ is fence surface: committing a change needs a protected task's footer)", gatesConfigRefusal);
+  const registryRefusal = gateRegistryRefusal();
+  check("the gate registry holds — every declared gate carried by its transports, the battery (package.json) included", registryRefusal === null, registryRefusal?.fix, registryRefusal?.evidence);
 
   let trackedFiles = [];
   try {
@@ -1784,7 +1850,7 @@ export function selfTest() {
   const transportCount = selfTestTransportCases(fail);
   const shapeCount = selfTestCommitShapeCases(fail);
   const mergeLawCount = selfTestMergeLawCases(fail);
-  const hookLineCount = selfTestHookLineCases(fail);
+  const hookLineCount = selfTestHookLineCases(fail) + selfTestErrexitCases(fail);
 
   const bannerCounts = `${codeCases.length} path + ${footerCases.length} footer + ${authCases.length} authorization + ${stagedCases.length} staged + ${doctorCases.length} doctor + ${baseCases.length} base + ${globCases.length} glob + ${scopeCases.length} scope + ${citationCases.length} citation + ${retireSeamCount + retireShapeCount} retirement + ${anchorCases.length} anchor + ${scanCases.length} scan + ${commitMsgCount} commit-msg + ${remedyCount} remedy + ${pushCount} push + ${flagCount} flag + ${shapeCount} commit-shape + ${mergeLawCount} merge-law + ${hookLineCount} hook-line + ${transportCount} transport cases — all counts derived`;
   console.log(failures.length === 0 ? `task-coverage self-test: OK (${bannerCounts} — group counts derived where arrays are local)` : `task-coverage self-test: FAILED\n  ${failures.join("\n  ")}`);
@@ -1861,6 +1927,31 @@ function selfTestHookLineCases(fail) {
       ['      run: |\n          node tools/task-coverage.mjs --base "$BASE"\n          echo fenced\n', "fence"],
       ['sh -c "node tools/task-coverage.mjs --staged || exit 2"', "staged"],
     ].every(([text, mode]) => invokesMode(text, mode))],
+  ];
+  for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
+  return cases.length;
+}
+
+/** The errexit reading behind a bare hook line: which `set` turns errexit on, and which undoes it. */
+function selfTestErrexitCases(fail) {
+  const cases = [
+    ["a set -e that may never run, or one a later set +e undoes anywhere, certifies nothing — indented in an if-branch or a function body, 'true; set +e', 'then set +o errexit', 'set -- -e', '|| exit 256' under set -e", ![
+      ["#!/bin/sh\nif false; then\n  set -e\nfi\nnode tools/task-coverage.mjs --pre-push\nnode tools/task-coverage.mjs --doctor || exit 1\n", "pre-push"],
+      ["#!/bin/sh\nstrict() {\n\tset -e\n}\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged"],
+      ["#!/bin/sh\nset -e\ntrue; set +e\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged"],
+      ["#!/bin/sh\nset -e\nif true; then set +o errexit; fi\nnode tools/task-coverage.mjs --pre-push\necho pushed\n", "pre-push"],
+      ["#!/bin/sh\nset -- -e\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged"],
+      ["#!/bin/sh\nset -e\nnode tools/task-coverage.mjs --pre-push || exit 256\necho pushed\n", "pre-push"],
+    ].some(([text, mode]) => invokesMode(text, mode)) && invokesMode("#!/bin/sh\nset -eu\n{ set -x; }\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged")],
+    ["a set +e in a condition, a negation, a case arm or behind a prefix word still undoes set -e — 'if', 'elif', 'while', 'until', '!', 'x)', 'command', 'eval', 'FOO=1'", ![
+      "if set +e; then :; fi", "if false; then :; elif set +e; then :; fi", "while set +e; do break; done", "until set +e; do :; done",
+      "! set +e", "case x in x) set +e;; esac", "command set +e", "eval set +e", "FOO=1 set +e",
+    ].some((body) => invokesMode(`#!/bin/sh\nset -e\n${body}\nnode tools/task-coverage.mjs --staged\necho staged\n`, "staged"))],
+    ["a column-0 set -e the shell reads as data turns nothing on — inside a multi-line quote, after a trailing backslash", ![
+      '#!/bin/sh\necho "\nset -e\n"\nnode tools/task-coverage.mjs --staged\necho staged\n',
+      "#!/bin/sh\necho '\nset -e\n'\nnode tools/task-coverage.mjs --staged\necho staged\n",
+      "#!/bin/sh\necho \\\nset -e\nnode tools/task-coverage.mjs --staged\necho staged\n",
+    ].some((text) => invokesMode(text, "staged")) && invokesMode("#!/bin/sh\necho \"a\nb\" # it's closed\nset -e\nnode tools/task-coverage.mjs --staged\necho staged\n", "staged")],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
   return cases.length;
@@ -2196,6 +2287,43 @@ function doctorSeesHookControls(r) {
   return checks.every((name) => stale.includes(`✖ ${name}`) && wired.includes(`✔ ${name}`));
 }
 
+/** The real registry's contract over doctorRunsGateRegistry's one-gate fixture: silent exit 0 while
+ *  the battery chain is clean, its refusal line and exit 1 once an `||` breaks it. */
+const GATE_REGISTRY_DOUBLE = `import { readFileSync } from "node:fs";
+if (JSON.parse(readFileSync("package.json", "utf8")).scripts.selftest.includes("||")) {
+  console.error("gate-registry: gate 'lint' is declared to run in battery (package.json scripts.selftest) but the file does not carry it");
+  process.exit(1);
+}
+`;
+
+/** The doctor re-runs the gate registry: package.json, the battery's transport, is no fence
+ *  surface, so a battery gate swallowed in a footerless commit must refuse where the gated party
+ *  cannot reach — the doctor's pre-push and CI runs — with the registry's own lines as evidence.
+ *  The vendored registry runs live; a harness that vendors none (the bench kit's minimal arm, whose
+ *  battery must be green on day one) gets a double honouring the real CLI's contract here. */
+function doctorRunsGateRegistry(r) {
+  if (!existsSync(`${r.dir}/tools/gate-registry.mjs`)) r.write("tools/gate-registry.mjs", GATE_REGISTRY_DOUBLE);
+  r.write("docs/gates/gate-registry.json", JSON.stringify({ gates: [{ id: "lint", invocation: "node tools/test-lint.mjs tools", transports: ["battery"], why: "x" }] }));
+  for (const hook of ["pre-commit", "commit-msg", "pre-push"]) r.write(`.githooks/${hook}`, "#!/bin/sh\n");
+  const doctor = (selftest) => {
+    r.commit("package.json", JSON.stringify({ scripts: { selftest } }), "chore: battery");
+    return r.run(["--doctor"]).out;
+  };
+  const check = "the gate registry holds — every declared gate carried by its transports, the battery (package.json) included";
+  const kept = doctor("node tools/test-lint.mjs tools");
+  const swallowed = doctor("node tools/test-lint.mjs tools || true");
+  return kept.includes(`✔ ${check}`) && swallowed.includes(`✖ ${check}`) && swallowed.includes("evidence: gate-registry: gate 'lint' is declared to run in battery") && swallowed.includes("fix: bring the transports back to docs/gates/gate-registry.json");
+}
+
+/** A harness that vendors no registry has a battery nothing guards: the doctor refuses in one line
+ *  and names the vendoring fix — never a loader stack trace, never a pass. */
+function doctorRefusesAbsentRegistry(r) {
+  rmSync(`${r.dir}/tools/gate-registry.mjs`, { force: true });
+  r.commit("package.json", JSON.stringify({ scripts: { selftest: "node tools/test-lint.mjs tools" } }), "chore: battery");
+  const out = r.run(["--doctor"]).out;
+  return out.includes("✖ the gate registry holds") && out.includes("evidence: tools/gate-registry.mjs is absent — the battery (package.json) runs unguarded\n") && out.includes("fix: vendor tools/gate-registry.mjs and docs/gates/gate-registry.json") && !out.includes("Cannot find module");
+}
+
 /** The transports end to end, in scratch repos: the pure seams take git's facts as data, so only
  *  here do git's quoting, rename detection, merge state, cleanup, and pre-push stdin reach them. */
 function selfTestTransportCases(fail) {
@@ -2212,6 +2340,8 @@ function selfTestTransportCases(fail) {
     ["commit-msg reads the message git will commit: no editor keeps '#' lines, commit.cleanup=strip drops them", inScratchRepo(noEditorKeepsHashLines)],
     ["the pre-push transport judges git's stdin refs through the real ancestry fact", inScratchRepo(prePushTransport)],
     ["the doctor refuses a bare pre-push and a guardless pre-commit, committed and live, and certifies the wired forms", inScratchRepo(doctorSeesHookControls)],
+    ["the doctor runs the gate registry: a battery gate swallowed in package.json refuses with the registry's lines, the carried battery passes", inScratchRepo(doctorRunsGateRegistry)],
+    ["the doctor refuses an absent gate registry in one line with a vendoring fix", inScratchRepo(doctorRefusesAbsentRegistry)],
   ];
   for (const [name, passes] of cases) if (!passes) fail(`task-coverage: ${name}`);
   return cases.length;

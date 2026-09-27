@@ -365,6 +365,61 @@
       "seq": 33,
       "parent_hash": "0bec7e65686bde1bdb854d7d56bc7ce027ee5c48d2c55f5e729de81887373a6e",
       "entry_hash": "e52483c098823a05b88b00028f918bd8dd96dceef383e68e73c36a0cb63612da"
+    },
+    {
+      "at": "2026-09-27T11:18:42.706Z",
+      "type": "red-check",
+      "expect": "task-coverage: a set -e that may never run, or one a later set \\+e undoes anywhere, certifies nothing",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "edbad1b774dd",
+      "seq": 34,
+      "parent_hash": "e52483c098823a05b88b00028f918bd8dd96dceef383e68e73c36a0cb63612da",
+      "entry_hash": "228d00946895b9fd75d21bdc52e1317472df6f45163d686ae1d7db9e07dacb55"
+    },
+    {
+      "at": "2026-09-27T11:19:24.671Z",
+      "type": "red-check",
+      "expect": "task-coverage: the doctor runs the gate registry: a battery gate swallowed in package\\.json refuses",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "38b8952be4d1",
+      "seq": 35,
+      "parent_hash": "228d00946895b9fd75d21bdc52e1317472df6f45163d686ae1d7db9e07dacb55",
+      "entry_hash": "d8d414e63abff455fae0184c2cb4ee60ac082f5f0fd3f90ed0c4b81033fdd6e4"
+    },
+    {
+      "at": "2026-09-27T11:32:47.271Z",
+      "type": "red-check",
+      "expect": "task-coverage: a set \\+e in a condition, a negation, a case arm or behind a prefix word still undoes set -e",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6fb32149ba61",
+      "seq": 36,
+      "parent_hash": "d8d414e63abff455fae0184c2cb4ee60ac082f5f0fd3f90ed0c4b81033fdd6e4",
+      "entry_hash": "576b2cc4ffa746627686451c1af726674bedd0dc86cbb7f20e30657695a04efe"
+    },
+    {
+      "at": "2026-09-27T11:32:50.395Z",
+      "type": "red-check",
+      "expect": "task-coverage: a column-0 set -e the shell reads as data turns nothing on",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6fb32149ba61",
+      "seq": 37,
+      "parent_hash": "576b2cc4ffa746627686451c1af726674bedd0dc86cbb7f20e30657695a04efe",
+      "entry_hash": "dd41a16cc39c653f77afda57b1e3ac2d18502fce42239b31c1e19914b8577102"
+    },
+    {
+      "at": "2026-09-27T11:32:53.521Z",
+      "type": "red-check",
+      "expect": "task-coverage: the doctor refuses an absent gate registry in one line with a vendoring fix",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6fb32149ba61",
+      "seq": 38,
+      "parent_hash": "dd41a16cc39c653f77afda57b1e3ac2d18502fce42239b31c1e19914b8577102",
+      "entry_hash": "b9e75c9c8b102a3aa8869abe916fb429876e62b95b830aa3b35874b7c2474b01"
     }
   ]
 }
