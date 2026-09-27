@@ -1,0 +1,143 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "vanished-file-enumeration",
+  "passStartedAt": "2026-09-27T18:42:13.436Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "complexity-gate's comment said a skipped path is named 'so an accidental rm is not \"fixed\" with --update-baseline', but nothing enforced it. For an unstaged rm of a baselined file the stale-row refusal printed --update-baseline as the fix, and following it exited 0 and dropped the ceilings of a file HEAD and the index still track, so the committed tip goes red on a clean checkout. The pin vanished-source-silent checked only that the note printed. Independently rediscovered by lanes 3, 5, 6 and 7 (lane 7: the pin tests a smaller claim than the comment makes).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.001Z",
+      "proof": "Scratch clone at 4cd41db: rm tools/task-gate.mjs (unstaged); the gate prints the skip note and 'still exempts tools/task-gate.mjs classifiedText (30) ... fix: node tools/complexity-gate.mjs --update-baseline'; --update-baseline exits 0; the gate then exits 0; commit the baseline; git checkout -- tools/task-gate.mjs; the gate reports 'FAILED (4)', exit 1.",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:171 (the claim), :439 (the stale-row fix names --update-baseline), :784-793 (--update-baseline writes whatever was skipped), :630 (the pin checks only the note) at 4cd41db",
+      "resolvedAt": "2026-09-27T19:14:34.512Z"
+    },
+    {
+      "id": "f2",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The repair turns a red HEAD into a green gate: a committed file that violates test-lint or complexity-gate is hidden by deleting it from disk without staging the deletion. The skip rests on 'content equals HEAD, judged when it landed', which the repo does not guarantee (WIRING: no local hook runs the battery). Before the fix this state crashed on ENOENT (exit 1); after it both tools exit 0, advance verified keeps no stderr of a green run, and only CI on the pushed tip catches it. No pin covers a skip that hides a HEAD-red file.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T19:14:20.038Z",
+      "evidence": "tools/test-lint.mjs:75 and tools/complexity-gate.mjs:193 ('judged when it landed'); docs/WIRING.md:422-427; tools/task-state.mjs:415 at 4cd41db. Scratch clone: committed tools/zz-bad.mjs (10 branches) gives exit 1 while present, exit 0 after an unstaged rm, ENOENT exit 1 on 4802b45",
+      "dedupKey": "tools/test-lint.mjs:75 and tools/complexity-gate.mjs:193 ('judged when it landed'); docs/wiring.md:422-427; tools/task-state.mjs:415 at 4cd41db. scratch clone: committed tools/zz-bad.mjs (10 branches) gives exit 1 while present, exit 0 after an unstaged rm, enoent exit 1 on 4802b45",
+      "justification": "Not restored to fail-closed, on measurement. (1) The class predates this change and is wider than this spelling: a committed violation is already hidden from these working-tree tools by editing its disk copy without staging. At 4802b45, before this task, a committed 10-branch tools/zz-bad.mjs rewritten clean on disk gives 'complexity-gate: OK ... nothing new born convoluted'. The ENOENT crash closed only the deletion spelling, by accident, and at the cost this task exists to remove: every legitimate uncommitted git rm or git mv read INCONCLUSIVE in guard-reach and blocked advance verified. (2) Judging the index blob instead is the design's rejected alternative: under guard-reach's HEAD-index baseline it re-scans a git rm'd file whose baseline rows the author removed and reports it born convoluted. (3) The premise is no longer claimed: 0716358 removes 'judged when it landed' from both docstrings, and WIRING now states that neither tool re-reads what a commit carries but the disk does not show (HEAD's content for a skipped path, a committed file edited without staging, staged-then-edited content) and that only a clean-clone run (CI on the pushed tip) judges it. Closing the class means judging the index or HEAD tree instead of the working tree in both tools, which is a separate design decision and not this repair.",
+      "resolvedAt": "2026-09-27T19:14:34.759Z"
+    },
+    {
+      "id": "f3",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "listedOnDisk sorted a path into `skipped` on a weaker test than its message and WIRING stated: it checks only absence from `git diff --cached`, never that HEAD holds the path or that it is tracked, yet printed 'tracked path(s) missing from disk (content equals HEAD)'. An untracked dangling symlink (complexity-gate lists --others) and a deleted intent-to-add entry (git add -N; HEAD lacks it) both got that false label; the self-test doubles covered only a committed-then-deleted regular file. Independently rediscovered by lane 5 (the intent-to-add case).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.076Z",
+      "evidence": [
+        "tools/test-lint.mjs",
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:179,186,207 and tools/test-lint.mjs:89,105; docs/wiring.md:425 at 4cd41db. `ln -s nowhere.mjs tools/untracked-link.mjs && node tools/complexity-gate.mjs` printed 'skipped 1 tracked path(s) missing from disk (content equals head): tools/untracked-link.mjs'",
+      "resolvedAt": "2026-09-27T19:14:34.546Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The refusal law was kept in two byte-identical copies (listedOnDisk, stagedMissingRefusal, plus a third shq) 'on purpose: each guard stays standalone for vendoring', a reason the repo contradicts: complexity-gate already imports ./pathspec.mjs, test-lint is imported by doc-reconcile, guard-reach, task-coverage and zz-head-glue-probe, and doc-reconcile records that a duplicated law between these guards once drifted and was fixed by importing from test-lint. No control kept the copies in step.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.114Z",
+      "evidence": [
+        "tools/test-lint.mjs",
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:78 and tools/complexity-gate.mjs:195 ('duplicated ... on purpose'); tools/complexity-gate.mjs:81 imports ./pathspec.mjs; tools/doc-reconcile.mjs:142-144 (the one law note) at 4cd41db",
+      "resolvedAt": "2026-09-27T19:14:34.582Z"
+    },
+    {
+      "id": "f5",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "docs/WIRING.md gave doc-reconcile's vanished-file refusal as 'a second reason it stays under notRegistered', but the machine-read registry (docs/gates/guard-reach.json notRegistered) records only the edit-probe reason, so a later registration decided from the registry would not see it. Independently rediscovered by lane 8.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T19:14:20.153Z",
+      "evidence": "docs/WIRING.md:365-367 at 4cd41db; docs/gates/guard-reach.json:149-150 (doc-reconcile's notRegistered reason is the edit-probe reason only)",
+      "dedupKey": "docs/wiring.md:365-367 at 4cd41db; docs/gates/guard-reach.json:149-150 (doc-reconcile's notregistered reason is the edit-probe reason only)",
+      "justification": "Fence surface. docs/gates/guard-reach.json is under FENCE_SURFACE (tools/task-state.mjs), so recording the reason there would make this runtime-code task protected-tier and need an owner approval; the approved design answered its open question 4 with 'not in guard-reach.json in this task'. The gap cannot become an escape: if doc-reconcile were ever registered alongside a repo-count claim, its refusal on a vanished tracked file makes guard-reach's own baseline run report INCONCLUSIVE, which blocks instead of passing. 0716358 rewrites the WIRING paragraph to say the caveat lives only there, that the registry records the edit-probe reason alone, and that amending it is fence surface, so no reader is told the registry carries it. A guard-reach.json edit can follow under a protected task if the owner wants it.",
+      "resolvedAt": "2026-09-27T19:14:34.794Z"
+    },
+    {
+      "id": "f6",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "WIRING said without condition that doc-reconcile 'refuses a vanished tracked file on purpose (readCorpus)', but in this repo that refusal cannot happen: loadGate returns corpus null before readCorpus whenever no claim carries repo-count evidence, and docs/gates/doc-claims.json carries none.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.189Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/wiring.md:365-367 at 4cd41db; tools/doc-reconcile.mjs:902 (`if (!registry.claims.some(... e.kind === \"repo-count\")) return { ...registry, corpus: null };`); grep -c '\"repo-count\"' docs/gates/doc-claims.json gives 0",
+      "resolvedAt": "2026-09-27T19:14:34.618Z"
+    },
+    {
+      "id": "f7",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "The commit subject promises to 'refuse staged content the disk lacks', but only staged-then-DELETED refuses. Staged-then-EDITED has the same outcome (the index holds content the disk does not, and the commit carries it unread) and still exits 0, because listedOnDisk consults `git diff --cached` only for paths missing from disk; the same commit writes that case into WIRING and test-lint's header as a boundary. Pre-existing. Independently rediscovered by lane 8.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T19:14:20.224Z",
+      "evidence": "tools/test-lint.mjs:38, :80-92 and tools/complexity-gate.mjs:198-210; docs/WIRING.md:424-427 at 4cd41db. Scratch: stage `expect(true).toBe(true);` in t.test.mjs, rewrite the disk copy to `expect(a).toBe(b);`, `node tools/test-lint.mjs` exits 0, and the commit carries the tautology",
+      "dedupKey": "tools/test-lint.mjs:38, :80-92 and tools/complexity-gate.mjs:198-210; docs/wiring.md:424-427 at 4cd41db. scratch: stage `expect(true).tobe(true);` in t.test.mjs, rewrite the disk copy to `expect(a).tobe(b);`, `node tools/test-lint.mjs` exits 0, and the commit carries the tautology",
+      "justification": "A boundary that predates this change, kept on purpose and now stated precisely. Refusing whenever a present file's index blob differs from both HEAD and the disk would refuse every partial-staging state (git add -p), which is exactly the state a vendor's pre-commit hook runs these tools in. Reading the index blob for present files would, in complexity-gate, judge index text against a working-tree baseline and bring back the false red the ponytail note records. Both tools judge the working tree, and 0716358 states in WIRING and in test-lint's header that staged content under a file since edited is not re-read and that only a clean-clone run judges it. The 4cd41db subject line is recorded history and is not rewritten; the accurate scope (a missing path with a staged change refuses) is what the code, the header and WIRING now say.",
+      "resolvedAt": "2026-09-27T19:14:34.827Z"
+    },
+    {
+      "id": "f8",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "When test-lint's staged-missing refusal fired, stdout still ended with 'test-lint — no bug-pinned tests.': discovered() only set process.exitCode and main printed its unconditional success summary, so the exit was 1 while the last summary line said the lint found nothing.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.264Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:101-107, :510-515, :537-538 at 4cd41db. scratch: git add new.test.mjs; rm new.test.mjs; node tools/test-lint.mjs: last stdout line 'test-lint — no bug-pinned tests.', exit 1",
+      "resolvedAt": "2026-09-27T19:14:34.651Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "`--relative` on the `git diff --cached` call is load-bearing and was unpinned: run from a subdirectory without it, the staged set holds root-relative names while ls-files gives cwd-relative ones, so staged-then-deleted content is skipped (exit 0) instead of refused. Deleting `--relative` from either tool left both self-tests green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.302Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:88 and tools/complexity-gate.mjs:206 at 4cd41db. mutant without --relative: both --self-test exit 0; from sub/ with sub/new.test.mjs staged then deleted the shipped code refuses and the mutant skips with exit 0",
+      "resolvedAt": "2026-09-27T19:14:34.689Z"
+    },
+    {
+      "id": "f10",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The fix and its test-lint pins target discovery mode, but this repo's battery runs test-lint in explicit mode (`node tools/test-lint.mjs tools`, a disk walk) that never consults the index or refuses staged-then-deleted content, while WIRING stated without qualification that test-lint refuses a path 'whose index content differs from HEAD (staged, then deleted)'.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T19:14:20.340Z",
+      "evidence": [
+        "docs/WIRING.md",
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "docs/wiring.md:424-427 and package.json selftest ('node tools/test-lint.mjs tools') at 4cd41db. scratch: tools/new.mjs holding `expect(x).tobe(x);` staged then rm'd; `node tools/test-lint.mjs tools` prints '1 test file(s), 0 blocking', exit 0",
+      "resolvedAt": "2026-09-27T19:14:34.723Z"
+    }
+  ],
+  "sweptBase": "4802b457479f57820fcacfafeb33be25f13ff3e7",
+  "sweptHead": "4cd41db80326c93c3e3c81db4cf007c847065962",
+  "sweptDiffDigest": "5ba549db9cc7"
+}
