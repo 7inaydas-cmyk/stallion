@@ -54,7 +54,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -79,6 +79,7 @@ try {
   process.exit(1);
 }
 import { matches } from "./pathspec.mjs";
+import { listedOnDisk, skippedNote, stagedMissingRefusal } from "./test-lint.mjs";
 
 /**
  * The missing-compiler fix names EVERY gate file that registers this tool — a partial list left
@@ -166,53 +167,44 @@ function die(message) {
  * `-z`, split on NUL: without it git C-quotes a non-ASCII path and the quoted name matches no glob.
  *
  * The LIST is the index and the scan reads the WORKING TREE, so this one site guards both readers
- * (scan and testMentions). A listed path missing from disk whose content equals HEAD (an unstaged
- * rm, or any `git rm`/`git mv` under guard-reach's HEAD-index baseline) is skipped and NAMED via
- * `note` — named, so an accidental rm is not "fixed" with --update-baseline. One missing while the
- * index holds content HEAD does not (staged, then deleted) refuses: the next commit carries it and
- * nothing here can read it. Exported for the self-test's child probe, since the refusal exits.
+ * (scan and testMentions), splitting the list with test-lint's listedOnDisk — one law. A listed
+ * path with no regular file on disk and no staged change (an unstaged rm, or any `git rm`/`git mv`
+ * under guard-reach's HEAD-index baseline) is skipped, NAMED via `note`, and pushed onto `skipped`
+ * so scan can carry its baseline rows (carriedRows). One with a staged change (staged, then
+ * deleted) refuses: the next commit carries it and nothing here can read it. Exported for the
+ * self-test's child probe, since the refusal exits.
  * ponytail: working tree only — reading the index blob (`git show :path`) was rejected: under the
  * HEAD index it re-scans a `git rm`'d file whose baseline rows the author removed and reports it
- * born convoluted, the same false red again.
+ * born convoluted, the same false red again. So a skipped path's content is NOT re-judged here,
+ * the same boundary as a committed file edited on disk; a clean-clone run judges it.
  */
-export function trackedFiles(globs, excludes, cwd = ROOT, env = process.env, note = console.error) {
+export function trackedFiles(globs, excludes, cwd = ROOT, env = process.env, note = console.error, skipped = []) {
   const listed = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd, env })
     .split("\0")
     .filter(Boolean)
     .filter((f) => globs.some((g) => matches(f, g)) && !excludes.some((g) => matches(f, g)));
-  const { present, stagedMissing, skipped } = listedOnDisk(cwd, env, listed);
-  for (const p of stagedMissing) console.error(`complexity-gate: ${stagedMissingRefusal(p)}`);
-  if (stagedMissing.length > 0) process.exit(1);
-  if (skipped.length > 0) note(`complexity-gate: skipped ${skipped.length} tracked path(s) missing from disk (content equals HEAD): ${skipped.map(shq).join(" ")}`);
-  return present;
+  const split = listedOnDisk(cwd, env, listed);
+  for (const p of split.stagedMissing) console.error(`complexity-gate: ${stagedMissingRefusal(p)}`);
+  if (split.stagedMissing.length > 0) process.exit(1);
+  if (split.skipped.length > 0) note(`complexity-gate: ${skippedNote(split.skipped)}`);
+  skipped.push(...split.skipped);
+  return split.present;
 }
 
 /**
- * Index-listed paths, split by what the disk holds: `present` is read; `stagedMissing` is missing
- * from disk while its index entry differs from HEAD — refused; `skipped` is missing with content
- * equal to HEAD, judged when it landed. Under guard-reach's HEAD-index copy `diff --cached` is
- * empty, so a correct `git rm`/`git mv` is skipped rather than refused. `--relative` keeps diff's
- * names in ls-files' cwd-relative form. Duplicated in test-lint on purpose: each guard stays
- * standalone for vendoring.
+ * A skipped path carries no staged change, so the next commit leaves it exactly as HEAD holds it:
+ * its baseline rows stand in for the scan the disk cannot give, unchanged — never reported stale,
+ * never dropped by --update-baseline. (That once printed --update-baseline as the fix for an
+ * accidental rm, and following it dropped the ceilings of a file HEAD still tracks.) The baseline
+ * is read only when something was skipped. An unreadable one refuses with the restore alone:
+ * RESTORE_BASELINE's re-record route would die here again, since it cannot carry what it cannot read.
  */
-function listedOnDisk(cwd, env, files) {
-  const split = { present: [], stagedMissing: [], skipped: [] };
-  let staged = null;
-  for (const f of files) {
-    if (statSync(join(cwd, f), { throwIfNoEntry: false })?.isFile()) {
-      split.present.push(f);
-      continue;
-    }
-    staged ??= new Set(execFileSync("git", ["diff", "--cached", "--name-only", "-z", "--relative"], { cwd, env, encoding: "utf8" }).split("\0"));
-    (staged.has(f) ? split.stagedMissing : split.skipped).push(f);
-  }
-  return split;
+function carriedRows(skipped) {
+  if (skipped.length === 0) return [];
+  const loaded = loadBaseline();
+  if (!loaded.ok) die(`${loaded.reason.split("\n")[0]} — and it holds the ceilings of ${skipped.length} skipped path(s)\n  fix: git checkout -- ${BASELINE_PATH} (or resolve its merge conflict)`);
+  return loaded.baseline.functions.filter((row) => skipped.includes(row.file)).map((row) => ({ ...row, line: "(not on disk)" }));
 }
-
-const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
-
-const stagedMissingRefusal = (p) =>
-  `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion (git rm -- ${shq(p)})`;
 
 const FUNCTION_KINDS = new Set([
   ts.SyntaxKind.FunctionDeclaration,
@@ -310,14 +302,16 @@ export function analyse(file, text) {
   return found;
 }
 
-/** Every function in the tracked corpus at or over the threshold. */
+/** Every function in the tracked corpus at or over the threshold, plus the carried rows of skipped paths. */
 export function scan(config = orDie(loadConfig(), "config")) {
   const over = [];
-  for (const file of trackedFiles(config.includes, config.excludes)) {
+  const skipped = [];
+  for (const file of trackedFiles(config.includes, config.excludes, ROOT, process.env, console.error, skipped)) {
     for (const fn of analyse(file, readFileSync(`${ROOT}${file}`, "utf8"))) {
       if (fn.complexity > config.threshold) over.push(fn);
     }
   }
+  over.push(...carriedRows(skipped));
   return over.sort((a, b) => b.complexity - a.complexity || a.file.localeCompare(b.file) || a.name.localeCompare(b.name));
 }
 
@@ -622,12 +616,16 @@ function selfTestTrackedNames(fail) {
     git("add", "tools/kept.mjs", "tools/gone.mjs");
     git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "tools", "gone.mjs"));
+    symlinkSync("nowhere.mjs", join(dir, "tools", "link.mjs"));
     const notes = [];
     const seen = trackedFiles(["tools/**/*.mjs"], [], dir, env, (line) => notes.push(line));
     if (!seen.includes("tools/café.mjs")) fail(`quoted-path-invisible: a non-ASCII source path never reaches the scan (saw: ${seen.join(", ")})`);
     if (!seen.includes("tools/kept.mjs")) fail(`present-source-dropped: a tracked source present on disk never reaches the scan (saw: ${seen.join(", ")})`);
     if (seen.includes("tools/gone.mjs")) fail(`vanished-source-read: a tracked source missing from disk is still handed to the reader (saw: ${seen.join(", ")})`);
-    if (!notes.join("\n").includes("tools/gone.mjs")) fail(`vanished-source-silent: a skipped tracked source is not named, so an accidental rm reads as a stale baseline to refresh (notes: ${notes.join(" | ")})`);
+    if (!notes.join("\n").includes("tools/gone.mjs")) fail(`vanished-source-silent: a skipped tracked source is not named, so an accidental rm goes unseen (notes: ${notes.join(" | ")})`);
+    // An untracked dangling link (listed through --others) was named a "tracked path ... (content
+    // equals HEAD)": the note must say what was checked — no regular file, no staged change.
+    if (!/no regular file on disk and no staged change: .*tools\/link\.mjs/.test(notes.join("\n"))) fail(`skip-label-false: a skipped path is named as something the check never proved (notes: ${notes.join(" | ")})`);
     selfTestStagedMissing(fail, dir, env, git);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -687,18 +685,61 @@ console.log(JSON.stringify({ raised, born, stale, optOut: gate.noCompilerFix() }
 const runModule = (source) => spawnSync(process.execPath, ["--input-type=module", "-e", source], { encoding: "utf8" });
 
 /**
- * A scratch host with this gate and pathspec.mjs copied into `vendor/`, typescript linked beside
- * them, a host gate file registering the copy and a merge-conflicted baseline. Returns the copy's URL.
+ * A scratch host (hostCopy) with a host gate file registering the copy and a merge-conflicted
+ * baseline. Returns the copy's URL.
  */
 function vendoredHost(dir) {
-  for (const sub of ["vendor", "node_modules", "docs/gates"]) mkdirSync(join(dir, sub), { recursive: true });
-  const copy = join(dir, "vendor", "complexity-gate.mjs");
-  copyFileSync(fileURLToPath(import.meta.url), copy);
-  copyFileSync(fileURLToPath(new URL("./pathspec.mjs", import.meta.url)), join(dir, "vendor", "pathspec.mjs"));
-  symlinkSync(dirname(createRequire(import.meta.url).resolve("typescript/package.json")), join(dir, "node_modules", "typescript"), "junction");
+  const copy = hostCopy(dir);
   writeFileSync(join(dir, "docs", "gates", "gate-registry.json"), '{"gates": [{"invocation": "node vendor/complexity-gate.mjs"}]}');
   writeFileSync(join(dir, BASELINE_PATH), "<<<<<<< HEAD\n{");
   return pathToFileURL(copy).href;
+}
+
+/** This gate and every module it imports copied into `dir/vendor/`, typescript linked beside them. Returns the copy's path. */
+function hostCopy(dir) {
+  for (const sub of ["vendor", "node_modules", "docs/gates"]) mkdirSync(join(dir, sub), { recursive: true });
+  const copy = join(dir, "vendor", "complexity-gate.mjs");
+  copyFileSync(fileURLToPath(import.meta.url), copy);
+  for (const dep of ["pathspec.mjs", "test-lint.mjs"]) copyFileSync(fileURLToPath(new URL(`./${dep}`, import.meta.url)), join(dir, "vendor", dep));
+  symlinkSync(dirname(createRequire(import.meta.url).resolve("typescript/package.json")), join(dir, "node_modules", "typescript"), "junction");
+  return copy;
+}
+
+/**
+ * A skipped path (no regular file on disk, no staged change) is committed exactly as HEAD holds
+ * it, so its baseline rows must STAND. An unstaged rm of a baselined source read as stale rows
+ * whose printed fix, --update-baseline, then dropped the ceilings of a file HEAD still tracks: a
+ * baseline commit that goes red on the next clean checkout. Driven for real in a scratch host: a
+ * baselined source committed, removed from disk only, then the gate and the re-record run on it.
+ */
+function selfTestCarriedRows(fail) {
+  const dir = mkdtempSync(join(tmpdir(), "complexity-gate-carry-"));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+  const git = (...args) => execFileSync("git", ["-c", "user.name=selftest", "-c", "user.email=selftest@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, env, stdio: "ignore" });
+  try {
+    const gate = hostCopy(dir);
+    mkdirSync(join(dir, "tools"));
+    writeFileSync(join(dir, CONFIG_PATH), JSON.stringify({ threshold: 8, includes: ["tools/**/*.mjs"], excludes: ["**/node_modules/**"], testGlobs: [] }));
+    writeFileSync(join(dir, BASELINE_PATH), JSON.stringify({ threshold: 8, functions: [{ file: "tools/big.mjs", name: "big", complexity: 9 }] }));
+    writeFileSync(join(dir, "tools", "big.mjs"), `export function big(a) {\n${Array.from({ length: 8 }, (_, n) => `  if (a === ${n}) return ${n};\n`).join("")}  return -1;\n}\n`);
+    git("init", "-q");
+    git("add", "tools/big.mjs");
+    git("commit", "-q", "-m", "seed");
+    rmSync(join(dir, "tools", "big.mjs"));
+    const run = (...args) => spawnSync(process.execPath, [gate, ...args], { cwd: dir, env, encoding: "utf8" });
+    const judged = run();
+    if (judged.status !== 0) fail(`carried-rows-dropped: an unstaged rm of a baselined source reads as stale rows (exit ${judged.status}: ${judged.stderr.trim()})`);
+    // The re-record must RUN: a crashed one leaves the old file standing and would read as carried.
+    const updated = run("--update-baseline");
+    const rows = JSON.parse(readFileSync(join(dir, BASELINE_PATH), "utf8")).functions;
+    if (updated.status !== 0 || !rows.some((row) => row.file === "tools/big.mjs" && row.complexity === 9)) fail(`carried-rows-dropped: --update-baseline dropped the ceiling of a source HEAD still tracks (exit ${updated.status}, rows: ${JSON.stringify(rows)})`);
+    // A conflicted baseline holds those ceilings too: the refusal must not send the re-record back into itself.
+    writeFileSync(join(dir, BASELINE_PATH), "<<<<<<< HEAD\n{");
+    const conflicted = run("--update-baseline");
+    if (conflicted.status !== 1 || conflicted.stderr.includes("--update-baseline") || !conflicted.stderr.includes(`git checkout -- ${BASELINE_PATH}`)) fail(`carried-rows-circular-fix: an unreadable baseline under a skipped path must refuse with the restore alone (exit ${conflicted.status}: ${conflicted.stderr.trim()})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -742,6 +783,7 @@ export function selfTest() {
   selfTestRemedies(fail);
   selfTestOptOut(fail);
   selfTestTrackedNames(fail);
+  selfTestCarriedRows(fail);
   selfTestSelfAlarm(fail);
   selfTestVendoredSelf(fail);
 

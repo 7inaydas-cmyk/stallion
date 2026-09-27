@@ -33,10 +33,12 @@
  *
  * PORT NOTES. Discovery here is shape-based, not path-based: no hardcoded package roots. With no
  * arguments the tool discovers `*.test.*` / `*.spec.*` files via `git ls-files` (the INDEX); a
- * listed path missing from disk is skipped and named when its content equals HEAD, and refused when
- * the index holds content HEAD does not (staged, then deleted). The lint judges the working tree:
- * staged content that differs from a file still on disk (staged, then edited) is outside its view.
- * Explicit paths are linted as given, because in this repo the tests are embedded self-tests inside
+ * listed path with no regular file on disk is refused when it carries a staged change (staged, then
+ * deleted) and otherwise skipped and named (see listedOnDisk). The lint judges the WORKING TREE:
+ * what a commit carries but the disk does not show — HEAD's content for a skipped path, a committed
+ * file edited on disk without staging, staged content under a file since edited — is not re-read
+ * here; only a clean-clone run judges it. Explicit paths walk the disk and never consult the index
+ * (this repo's battery runs `test-lint tools`). Explicit paths are linted as given, because in this repo the tests are embedded self-tests inside
  * plain `.mjs` tools rather than separately named test files. If this gate joins the selftest
  * battery, its `--self-test` must run before it is trusted to block anything, and a defective
  * version is validated by running it directly — the file on disk is what executes, so a corrected
@@ -50,7 +52,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,14 +72,16 @@ function discoverTestFiles(cwd = process.cwd(), env = process.env) {
 }
 
 /**
- * Index-listed paths, split by what the disk holds: `present` is read; `stagedMissing` is missing
- * from disk while its index entry differs from HEAD, so the next commit carries content this tool
- * cannot read — refused; `skipped` is missing with content equal to HEAD, judged when it landed.
- * Under guard-reach's HEAD-index copy `diff --cached` is empty, so a correct `git rm`/`git mv` is
- * skipped rather than refused. `--relative` keeps diff's names in ls-files' cwd-relative form.
- * Duplicated in complexity-gate on purpose: each guard stays standalone for vendoring.
+ * Listed paths, split by what the disk holds: `present` is a regular file and is read.
+ * `stagedMissing` has no regular file while `git diff --cached` names it — the next commit carries
+ * index content this tool cannot read — refused. `skipped` is everything else with no regular file:
+ * no staged change, so the commit leaves it as HEAD holds it (an unstaged rm), or carries nothing (an
+ * intent-to-add entry; an untracked dangling link). Its content is NOT re-judged here — the same
+ * boundary as a committed file edited on disk. Under guard-reach's HEAD-index copy `diff --cached`
+ * is empty, so a correct `git rm`/`git mv` is skipped rather than refused. `--relative` keeps diff's
+ * names in ls-files' cwd-relative form. complexity-gate imports this: one law, one copy.
  */
-function listedOnDisk(cwd, env, files) {
+export function listedOnDisk(cwd, env, files) {
   const split = { present: [], stagedMissing: [], skipped: [] };
   let staged = null;
   for (const f of files) {
@@ -93,8 +97,11 @@ function listedOnDisk(cwd, env, files) {
 
 const shq = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
 
-const stagedMissingRefusal = (p) =>
+export const stagedMissingRefusal = (p) =>
   `${p} is staged but missing from disk — its index content cannot be judged\n  fix: restore it (git checkout -- ${shq(p)}) or stage the deletion (git rm -- ${shq(p)})`;
+
+/** The skip note: what listedOnDisk checked, and no more. */
+export const skippedNote = (skipped) => `skipped ${skipped.length} listed path(s) with no regular file on disk and no staged change: ${skipped.map(shq).join(" ")}`;
 
 /** Discovery as main uses it: staged-but-missing content refuses (exit 1, the rest still linted, as
  *  for a missing positional path); skipped paths are NAMED, so an accidental rm is seen. */
@@ -102,7 +109,7 @@ function discovered() {
   const { present, stagedMissing, skipped } = discoverTestFiles();
   for (const p of stagedMissing) console.error(`test-lint: ${stagedMissingRefusal(p)}`);
   if (stagedMissing.length > 0) process.exitCode = 1;
-  if (skipped.length > 0) console.error(`test-lint: skipped ${skipped.length} tracked path(s) missing from disk (content equals HEAD): ${skipped.map(shq).join(" ")}`);
+  if (skipped.length > 0) console.error(`test-lint: ${skippedNote(skipped)}`);
   return present;
 }
 
@@ -326,15 +333,16 @@ const scratchGit = (dir, env) => (...args) =>
 /** This lint in discovery mode, run as a child in `dir`: its exit status and both streams. */
 function lintIn(dir, env) {
   const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { cwd: dir, env, encoding: "utf8" });
-  return { status: run.status, out: `${run.stdout}\n${run.stderr}` };
+  return { status: run.status, stdout: run.stdout, out: `${run.stdout}\n${run.stderr}` };
 }
 
 /** The index is the LIST and the disk is the TEXT. A committed test file deleted but not staged is
  *  in one and not the other: it was handed to readFileSync and the lint died on ENOENT — and under
- *  guard-reach's HEAD-index baseline every correct `git rm` / `git mv` did the same. Its content
- *  equals HEAD, so it is skipped and NAMED; a violation beside it must still be caught. Content
- *  staged and then deleted exists only in the index, so skipping it would pass a commit carrying
- *  it: that one refuses with the two remedies. Driven for real, in a scratch repo. */
+ *  guard-reach's HEAD-index baseline every correct `git rm` / `git mv` did the same. It carries no
+ *  staged change, so it is skipped and NAMED; a violation beside it must still be caught. The name
+ *  says what the check proved and nothing more: an intent-to-add entry (`git add -N`, then rm) also
+ *  has no staged change, yet HEAD never held it — "content equals HEAD" was a false statement.
+ *  Driven for real, in a scratch repo. */
 function vanishedTestCases(t) {
   const dir = mkdtempSync(join(tmpdir(), "test-lint-gone-"));
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
@@ -346,23 +354,45 @@ function vanishedTestCases(t) {
     git("add", "kept.test.mjs", "gone.test.mjs");
     git("commit", "-q", "-m", "seed");
     rmSync(join(dir, "gone.test.mjs"));
+    writeFileSync(join(dir, "ita.test.mjs"), "x\n");
+    git("add", "-N", "ita.test.mjs");
+    rmSync(join(dir, "ita.test.mjs"));
     const gone = lintIn(dir, env);
     t(
       "vanished-test-file-read: a tracked test file missing from disk is not handed to the reader",
-      gone.status === 1 && gone.out.includes("kept.test.mjs:1 TAUTOLOGY") && gone.out.includes("skipped 1 tracked path(s) missing from disk (content equals HEAD): gone.test.mjs") && !gone.out.includes("ENOENT"),
+      gone.status === 1 && gone.out.includes("kept.test.mjs:1 TAUTOLOGY") && gone.out.includes("gone.test.mjs") && !gone.out.includes("ENOENT"),
     );
-    writeFileSync(join(dir, "kept.test.mjs"), "expect(a).toBe(b);\n");
-    writeFileSync(join(dir, "new.test.mjs"), "x\n");
-    git("add", "new.test.mjs");
-    rmSync(join(dir, "new.test.mjs"));
-    const staged = lintIn(dir, env);
     t(
-      "staged-missing-test-unjudged: a staged test file missing from disk refuses with its remedy",
-      staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git checkout -- new.test.mjs) or stage the deletion (git rm -- new.test.mjs)"),
+      "skip-label-false: a skipped path is named for what was checked (no regular file on disk, no staged change), never as content equal to HEAD",
+      gone.out.includes("test-lint: skipped 2 listed path(s) with no regular file on disk and no staged change: gone.test.mjs ita.test.mjs"),
     );
+    stagedMissingCases(t, dir, env, git);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** Content staged and then deleted exists only in the index, so skipping it would pass the commit
+ *  that carries it: it refuses with the two remedies, and the run must not END on the clean verdict
+ *  (the refusal once scrolled past on stderr above a closing "no bug-pinned tests"). Run from a
+ *  subdirectory too: ls-files names paths from the cwd while `diff --cached` without --relative
+ *  names them from the root, and the refusal silently became a skip. */
+function stagedMissingCases(t, dir, env, git) {
+  writeFileSync(join(dir, "kept.test.mjs"), "expect(a).toBe(b);\n");
+  mkdirSync(join(dir, "sub"));
+  for (const file of ["new.test.mjs", "sub/deep.test.mjs"]) {
+    writeFileSync(join(dir, file), "x\n");
+    git("add", file);
+    rmSync(join(dir, file));
+  }
+  const staged = lintIn(dir, env);
+  t(
+    "staged-missing-test-unjudged: a staged test file missing from disk refuses with its remedy",
+    staged.status === 1 && staged.out.includes("test-lint: new.test.mjs is staged but missing from disk") && staged.out.includes("fix: restore it (git checkout -- new.test.mjs) or stage the deletion (git rm -- new.test.mjs)"),
+  );
+  t("refusal-ends-green: a refused run does not end on the clean verdict", !staged.stdout.includes("no bug-pinned tests") && staged.out.includes("test-lint: FAILED"));
+  const deep = lintIn(join(dir, "sub"), env);
+  t("staged-missing-subdir-skipped: run from a subdirectory, staged content missing from disk still refuses", deep.status === 1 && deep.out.includes("test-lint: deep.test.mjs is staged but missing from disk"));
 }
 
 /** walk() handed any LINTABLE_RE name to the reader, so a dangling symlink under a walked
@@ -512,9 +542,19 @@ function main() {
   for (const line of blocking) console.error(`  ${line}`);
   if (showAdvisory) for (const line of advisory) console.log(`  (advisory) ${line}`);
 
+  return verdictOf(blocking);
+}
+
+/** The run's last word. A refusal that set process.exitCode (staged content missing from disk, a
+ *  missing positional path) linted the rest and must not then end on the clean verdict. */
+function verdictOf(blocking) {
   if (blocking.length > 0) {
     console.error("test-lint: FAILED — a test that passes for the wrong reason is worse than no test.");
     return 1;
+  }
+  if (process.exitCode) {
+    console.error("test-lint: FAILED — a path above could not be judged; its refusal names the fix.");
+    return process.exitCode;
   }
   console.log("test-lint — no bug-pinned tests.");
   return 0;

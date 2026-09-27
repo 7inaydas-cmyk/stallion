@@ -60,6 +60,69 @@
       "seq": 5,
       "parent_hash": "7daeff2f5bc8d558b558a9c84f07a695f45af3c95516fc932f87b64c7f92a445",
       "entry_hash": "91ab816302bdbfda02b1147f0026c2f92fc892356df1f4560bd761ccf14fa578"
+    },
+    {
+      "at": "2026-09-27T18:41:04.441Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 6,
+      "parent_hash": "91ab816302bdbfda02b1147f0026c2f92fc892356df1f4560bd761ccf14fa578",
+      "entry_hash": "168983cb6a51c32fb01d109fff16214e34a433ad2792c883878783ea8533fd32"
+    },
+    {
+      "at": "2026-09-27T19:03:22.761Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: carried-rows-dropped",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6b02c922c3c1",
+      "seq": 7,
+      "parent_hash": "168983cb6a51c32fb01d109fff16214e34a433ad2792c883878783ea8533fd32",
+      "entry_hash": "525f897754d7ae147d09b51eacaf73960a9c7e45dafe9b691ca0c4e28433802c"
+    },
+    {
+      "at": "2026-09-27T19:03:25.001Z",
+      "type": "red-check",
+      "expect": "complexity-gate SELF-TEST FAIL: skip-label-false",
+      "command": "node tools/complexity-gate.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "6b02c922c3c1",
+      "seq": 8,
+      "parent_hash": "525f897754d7ae147d09b51eacaf73960a9c7e45dafe9b691ca0c4e28433802c",
+      "entry_hash": "8d8d2a16a39048a81f689d4522ad13e58c7057d33d29e60186d2bcb719db97a3"
+    },
+    {
+      "at": "2026-09-27T19:03:27.184Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: skip-label-false",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b54248bea10d",
+      "seq": 9,
+      "parent_hash": "8d8d2a16a39048a81f689d4522ad13e58c7057d33d29e60186d2bcb719db97a3",
+      "entry_hash": "d22c603b36d393a28761a30d7ad466816f4290c4ff2eab45565c6a9c3f46d690"
+    },
+    {
+      "at": "2026-09-27T19:03:27.380Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: refusal-ends-green",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "b54248bea10d",
+      "seq": 10,
+      "parent_hash": "d22c603b36d393a28761a30d7ad466816f4290c4ff2eab45565c6a9c3f46d690",
+      "entry_hash": "daf85803d52ccca1b88a1e261143807e8e5c618ff44c570b2da3447d6a3195b3"
+    },
+    {
+      "at": "2026-09-27T19:05:39.564Z",
+      "type": "red-check",
+      "expect": "test-lint self-test FAILED: staged-missing-subdir-skipped",
+      "command": "node tools/test-lint.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "54ad672f2679",
+      "seq": 11,
+      "parent_hash": "daf85803d52ccca1b88a1e261143807e8e5c618ff44c570b2da3447d6a3195b3",
+      "entry_hash": "4d5cd833022fe601d57adbbdb588f989154b75612a61bf9911dcedb962a8ba5c"
     }
   ]
 }

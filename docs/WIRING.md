@@ -362,9 +362,14 @@ caught — which is why this paragraph carries no count to go stale.
   and probe runs use a copy of HEAD's index, so a registered guard must reach a verdict when HEAD
   lists a path the disk lacks — the state of every uncommitted `git rm` or `git mv`. A guard that
   lists the index and reads the disk crashes there, and guard-reach reports it INCONCLUSIVE:
-  test-lint and complexity-gate skip such a path (their `listedOnDisk`). doc-reconcile refuses a
-  vanished tracked file on purpose (`readCorpus`), which is a second reason it stays under
-  `notRegistered`.
+  test-lint and complexity-gate skip such a path (test-lint's `listedOnDisk`, which
+  complexity-gate imports). doc-reconcile's `readCorpus` refuses a vanished tracked file on
+  purpose, but only when some registered claim carries `repo-count` evidence — stallion's
+  `docs/gates/doc-claims.json` carries none today, so here it cannot fire. Were doc-reconcile ever
+  registered alongside such a claim, every uncommitted `git rm` would read INCONCLUSIVE (a false
+  red, not an escape). That caveat lives only in this paragraph: its `notRegistered` reason in
+  `docs/gates/guard-reach.json` records the edit-probe reason alone, and amending it is fence
+  surface.
 - `gate-registry` — every gate invocation declared once in `docs/gates/gate-registry.json` and
   drift-checked across the transports that carry it, both directions: missing from a declared
   transport, or shadowing in an undeclared one.
@@ -421,11 +426,18 @@ not rewrite them in the push they fence — the same precedent as the hooks and 
 Nothing stops a hand-edited record; the git history of the record file is the evidence trail.
 Per-commit battery greenness is not enforced: `npm run selftest` runs at `advance verified` and
 in CI on the pushed tip, and no local hook runs it, so an intermediate commit of a multi-commit
-landing can be red while the tip is green. test-lint and complexity-gate judge the working tree:
-a tracked path missing from disk whose content equals HEAD is skipped and named on stderr (the
-exit code is unchanged), and one whose index content differs from HEAD (staged, then deleted)
-refuses, since the next commit would carry content neither tool can read. Deleting or moving a
-file that has complexity-baseline rows still needs a baseline refresh in the same task — that
-refresh is fence surface, so the task is protected, and guard-reach reads INCONCLUSIVE until it
-lands. These are boundaries, not gaps, and they are stated so nobody has to
-discover them.
+landing can be red while the tip is green. test-lint in discovery mode (no path arguments — how
+guard-reach and a vendor's pre-commit run it) and complexity-gate list the index and judge the
+WORKING TREE. A listed path with no regular file on disk refuses when `git diff --cached` names it
+(staged, then deleted), since the next commit would carry content neither tool can read; any other
+such path (an unstaged rm, an intent-to-add entry, an untracked dangling link) has no staged
+change, so it is skipped and named on stderr with the exit code unchanged, and complexity-gate
+carries its baseline rows as they stand, so neither the gate nor `--update-baseline` treats an
+accidental rm as a deletion. Neither tool re-reads what a commit carries but the disk does not
+show — HEAD's content for a skipped path, a committed file edited on disk without staging, staged
+content under a file since edited (staged, then edited); only a clean-clone run (CI on the pushed
+tip) judges it. test-lint's explicit paths (this repo's battery runs `test-lint tools`) walk the
+disk and never consult the index. Deleting or moving a file that has complexity-baseline rows
+still needs a baseline refresh in the same task (its rows go stale once `git rm` stages the
+deletion); that refresh is fence surface, so the task is protected. These are boundaries, not
+gaps, and they are stated so nobody has to discover them.
