@@ -398,6 +398,28 @@
       "seq": 36,
       "parent_hash": "acc90d0092f2bb7a49d9e7b287c37ffc1a031dc879ad26d230e576e38bc6b94d",
       "entry_hash": "8ba4fd31d7f6702f828518fdf0ec3fac0782a8e7cff0c75726c0019326108cf7"
+    },
+    {
+      "at": "2026-09-27T11:15:18.862Z",
+      "type": "red-check",
+      "expect": "self-test FAILED: a regex literal holding // or /\\* opens no comment",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "a690d994d89e",
+      "seq": 37,
+      "parent_hash": "8ba4fd31d7f6702f828518fdf0ec3fac0782a8e7cff0c75726c0019326108cf7",
+      "entry_hash": "9c3c858cb466d31671199a52db84f58a47eacd93ca0b1189f3a094e528d77175"
+    },
+    {
+      "at": "2026-09-27T11:23:51.680Z",
+      "type": "red-check",
+      "expect": "self-test FAILED: a `\\}/` in a template.s \\$\\{\\} leaves the next comment blanked",
+      "command": "node tools/doc-reconcile.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "1a9583cad24a",
+      "seq": 38,
+      "parent_hash": "9c3c858cb466d31671199a52db84f58a47eacd93ca0b1189f3a094e528d77175",
+      "entry_hash": "e59aacd2710d544de4a923a0d0dc5e356378976c5985cedcc1edb82036392d49"
     }
   ]
 }

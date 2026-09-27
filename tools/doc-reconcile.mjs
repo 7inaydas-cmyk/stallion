@@ -67,6 +67,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { matches } from "./pathspec.mjs";
+import { stripComments } from "./test-lint.mjs";
 
 const CLAIMS = "docs/gates/doc-claims.json";
 /** Every path is repo-relative and resolved from THIS FILE, like every sibling gate — never the cwd. */
@@ -125,13 +126,6 @@ function repoPath(spelled, root = ROOT) {
 }
 
 /**
- * String literals first, then comments. Order is the whole algorithm: a literal matched at position
- * `i` is emitted intact, so `"https://x"` and `"/* not a comment *\/"` survive, while a `//` reached
- * in code position blanks to end of line.
- */
-const CODE_TOKENS = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^\\`])*`)|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g;
-
-/**
  * Blank out comments, keeping length and line structure (comment bytes become spaces).
  *
  * WHY THIS EXISTS (the WS2 lesson, 2026-08-21, upstream). A claim was registered against
@@ -145,13 +139,12 @@ const CODE_TOKENS = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^\\`])*`)
  *
  * Masking rather than deleting, so a future evidence kind can still report an honest line number.
  *
- * KNOWN LIMITATION, stated rather than discovered later: regex LITERALS are not tracked, so a regex
- * containing `//` or `/*` would be misread as starting a comment. Tracking regex literals needs
- * division-vs-regex disambiguation, which is a parser, and a parser here would be a much bigger
- * thing to trust than the hole it closes.
+ * ONE LAW, test-lint's: this gate once kept its own copy of the token pass, with no regex-literal arm,
+ * so a regex holding `//` or `/*` blanked the real code after it here while test-lint kept it. The
+ * law's heuristic limits (see test-lint's TOKENS) are now the only ones, and fixed in one place.
  */
 export function maskComments(text) {
-  return text.replace(CODE_TOKENS, blankComment);
+  return stripComments(text);
 }
 
 /** A matched literal survives intact; a matched comment becomes spaces (length and lines kept). */
@@ -160,7 +153,7 @@ function blankComment(match, literal) {
 }
 
 /**
- * `#` comments for shell and YAML, under the same order law as CODE_TOKENS (quoted strings first).
+ * `#` comments for shell and YAML, under the same order law as test-lint's TOKENS (quoted strings first).
  * A `#` opens a comment only at line start or after whitespace: `${#x}`, `$#` and `url#frag` are code.
  * KNOWN LIMITATION: heredoc bodies and YAML block scalars are not tracked, so a `#` line inside one is
  * masked as a comment.
@@ -607,7 +600,7 @@ function selfTestPastedFixes(t) {
   const root = mkdtempSync(join(tmpdir(), "it's a $(printf X) "));
   try {
     mkdirSync(join(root, "tools"));
-    for (const file of ["doc-reconcile.mjs", "pathspec.mjs"]) copyFileSync(fromRoot(`tools/${file}`), join(root, "tools", file));
+    for (const file of ["doc-reconcile.mjs", "pathspec.mjs", "test-lint.mjs"]) copyFileSync(fromRoot(`tools/${file}`), join(root, "tools", file));
     const gate = spawnSync(process.execPath, [join(root, "tools", "doc-reconcile.mjs")], { encoding: "utf8" }).stderr;
     const [missing, broken, empty] = ["gone", "broken", "empty"].map((name) => join(root, `${name} $(printf X).json`));
     writeFileSync(broken, "{ not json");
@@ -649,6 +642,34 @@ function selfTestRepoPath(t) {
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
+}
+
+/** Comment masking: what stops being evidence, and what real source must survive it. */
+function selfTestMasking(t) {
+  // Comments are not evidence (the WS2 lesson). Fixtures are SYNTHETIC on purpose — this file
+  // already learned upstream that a self-test anchored to real source reports "the checker is
+  // broken" when the only thing that happened is that the world moved on.
+  const masked = (src) => maskComments(src);
+  t("a line comment stops being evidence", !masked("// pg_try_advisory_lock\nconst a = 1;\n").includes("pg_try_advisory_lock"));
+  t("a JSDoc block stops being evidence", !masked("/**\n * calls pg_try_advisory_lock\n */\nconst a = 1;\n").includes("pg_try_advisory_lock"));
+  t("executable code survives masking", masked('const q = "SELECT pg_try_advisory_lock($1)";\n').includes("pg_try_advisory_lock"));
+  // The two ways a naive stripper corrupts real source. Both occur in real code.
+  t("a URL inside a string is not a comment", masked('const u = "https://example.com/watch";\n').includes("example.com/watch"));
+  t("a comment marker inside a string survives", masked('const s = "/* literal */";\n').includes("/* literal */"));
+  t("an apostrophe in a comment does not open a string", masked("// don't\nconst keep = 1;\n").includes("const keep = 1"));
+  t("a multi-line template literal survives", masked("const t = `line1\nkeepme\n`;\n").includes("keepme"));
+  t("masking preserves length and line count", masked("// abcdef\nconst a = 1;\n").length === "// abcdef\nconst a = 1;\n".length);
+  // A regex literal holding `//` or `/*` opens no comment — the second copy of the stripping law had
+  // no regex arm, so real code after one was blanked here and kept by test-lint.
+  const regexes = masked("const a = /\\//, keepA = 1;\nconst b = /\\/*/, keepB = 1; /* note */\n");
+  t("a regex literal holding // or /* opens no comment", regexes.includes("keepA") && regexes.includes("keepB") && !regexes.includes("note"));
+  // A `}/` inside a template's `${}` opens no regex — one that did swallowed a nested backtick, and
+  // template parity stayed flipped: ~89 comment lines of task-state.mjs counted as evidence again.
+  const nested = masked("die(`pins: ${xs.map((p) => ` /${p}/`).join(\", \")} fix: tools/x`);\n// onlyInAComment\nconsole.log(`done`);\n");
+  t("a `}/` in a template's ${} leaves the next comment blanked", !nested.includes("onlyInAComment") && nested.includes("console.log"));
+  // The discrimination that matters: same pattern, comment vs code.
+  t("grep FAILS on a comment-only match", checkInFile("grep", "f.ts", "onlyInAComment", masked("// onlyInAComment\n")).ok === false);
+  t("grep passes on a code match", checkInFile("grep", "f.ts", "inRealCode", masked("const inRealCode = 1;\n")).ok === true);
 }
 
 function selfTest() {
@@ -706,23 +727,6 @@ function selfTest() {
   t("scope words are matched case-insensitively", scopeWordIn("ZERO distribution callers") === "zero");
   t("ordinary prose carries no scope word", scopeWordIn("the house-only NSFW adapter is built AND wired by DI") === null);
 
-  // Comments are not evidence (the WS2 lesson). Fixtures are SYNTHETIC on purpose — this file
-  // already learned upstream that a self-test anchored to real source reports "the checker is
-  // broken" when the only thing that happened is that the world moved on.
-  const masked = (src) => maskComments(src);
-  t("a line comment stops being evidence", !masked("// pg_try_advisory_lock\nconst a = 1;\n").includes("pg_try_advisory_lock"));
-  t("a JSDoc block stops being evidence", !masked("/**\n * calls pg_try_advisory_lock\n */\nconst a = 1;\n").includes("pg_try_advisory_lock"));
-  t("executable code survives masking", masked('const q = "SELECT pg_try_advisory_lock($1)";\n').includes("pg_try_advisory_lock"));
-  // The two ways a naive stripper corrupts real source. Both occur in real code.
-  t("a URL inside a string is not a comment", masked('const u = "https://example.com/watch";\n').includes("example.com/watch"));
-  t("a comment marker inside a string survives", masked('const s = "/* literal */";\n').includes("/* literal */"));
-  t("an apostrophe in a comment does not open a string", masked("// don't\nconst keep = 1;\n").includes("const keep = 1"));
-  t("a multi-line template literal survives", masked("const t = `line1\nkeepme\n`;\n").includes("keepme"));
-  t("masking preserves length and line count", masked("// abcdef\nconst a = 1;\n").length === "// abcdef\nconst a = 1;\n".length);
-  // The discrimination that matters: same pattern, comment vs code.
-  t("grep FAILS on a comment-only match", checkInFile("grep", "f.ts", "onlyInAComment", masked("// onlyInAComment\n")).ok === false);
-  t("grep passes on a code match", checkInFile("grep", "f.ts", "inRealCode", masked("const inRealCode = 1;\n")).ok === true);
-
   // A justification cannot be swapped under a surviving conclusion (the WS5 lesson). The failing
   // case IS the 3cae1cf pattern — same anchor, same evidence, different `why`.
   const stamped = { id: "x", why: "the original reason", verified: { at: "2026-09-19", whyHash: hashWhy("the original reason") } };
@@ -734,6 +738,7 @@ function selfTest() {
   // refuses and test-lint exists to catch. It would assert that sha256 is a function.
   t("a one-character difference changes the hash", hashWhy("abc") !== hashWhy("abd"));
 
+  selfTestMasking(t);
   selfTestRoot(t);
   selfTestRegistry(t);
   selfTestCorpus(t);
