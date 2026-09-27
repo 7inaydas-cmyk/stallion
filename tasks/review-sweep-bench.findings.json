@@ -1,0 +1,163 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-bench",
+  "passStartedAt": "2026-09-27T08:04:25.471Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "The graded module shares a realm with the hidden suite, so it could swap node:assert/strict methods for no-ops at import and forge a full pass (seed 8/8, exit 0). runSuite now makes the suite file's first import a data: module that freezes node:assert and node:assert/strict, so it runs before the module's graph. A tamper now throws at import and grades as a refused run cut short.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.308Z",
+      "proof": "Before: the finding's neuter plus any seed gave {passed:N,failed:0,total:N} exit 0. After, through the CLI for all 4 tasks: neuter plus seed gives {failed:1,total:1,ungradable:true} exit 1. The refusal's fix line now loads the module the way the grader does (judge frozen first) and prints the TypeError. The remaining limit (same realm, not an out-of-process judge) is written in the JUDGE_FREEZE doc comment. A doc record is requested below.",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/grade.mjs:36",
+      "resolvedAt": "2026-09-27T11:11:58.340Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "runSuite wrote the suite with a plain writeFileSync, so a planted .bench-acceptance.mjs symlink sent the grader's write outside the sandbox, and the CLI then deleted the link. writeSuite now creates the file exclusively (flag wx). An existing path is refused with a cause and a runnable fix, and is never written through or removed. Cleanup moved into runSuite's finally, so it removes only a file the grader created. The CLI's own rmSync is gone.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.375Z",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/grade.mjs:75",
+      "resolvedAt": "2026-09-27T11:11:58.406Z"
+    },
+    {
+      "id": "f3",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "Test gap. The self-test certified references with a raw tally (failed===0 && total>0), not with verdict(). It never ran the CLI's exit code, so the pass path was unpinned. The reference, relative-dir and visible-suite cases now use certifies(): verdict().pass plus an exact declared count. verdict() now takes the suite text. The CLI is run twice: on a reference (exit 0, ungradable:false) and on a cut-short module (exit 1, 'grade: REFUSED').",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.439Z",
+      "proof": "Mutation-proven on a scratch copy of the tree. m9 (unanchored /test\\(/g count), m8 (pass:false), m10 (CLI exit on failed===0) and the chunk reference's process.exit(0) each turned the targeted cases red. All of them passed the old battery.",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/grade.mjs:155",
+      "resolvedAt": "2026-09-27T11:11:58.472Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "execFileSync's default 1MB maxBuffer killed a correct module that logs heavily (ENOBUFS, null signal), and the refusal blamed 'no TAP results'. runSuite now passes an explicit 64MB buffer (MAX_OUTPUT, overridable), treats ENOBUFS as a grader kill in `killed`, and ungradableCause names the buffer. Review round: the ENOBUFS term in `killed` was unpinned, because the old overflow case overflowed at import and was refused through total===0 anyway. A new late-overflow case covers it. The module holds the reference plus an exit-time 256KB write, graded with a 64KB buffer. It must show a complete tally (total === declared) that is still refused as a buffer kill.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.505Z",
+      "proof": "Before (HEAD, i.e. M4): a run killed by the buffer after every ok line gave {passed:8,failed:0,total:8,ungradable:false}, exit 0, a pass on a run the grader killed. I applied M4 to grade.mjs:62 and ran the self-test. It failed with only 'bench: a run the buffer kills after every ok line is still refused as a buffer kill (a complete tally is no verdict)'. I recorded the red-check, restored the fix and re-ran: exit 0 with 45 cases, and that line is gone.",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/grade.mjs:62",
+      "resolvedAt": "2026-09-27T11:11:58.537Z"
+    },
+    {
+      "id": "f5",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "No kit code delivered the spec: agents got it only by hand copy from tasks.mjs, the answer-key file. setup() now writes TASK.md (task.spec, word for word) into both arms before the seed commit, and names it in its ready line. A sandbox case asserts that both arms carry it identically.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.567Z",
+      "evidence": [
+        "tools/bench/setup.mjs",
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/setup.mjs:140",
+      "resolvedAt": "2026-09-27T11:11:58.600Z"
+    },
+    {
+      "id": "f6",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "The AGENTS stanza's pin signature --expect \"not ok\" also matched a passing run's failing test.todo, so done refused an honest pass as a vacuous green. The signature is now the TAP summary's failure count, \"# fail [1-9]\". A new case drives the GREEN half through task-state's greenVerdictOf on a reference with a failing test.todo.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.633Z",
+      "evidence": [
+        "tools/bench/setup.mjs",
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/setup.mjs:50",
+      "resolvedAt": "2026-09-27T11:11:58.666Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "derivedBattery used readdirSync's recursive option, which Node 18.0-18.16 silently ignores, so nested members dropped out on a runtime package.json declares supported. It now walks with the doctor's own traversal (withFileTypes, dot entries skipped). Review round: the injected readdir seam let the old recursive call bypass the case. The seam is gone: the readdir parameter is removed from derivedBattery and toolFiles, and legacyReaddir is dropped. The case now runs the real derivedBattery under underLegacyReaddir, which patches node:fs's own readdirSync to drop `recursive`, calls syncBuiltinESMExports() so setup.mjs's named import sees the patch, and restores both in a finally.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.699Z",
+      "proof": "I applied M7 to setup.mjs derivedBattery and ran the self-test on Node 22.23.2. It failed with only 'bench: treatment: the derived battery keeps its nested members when node:fs readdirSync ignores `recursive` (Node 18.0–18.16)'. The patched builtin drops the recursive option, so only top-level tools are listed and the nested members vanish. I recorded the red-check, restored the fix and re-ran: exit 0 with 45 cases, and that line is gone.",
+      "evidence": [
+        "tools/bench/setup.mjs",
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/setup.mjs:81",
+      "resolvedAt": "2026-09-27T11:11:58.729Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "setup.mjs's header said the §11 gates family was omitted, yet the derived import closure vendors pathspec, retrospective and test-lint. The header now names what the closure carries and omits only 'the rest of' §11. The WIRING §2 half of this finding is a doc edit outside this group's files and is filed as a request.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.763Z",
+      "evidence": [
+        "tools/bench/setup.mjs"
+      ],
+      "dedupKey": "tools/bench/setup.mjs:11",
+      "resolvedAt": "2026-09-27T11:11:58.797Z"
+    },
+    {
+      "id": "f9",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "Test gap. selfTestSandboxes discarded the doctor's hook verdicts, so dropping core.hooksPath or shipping inert hooks kept the battery green. Two cases now cover this. (1) The doctor's '✔ pre-commit staged gate committed' and '✔ commit-msg binding gate committed' lines must both appear. (2) core.hooksPath must be .githooks, and a code commit with no task footer must be refused by the live hooks. The second check is CI-independent.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.834Z",
+      "proof": "Mutation-proven on a scratch copy of the tree. Removing the core.hooksPath line turned the hooks-active case red. An inert commit-msg body ('exit 0') turned the doctor hook-lines case red.",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/grade.mjs:192",
+      "resolvedAt": "2026-09-27T11:11:58.866Z"
+    },
+    {
+      "id": "f10",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "Test gap. Nothing asserted that the answer key stays out of the treatment arm. A new case requires that tools/bench is absent and that no file anywhere in the arm (outside .git) contains any task's hiddenTest or reference text. That also catches the key being copied to a renamed path.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.900Z",
+      "proof": "Mutation-proven on a scratch copy of the tree. Copying tools/bench/tasks.mjs into the arm (s6), and copying it to a renamed docs-key.txt (s7), each turned the answer-key case red.",
+      "evidence": [
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/grade.mjs:181",
+      "resolvedAt": "2026-09-27T11:11:58.931Z"
+    },
+    {
+      "id": "f11",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "The chunk-generator spec never said a bad n throws at call time, but the hidden suite grades an eager throw. A spec-faithful export function* failed 6/7. The spec now states that a bad n throws as soon as chunk() is called, before any iteration, while chunks stay lazy (nothing is pulled before the first next()). This keeps the suite as the recorded runs were graded.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.965Z",
+      "evidence": [
+        "tools/bench/tasks.mjs",
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/tasks.mjs:223",
+      "resolvedAt": "2026-09-27T11:11:58.997Z"
+    }
+  ],
+  "sweptBase": "691f8e94467a3dac1cc4a5a2944c8bd1aca485a4",
+  "sweptHead": "c004bb9a942575446b62b1599409f319daad3e40",
+  "sweptDiffDigest": "1f59957a6c30"
+}

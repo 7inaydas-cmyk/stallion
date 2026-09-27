@@ -1,0 +1,222 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-state",
+  "passStartedAt": "2026-09-27T08:04:25.606Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 2,
+      "severity": "HIGH",
+      "claim": "cmdAdvance picked its out-of-lock runs (the done gate's GREEN re-run and the verified battery) from unlocked snapshots, then judged a possibly different record inside the lock. A pin recorded while the gate ran reached done without being re-run, and handoff called it GREEN. A concurrent phase advance skipped the run entirely.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.115Z",
+      "proof": "Run advance X done with a pin that sleeps, and meanwhile run red-check X --command \"echo 'x FAILED'; exit 1\" to record a new pin mid-run. The lock judged the new record against the old greenFailures, reached done, and printed 'pin GREEN at done' for a command that still exits 1. The fix takes ONE snapshot that chooses every run. refuseMovedRecord (tools/task-state.mjs:1019) then refuses inside the lock when the events differ from that snapshot, which also closes the phase race. The self-test case 'advance done refuses a record that moved while the gate ran its pins' (selfTestCliRace) makes the race deterministic.",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:1019",
+      "resolvedAt": "2026-09-27T11:11:53.147Z"
+    },
+    {
+      "id": "f2",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "loadOwnedFindings told the operator to restore a register from git, which drops every finding since the last commit. The round-1 shared findingsRepair still printed 'rm <register> && prepare' after EVERY failed read, including conflict-marked or invalid registers that hold findings. That is the destructive re-mint adversarial#17 forbids.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.182Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "tools/task-findings.mjs"
+      ],
+      "dedupKey": "tools/task-findings.mjs:205",
+      "resolvedAt": "2026-09-27T11:11:53.215Z"
+    },
+    {
+      "id": "f3",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "Pins were retired by command string alone, ignoring event order. Re-pinning a once-retired command recorded a dead pin while red-check reported success. One pin-retire also dropped every sibling pin sharing the command, whatever its --expect. retiredPins is now order-aware (a retirement reaches back only), and pin-retire takes --expect to retire that one pin and prints the count it retired.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.249Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:313",
+      "resolvedAt": "2026-09-27T11:11:53.282Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "runLawRepairCases is not named selfTest*, so it leaked its fixture riskClass 'docs-only' into reader-existence's production corpus. That made the accepted RISK_CLASSES.docs-only NO_PRODUCER row read as stale, so reader-existence failed at b5c1d3b.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.315Z",
+      "evidence": [
+        "tools/reader-existence.mjs"
+      ],
+      "dedupKey": "tools/reader-existence.mjs testcoderanges",
+      "resolvedAt": "2026-09-27T11:11:53.345Z"
+    },
+    {
+      "id": "f5",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "The certified commit b5c1d3b, and every commit through c004bb9, fails the selftest battery when checked out alone (reader-existence). Nothing runs the battery per commit. The seq-14 verified transition judged a later combined working tree, not b5c1d3b.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T11:11:53.379Z",
+      "evidence": ".githooks/pre-commit:3",
+      "dedupKey": ".githooks/pre-commit:3",
+      "justification": "History cannot be rewritten. HEAD has been battery-green since 26c1584 (b9523a6's cut, then 26c1584 accepted the SEVERITIES rows). Register note, as the verifier asked: the seq-14 `verified` transition (2026-09-27T08:02:22Z) ran `npm run selftest` on a working tree that already carried b9523a6 and 26c1584, so it certifies the combined sweep, not b5c1d3b. b5c1d3b..c004bb9 are each red alone. Closing the per-commit gap is a CI/hook policy change outside this task's two files. The cheap pre-commit cure is not requested because the hook judges the working tree, not the staged tree. In a shared tree it would refuse one author's commit over another's unstaged edits: in this session the live gate-registry was red on another group's in-flight file. The sound cure is CI running the battery on each commit of the pushed range, alongside the task-commit binding work (issue #8).",
+      "resolvedAt": "2026-09-27T11:11:53.411Z"
+    },
+    {
+      "id": "f6",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "Status judged the register named by the record's body id, while advance and handoff used the file's id, and parseTaskRecord never tied the two together. A copied record read 'unblocked' where advance refused, and the status listing showed it twice. findingsPath and metricRow also joined an unvalidated id into a path.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.443Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:642",
+      "resolvedAt": "2026-09-27T11:11:53.475Z"
+    },
+    {
+      "id": "f7",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "terminalAdvanceRefusal could not be reached from the CLI because mutateTask's seam refuses terminal records first. Its bespoke 'reopened as a NEW task' text was never printed, yet a self-test case pinned it. evaluateTransition now uses terminalAppendRefusal (the seam's own words), and the dead function is deleted.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.506Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:495",
+      "resolvedAt": "2026-09-27T11:11:53.537Z"
+    },
+    {
+      "id": "f8",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "At b5c1d3b, the comments on FENCE_SURFACE, TASK_ID, findingsPath and decisionHeadingExists said sibling tools derive from them, but no sibling imported them, and the three fence-surface copies disagreed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.570Z",
+      "evidence": [
+        "tools/task-coverage.mjs",
+        "tools/adversarial-runner.mjs",
+        "tools/path-obligations.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:41",
+      "resolvedAt": "2026-09-27T11:11:53.603Z"
+    },
+    {
+      "id": "f9",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "The CLI battery case's fixture script spelled 'x FAILED' literally, and npm echoes a script's source as its banner. The refusal therefore carried the token even when the run never printed it. The fixture now assembles the token at run time on stderr.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.638Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:1415",
+      "resolvedAt": "2026-09-27T11:11:53.672Z"
+    },
+    {
+      "id": "f10",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The header claimed the --self-test drives every refusal. Round 1's rewrite still said 'the CLI-only laws' while pin-retire's matching and already-retired laws, scope's repetition law and new's duplicate id went undriven.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.703Z",
+      "evidence": [
+        "tools/task-state.mjs",
+        "docs/TASK-LIFECYCLE.md"
+      ],
+      "dedupKey": "tools/task-state.mjs:13",
+      "resolvedAt": "2026-09-27T11:11:53.736Z"
+    },
+    {
+      "id": "f11",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "pinlessDoneRefusal's alternative remedy, '(or pin a check that still fails: red-check …)', could never clear it. The done gate re-runs the pin GREEN, so a check that fails now lands in the green-failure refusal, whose retire remedy loops back. The remedy now names the real RED→GREEN arc: pin against the PRE-fix source, then restore the fix.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.770Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:430",
+      "resolvedAt": "2026-09-27T11:11:53.807Z"
+    },
+    {
+      "id": "f12",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "handoffReport called obligations() without the resolveEvidenceMissing fact its caller computed. At adversarial with vanished resolve evidence, the handoff printed the unblocked 'done will re-run N pin(s)' line where advance refuses. The fact is now forwarded.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.838Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:562",
+      "resolvedAt": "2026-09-27T11:11:53.873Z"
+    },
+    {
+      "id": "f13",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "red-check's pin-expect cutover refusal, moved ahead of runPinCommand, had no case. Deleting it, or moving it back below the run, left both self-tests green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.905Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:1448",
+      "resolvedAt": "2026-09-27T11:11:53.935Z"
+    },
+    {
+      "id": "f14",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Two repaired branches had no discriminating case: pinlessDoneRefusal's NON_CODE allowance (a pinless docs-only task reaching done) and adoptionRefusal's done half (adopt-chain's only terminal guard).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:53.967Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:1365",
+      "resolvedAt": "2026-09-27T11:11:54.000Z"
+    },
+    {
+      "id": "f15",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Commands that run arbitrary shell before appending judged only the terminal law first. mutateTask's chain-integrity refusal fired after the run, so red-check on a tampered chained record ran its pin, and advance ran the whole selftest battery (or every done-gate pin twice), before refusing.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.034Z",
+      "evidence": [
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:993",
+      "resolvedAt": "2026-09-27T11:11:54.066Z"
+    },
+    {
+      "id": "f16",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "The terminal law holds only at task-state's writer. adversarial-runner's prepare, record, resolve and wont-fix still rewrite a done task's findings register: prepare re-mints passStartedAt and sweptBase/sweptHead, and record adds UNRESOLVED findings. status still reads 'done', so 'register aggregates clean' no longer holds.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.441Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:140",
+      "resolvedAt": "2026-09-27T11:38:06.474Z"
+    }
+  ],
+  "sweptBase": "39e6305b25efecdd8d103aa0d2df4117ae9bf09b",
+  "sweptHead": "b5c1d3b7f28211f96e0ab0f71b5bb030dc86ba02",
+  "sweptDiffDigest": "87bb5d4c5801"
+}

@@ -1,0 +1,216 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-contract-gates",
+  "passStartedAt": "2026-09-27T08:04:25.535Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "doc-reconcile's trackedFiles() split plain `git ls-files` output. Under the default core.quotePath, git C-quotes any path with a non-ASCII byte, `\"` or `\\`. The quoted name failed the extension filter, so the file dropped out of the repo-count corpus with nothing printed. It now runs `git ls-files -z` and splits on NUL.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.625Z",
+      "proof": "Case selfTestTrackedNames runs a real `git init` and `git add café.mjs` in a temp repo, with GIT_* scrubbed from the env, and asserts that trackedFiles(dir) lists `café.mjs`. It was RED on the plain listing, which returned \"caf\\303\\251.mjs\" quoted, and is GREEN with -z. The live corpus count is unchanged.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:206",
+      "resolvedAt": "2026-09-27T11:11:56.657Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "evidencePathIsCode judged the path as spelled. `./docs/...`, `tools/../docs/...` and an absolute path into docs/ all passed the prose check but then read the docs registry, so a claim could be proved by its own text. checkEvidence now canonicalises the path through repoPath: resolve, realpath, then make it repo-relative. A path that leaves the repo is refused, and the prose check runs on the canonical path. This round also pins both refusals, which the reviewer found unpinned.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.694Z",
+      "proof": "The spelling cases were RED before the fix. For the test gap, repoPath now takes `root = ROOT`. selfTestRepoPath builds a mkdtemp tree with docs/x.json, a symlink tools/link.mjs -> ../docs/x.json, and an EXISTING sibling outside.mjs outside the root. It asserts three things: the link resolves to `docs/x.json`, `../outside.mjs` and the absolute outside path give null, and checkEvidence refuses `grep <abs outside.mjs>:OUTSIDE_TOKEN`. That last case replaces the old non-discriminating `../x.mjs` case, which cited a missing file. Mutation proof, each restored afterwards: dropping realpath fails 'a code-named symlink into docs/ is judged by the file it reads'; returning the relative path even when it leaves the repo fails 'an existing file outside the repo names no repo path' and '...is refused as evidence'.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:120",
+      "resolvedAt": "2026-09-27T11:11:56.726Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "The printed GATE_DEFECT fixes put ROOT and tracked file names into shell commands unquoted. A name like `a$(cmd)b.md` ran `cmd` when the fix was pasted, and a checkout path with a space broke every fix. Every interpolated word now goes through shq, which quotes only when needed. The reviewer found the ROOT call site unpinned, because this checkout's root needs no quoting. That call site and every shq(path) call site are now pinned through a real shell paste.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.759Z",
+      "proof": "The original RED: sh split the unquoted fix into `aXb` and `c.md`. Test gap: new selfTestPastedFixes copies doc-reconcile.mjs and pathspec.mjs into mkdtemp(tmpdir, \"it's a $(printf X) \")/tools/ and runs that copy with no registry. It extracts the printed restore fix and compares shellWords(fix) with [git, -C, <that root>/, checkout, HEAD, --, docs/gates/doc-claims.json]. The same table compares the argv of every other hostile-path fix: missing-registry restore and `log --diff-filter=D`, unparseable-registry `diff`, empty-registry `log -p`, vanished-file `rm` and `checkout`. The old helper-only case and the in-registry hostile case are folded into this table. Mutation proof, each restored afterwards: `git -C ${ROOT}` fails 'the missing-registry restore fix the gate prints from a hostile root survives a shell paste'. Reverting shq(path) in diff, log -p, log --diff-filter=D or checkout HEAD fails the matching case by name. `rm -- ${vanished.join(\" \")}` fails the stage-fix case. An shq that skips `'` escaping fails four cases.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:77",
+      "resolvedAt": "2026-09-27T11:11:56.793Z"
+    },
+    {
+      "id": "f4",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "loadGate read and comment-masked the whole tracked corpus on every run, although no registered claim carries repo-count evidence. The only consumer was a banner number, and an unrelated unstaged deletion blocked the gate over a count no claim makes. The corpus is now read only when some claim has repo-count evidence. Otherwise describeCorpus prints 'not read — no registered claim carries repo-count evidence' and still prints every declared exclusion.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.823Z",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:897",
+      "resolvedAt": "2026-09-27T11:11:56.853Z"
+    },
+    {
+      "id": "f5",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "A per-evidence `ignore` list was validated and printed as a carve-out for every evidence kind, but only repo-count applies one. On grep, count, symbol and absent it did nothing, so the banner reported an exclusion that never happened. ignoreIsMalformed now refuses an ignore list on any kind other than repo-count as a GATE_DEFECT.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.884Z",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:813",
+      "resolvedAt": "2026-09-27T11:11:56.916Z"
+    },
+    {
+      "id": "f6",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "corpusText picked `#` masking by extension only (.sh/.yml/.yaml). The repo's only shell code, the extensionless .githooks, got JS masking, so a `#` comment line in a hook passed as evidence. The fallback comment also mislabelled that as fail-closed. Shell is now also detected by shebang (SHELL_SHEBANG), and `sh` must end the interpreter word, so `#!/opt/sh/node` stays JS. The comment now says plainly that unnamed `#`-comment grammars fail open until they are named.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.953Z",
+      "proof": "`corpusText('.githooks/pre-push', '#!/bin/sh\\n# onlyInComment\\n...')` kept onlyInComment, which was RED. After the fix it blanks it. The `#!/usr/bin/env bash` form is covered too. Controls: a node shebang and a `/opt/sh/node` shebang keep JS masking.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:172",
+      "resolvedAt": "2026-09-27T11:11:56.985Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The shape validator accepted hollow evidence that passes on any file. That covers a symbol, absent or grep spec with an empty or blank tail, a pattern that matches the empty string (`token|`, `::0`, repo-count `:0`), an empty path (`:x`), no colon at all (`tools/`), and `corpus.extensions: []`. Directory paths also crashed with EISDIR. All of these are now refused. specIsMalformed rejects empty-matching patterns. fileSpecIsHollow requires a path and a non-blank tail. extensionsAreDeclared requires at least one non-blank extension. readTreeFile turns a non-file path into a refusal. This round, the same EISDIR crash one field over, a claim `doc` naming a directory, is fixed too: checkAnchor now reads through readTreeFile and refuses with 'does not exist or is not a file'.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.020Z",
+      "proof": "Nine hollow specs, the empty-extensions case and the evidence-directory case each loaded or crashed before the fix, which was RED, and all are refused after it. This round, `settle(() => checkAnchor(\"docs\", \"x\")).ok === false` was RED on the EISDIR crash; the pin was recorded RED, then the fix made it GREEN. Mutation proof: putting existsSync+readFileSync back in checkAnchor fails that case by name. The live registry's 7 evidence items still load and pass.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:829",
+      "resolvedAt": "2026-09-27T11:11:57.054Z"
+    },
+    {
+      "id": "f8",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "The positive self-test cases asserted `load(...).error === undefined`. A crash settled into `{ threw }` also has no `.error`, so a loadRegistry that crashed on a valid registry passed both pins. They now assert the success shape, `Array.isArray(load(...).claims)`.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.087Z",
+      "proof": "Test gap, proved by mutation: a `throw` inserted before loadRegistry's success return fails 'a well-formed registry loads' and 'a compiling grep, count and repo-count pattern with a colon in it loads'. Under the old assertion that mutant passed at OK.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:492",
+      "resolvedAt": "2026-09-27T11:11:57.119Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The grammar-masking pins called the corpusText helper directly, so reverting either real call site (checkEvidence or readCorpus) to maskComments left every case green. Both seams now take an injectable reader, following the repo's `out = console` idiom. New cases drive checkEvidence and readCorpus themselves on a YAML text whose token appears only in a `#` comment, with a positive twin for each.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.155Z",
+      "proof": "Test gap, proved by mutation and restored afterwards. checkEvidence's corpusText swapped for maskComments fails 'a yaml # comment is not evidence at the checkEvidence seam'. readCorpus's corpusText swapped for maskComments fails 'a yaml # comment is not counted at the readCorpus seam'.",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:592",
+      "resolvedAt": "2026-09-27T11:11:57.189Z"
+    },
+    {
+      "id": "f10",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Four reversions survived with the self-test green: (a) deleting describeCorpus's print loop, (b) readCorpus reading relative to the cwd, (c) claimShapeError checking only `anchor`, and (d) dropping the `^` in reader-existence's recordedVerdict. Each now has a case. (a) captures describeCorpus output through an injected `out`. (b) calls readCorpus on README.md from tmpdir inside selfTestRoot. (c) loops over a blank id, doc and why. (d) adds a config row 'not DEAD: ...' that must be refused, and a baseline row 'NO_PRODUCER — was DEAD before...' that must not read as drifted.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.220Z",
+      "proof": "Each gap proved by mutation, then restored. (a) fails 'the run banner prints every exclusion beside the verdict'. (b) fails 'the gate resolves the repo from its own location, not the cwd'. (c) with the field list cut to ['anchor'], the blank id, doc and why cases fail. (d) fails 'a row naming an older verdict in its prose was read as drifted' and 'an accepted row that mentions a verdict without opening with one must fail closed'.",
+      "evidence": [
+        "tools/doc-reconcile.mjs",
+        "tools/reader-existence.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:504",
+      "resolvedAt": "2026-09-27T11:11:57.254Z"
+    },
+    {
+      "id": "f11",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The reachability cut recognised only column-0 `function` declarations. A test-only const arrow helper, a const fixture table, or a `const selfTest*` binding stayed in the production corpus, and its hand-seeded literals counted as producers, which hid NO_PRODUCER and DEAD verdicts. privateDeclarations now also collects top-level non-exported const/let/var bindings, ending each at its statement's `;`, and SELFTEST_DECL cuts `const selfTest*` outright. The header, the JSDoc and the STALE message state the law. The widened cut made the scanner's weak spots matter, so the scanner is now regex- and template-hole aware. This round's fix restores the header's fail-closed doubt law, which the previous end-of-line reset had broken. A regex now opens only where its closing `/` is on the same line, and never after a postfix `++`/`--`; it is skipped whole, and the regexStep state is gone. A quote still open at a line's end is treated as parser doubt, and the cut runs to EOF instead of resuming one bracket short. The remaining invisible-doubt limit (a regex right after `)`) is stated in selfTestRanges' JSDoc.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.288Z",
+      "proof": "Round 1: the const arrow, the multi-line table and the `const selfTestSeed` shapes were uncut, which was RED, and writeFixtureTree's ghostRecord and ORPHAN_CASES guard the same shapes end to end. This round: new selfTestSlashDoubt includes the reviewer's selfTestA (`let i = 0; i++ / 2; if (i) {`), a `++` line with a later slash, an `of / 2` identifier division, and `if (i) /\"/.test(s); if (s) {`. All four were [[0,3]] on the previous code, which was RED, and the pin was recorded. Now they are [[0,5]], [[0,5]], [[0,5]] and [[0,6]] (EOF). Each rule is pinned by mutation: removing the postfix rule fails the later-slash case; making regexEnd swallow the rest of the line fails the `of` case; removing the doubt break, or putting back the EOL reset, fails the open-quote case. The old strayQuote case asserted the reset, so it was removed. On the reviewer's sweep fixture (MODES [OPEN,GHOST], `n++ / 2; if (n) {` inside selfTestUnit), the result is [[MODES.GHOST, NO_PRODUCER]], the same as HEAD. Live check: testCodeRanges is identical on all 28 corpus files compared with round 1. sweep() findings and suppressed counts are identical for this tool, round 1's and HEAD's, with the tool file excluded from every version's corpus so each sees the same files.",
+      "evidence": [
+        "tools/reader-existence.mjs"
+      ],
+      "dedupKey": "tools/reader-existence.mjs:292",
+      "resolvedAt": "2026-09-27T11:11:57.317Z"
+    },
+    {
+      "id": "f12",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "onlyTestReached required `outside.length > 0`, so a file-private helper that nothing references stayed in the corpus, and its dead literal counted as a live producer or consumer (fail-open). A helper reached by nothing is now cut: `outside.every(...)` is true for an empty list. The fixpoint then also cuts private helpers reachable only from a dead one.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.352Z",
+      "proof": "testCodeRanges on an unreferenced `function stray()` returned [], which was RED; after the fix it returns [[0,2]]. writeFixtureTree's unreferenced `strayOrphan` keeps ORPHAN DEAD end to end. The scanner work under #3 keeps this change from over-cutting live production code: live ranges and verdicts match HEAD's tool.",
+      "evidence": [
+        "tools/reader-existence.mjs"
+      ],
+      "dedupKey": "tools/reader-existence.mjs:377",
+      "resolvedAt": "2026-09-27T11:11:57.385Z"
+    },
+    {
+      "id": "f13",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "An inline membership read, where the array is the receiver of a predicate call (`return [\"GHOST\", \"X\"].includes(m)`, `new Set([\"GHOST\"]).has(m)`, `[...].some(...)`), was classified as PRODUCER only, so a member that is read but never written went silently green. The consumer shape now accepts any bracket-free elements around the quoted member: an identifier, a spread, an object. The spread producer rule now runs on the text left after reads are stripped (`unread`), not on the raw line, so a stripped read can no longer add PRODUCER back. Round 1 covered only arrays of string literals; this round closes the mixed forms the reviewer found.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.416Z",
+      "proof": "This round, `return [KIND, \"GHOST\"].includes(m);`, `return [\"GHOST\", KIND].includes(m);`, `return [...BASE, \"GHOST\"].includes(m);` and `if ([...BASE, \"GHOST\"].includes(m)) go();` were all [PRODUCER], which was RED; the pin was recorded. They are [CONSUMER] now. Controls still hold: `send(\"GHOST\", list[0].has(x))` stays unclassified; `return [...labels, \"BLOCK\"]`, the both-roles line and new `send([...BASE, \"GHOST\"])` keep PRODUCER. Mutation proof: running the spread rule on `line` again fails the two spread cases by name. Live verdicts are unchanged.",
+      "evidence": [
+        "tools/reader-existence.mjs"
+      ],
+      "dedupKey": "tools/reader-existence.mjs:207",
+      "resolvedAt": "2026-09-27T11:11:57.449Z"
+    },
+    {
+      "id": "f14",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "At the pinned range's head, b9523a6, the live battery member `node tools/reader-existence.mjs` was red: the reachability cut surfaced SEVERITIES CRITICAL, HIGH and MEDIUM. The accepted rows that justify those verdicts landed outside the range, in 26c1584 under review-sweep-fence. The task's red-checks only ever ran --self-test.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T11:11:57.481Z",
+      "evidence": "docs/gates/reader-existence.json:62",
+      "dedupKey": "docs/gates/reader-existence.json:62",
+      "justification": "There is no code defect to fix. The live gate is green: `node tools/reader-existence.mjs` exits 0 with 10 accepted findings. The matching acceptance is 26c1584's docs/gates/reader-existence.json hunk, which was swept adversarially under the review-sweep-fence register (c004bb9..26c1584). The base, 827abfe, was already red for an unrelated STALE row. Closing the gap for the future is a policy change beyond this task. It needs a task-state or fence law requiring that a tool change which alters a live battery member's verdicts carry its protected-config acceptance, or a red/green pin on the live invocation, inside the same task's pinned range. This round does not reopen the gap. With the tool file excluded from every version's corpus, sweep() gives identical findings and suppressed counts for this tool, round 1's and HEAD's, so no config edit is needed.",
+      "resolvedAt": "2026-09-27T11:11:57.513Z"
+    },
+    {
+      "id": "f15",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The CORPUS paragraph in docs/gates/reader-existence.json's $comment (lines 32-34) still describes the old cut: name-only, function bodies only. path-obligations cites that paragraph as 'the baseline law in its own words'. It omits helpers reached only from test code or by nothing, and const, arrow and table bindings. The tool header (tools/reader-existence.mjs:40-50) states the current law, but the config prose is unchanged in the tree.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:44.327Z",
+      "evidence": [
+        "docs/gates/reader-existence.json"
+      ],
+      "dedupKey": "docs/gates/reader-existence.json:32",
+      "resolvedAt": "2026-09-27T11:38:44.360Z"
+    }
+  ],
+  "sweptBase": "827abfe4685996c19a19730bcd58f9bfa87f01b8",
+  "sweptHead": "b9523a6f62862a84104d100475ffa109936598aa",
+  "sweptDiffDigest": "3ac8af38a876"
+}

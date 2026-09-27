@@ -1,0 +1,77 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-entry-realpath",
+  "passStartedAt": "2026-09-27T08:04:10.024Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "The first repair canonicalized only argv[1]: under --preserve-symlinks-main Node keeps the symlinked spelling in import.meta.url, so a symlinked invocation of any of the 13 gates matched nothing and exited 0 having run nothing again",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T09:41:27.531Z",
+      "evidence": [
+        "tools/pathspec.mjs",
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/pathspec.mjs:209@39e6305 (one-sided isentry)",
+      "resolvedAt": "2026-09-27T09:41:27.562Z"
+    },
+    {
+      "id": "f2",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The task claimed every battery member realpaths its entry, but retrospective (a battery member twice: --self-test and --top 4) kept the raw argv[1] guard at the certified head, and the pin's hand-picked 14-name list could not see it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T09:41:27.599Z",
+      "evidence": [
+        "tools/retrospective.mjs",
+        "tasks/review-sweep-entry-realpath.json"
+      ],
+      "dedupKey": "tools/retrospective.mjs:250@39e6305 (raw argv guard outside the pinned list)",
+      "resolvedAt": "2026-09-27T09:41:27.642Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The pin and scope named tools/zz-head-glue-probe.mjs, which had no entry guard at either end of the range, so its entry in the loop proved nothing for this task",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T09:41:27.678Z",
+      "evidence": [
+        "tools/zz-head-glue-probe.mjs"
+      ],
+      "dedupKey": "tools/zz-head-glue-probe.mjs@39e6305 (no isentry)",
+      "resolvedAt": "2026-09-27T09:41:27.722Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "realpathSync(argv[1]) runs at module load and threw ENOENT when argv[1] named no file (node -e ... -- x), so merely importing a gate as a library could crash",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T09:41:27.762Z",
+      "evidence": [
+        "tools/test-lint.mjs",
+        "tools/pathspec.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:280@39e6305 (throwing entry guard at import)",
+      "resolvedAt": "2026-09-27T09:41:27.797Z"
+    },
+    {
+      "id": "f5",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "Under a symlinked tools/ directory the realpathed entry makes the gate RUN, but ROOT (from import.meta.url) is the symlink TARGET's parent, so the gate judges the repo the files physically live in, not the logical host; the commit message's 'a symlinked tools/' overclaims",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T09:41:27.836Z",
+      "evidence": "tools/debt-gate.mjs:33@39e6305 (ROOT from realpathed import.meta.url)",
+      "dedupKey": "tools/debt-gate.mjs:33@39e6305 (root from realpathed import.meta.url)",
+      "justification": "Documented layout law: WIRING.md opens with 'The tools are dependency-free Node scripts that resolve your repo root from their own location (tools/ at the root)', and §1 vendors by COPY. A symlinked tools/ is not a supported layout: the tools judge the tree they physically live in, which is the stated contract. Node realpaths the main module by default, so ROOT was always the target; the repair did not change ROOT, it made the CLI run. The commit message's 'a symlinked tools/' overclaims (a symlinked checkout and /proc/self/cwd are the covered cases); history is not rewritten, this row is the correction.",
+      "resolvedAt": "2026-09-27T09:41:27.865Z"
+    }
+  ],
+  "sweptBase": "7addec5cc87b9cde28330424650ea0ee3ffb4f9a",
+  "sweptHead": "39e6305b25efecdd8d103aa0d2df4117ae9bf09b",
+  "sweptDiffDigest": "8fe0bb408748"
+}

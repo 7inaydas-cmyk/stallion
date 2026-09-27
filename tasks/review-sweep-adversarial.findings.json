@@ -1,0 +1,210 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-adversarial",
+  "passStartedAt": "2026-09-27T08:04:25.415Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 7,
+      "severity": "HIGH",
+      "claim": "A calibrate-verdict never closed its dispatch: calibrate-record and a second calibrate-verdict were accepted after a recorded calibrationVerdict, so a FAILED dispatch's claims plus a retry's (made without re-running calibrate) were graded as one union and the durable FAIL was overwritten by a PASS. The shared write seam now refuses a graded dispatch, naming calibrate.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.240Z",
+      "proof": "calibrate wave (5 known, bar 4). Record 2 known claims, then calibrate-verdict: FAILED, stored passed:false. Without re-running calibrate, record 2 more, then calibrate-verdict: PASSED 4/5, and passed:true overwrites the FAIL. Now the shared write seam refuses with 'dispatch is CLOSED … fix: calibrate <id>'. A live scratch-copy run on harness-merge-wave1 confirms: record-after-FAIL and verdict-again both exit 1, the FAIL survives, and the legacy PASS file is closed too.",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:959",
+      "resolvedAt": "2026-09-27T10:12:13.281Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "calibrate passed the register's sweptBase/sweptHead to `git diff ${base}..${head}` after a truthiness check only; a '-'-led value such as --output=<path> reached git as an option and overwrote a file outside the repo. replayFactsOf now refuses any swept range that is not two pinned commit shas (sha-1 or sha-256, all prepare ever writes) before git sees it.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.320Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:837",
+      "resolvedAt": "2026-09-27T10:12:13.357Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "Re-calibrate discarded the closed epoch's verdict and boundary, so a pass after N failed dispatches read as a first try, and calibrationVerdict had no reader. openDispatch appends each closed epoch (boundary, sweep, verdict) to an append-only `epochs`; calibrate-verdict reads it and prints 'dispatch N, after F failed and U ungraded earlier dispatch(es)'. Optional checklist digest: not done.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.391Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:917",
+      "resolvedAt": "2026-09-27T10:12:13.424Z"
+    },
+    {
+      "id": "f4",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The calibration register's `calibration: true` flag had no reader, and a self-test case made it look load-bearing. It is deleted from openDispatch and the fixtures; the first-dispatch case now asserts the real shape (dispatchFrom 0, empty epochs). The .calibration.json suffix remains the only discriminator, as before.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.456Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:911",
+      "resolvedAt": "2026-09-27T10:12:13.493Z"
+    },
+    {
+      "id": "f5",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "registerRepair printed the runnable `rm <register> && … prepare` on every read failure as prose ('if it holds no findings yet'), even for a parsed register holding findings; following it on a conflict-marked register dropped a HIGH finding and verdict scored CLEAN. The re-mint is now offered only for a register the caller parsed and counted empty; unparsable ones get hand repair only.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.532Z",
+      "proof": "n/a (MEDIUM)",
+      "evidence": [
+        "tools/adversarial-runner.mjs",
+        "tools/task-findings.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:311",
+      "resolvedAt": "2026-09-27T10:12:13.568Z"
+    },
+    {
+      "id": "f6",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The command bodies were unreachable from the self-test, so four reverts stayed green: calibrate opening no dispatch, calibrate-verdict grading the whole register, prepare reading the checklist raw, calibrate-record minting when none is open. The four command bodies take a path/diff seam defaulting to the live repo; five cases drive them against temp fixtures; M-a, M-b, M-c, M-f killed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.605Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:218",
+      "resolvedAt": "2026-09-27T10:12:13.645Z"
+    },
+    {
+      "id": "f7",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Two case names claimed more than their bodies asserted: 'a missing checklist REFUSES with a fix line' checked only that a refusal happened, and no case showed calibrate-record refusing a nine-heading checklist. The first now matches the fix line; a new case covers calibrate-record against checklist(9). Mutations M-d (fix line dropped) and M-e (bare heading count) are killed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.682Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:536",
+      "resolvedAt": "2026-09-27T10:12:13.726Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "task-state printed a different repair than the runner for the same broken register (first a restore-from-git, then an unconditional `rm … && prepare`). Now one law: task-findings' findingsRepair(rel, id, mint, register) re-mints only a parsed, empty register, task-state passes the register, and the runner's registerRepair delegates to it; a runner case pins its text to that law.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.761Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs",
+        "tools/task-findings.mjs",
+        "tools/task-state.mjs"
+      ],
+      "dedupKey": "tools/task-state.mjs:622",
+      "resolvedAt": "2026-09-27T10:12:13.795Z"
+    },
+    {
+      "id": "f9",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "The forget verify line (`jj diff --git -r 'task-<id>@' | git apply --check --reverse`) and landing-law step 1 covered only the tip commit, read a stale workspace snapshot and the working tree, and step 2's plain `git apply` staged nothing, so a partial landing verified as landed. draftRange now spans fork_point(task-<id>@ | @)..task-<id>@; the law snapshots first and applies with --index.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.830Z",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:64",
+      "resolvedAt": "2026-09-27T10:12:13.862Z"
+    },
+    {
+      "id": "f10",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "`forget --landed` took the operator's word. cmdForget now runs landingCheck (snapshot, whole-stack export, reverse-apply against HEAD's tree in a scratch index) and refuses unless HEAD holds the stack. Run from the workspace's own copy, `@` was the tip and the empty range passed; a tip at or below `@` now refuses first, and the law and both fix lines say forget runs in the PRIMARY copy.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.900Z",
+      "proof": "Live jj 0.44/git 2.43 scratch repo (tools/ copy + tasks/t1.json), workspace task-t1 holding one committed unlanded draft (a.txt) and a tip edit (b.txt). Before: `forget t1 --landed` from INSIDE the workspace exited 0 and orphaned the draft. Now it exits 1: 'evidence: task-t1@ is the working copy the check runs in, or its ancestor — …empty by construction…; run forget in the PRIMARY copy'. The draft survives (jj log shows it). From the primary copy it still refuses on 'b.txt/a.txt: does not exist in index'.",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:112",
+      "resolvedAt": "2026-09-27T10:12:13.941Z"
+    },
+    {
+      "id": "f11",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "The printed verify command exited 0 with nothing checked when run from a subdirectory, because git apply skips every path outside the cwd. The tool now runs the check itself at the repo root (the live case drives it from a subdirectory; the cwd mutation is killed), and the landing law's apply is anchored with git -C \"$(git rev-parse --show-toplevel)\" apply --index.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:12:13.981Z",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:156",
+      "resolvedAt": "2026-09-27T10:12:14.014Z"
+    },
+    {
+      "id": "f12",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "At 036fc14 the complexity baseline still exempted `tools/adversarial-runner.mjs <anonymous>:247`, a closure the refactor had moved into recordFinding. That left the complexity-gate self-test red at the pinned head, and a runtime-code task could not edit the fence-tier baseline to fix it.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T10:12:14.045Z",
+      "evidence": "docs/gates/complexity-baseline.json@036fc14 (<anonymous>:247 row)",
+      "dedupKey": "docs/gates/complexity-baseline.json@036fc14 (<anonymous>:247 row)",
+      "justification": "Nothing is left to repair in my files. 26c1584 (review-sweep-fence) dropped the stale row before this task reached verified, and `node tools/complexity-gate.mjs` is green now. The structural fix is a policy change outside this task and my ownership: either exempt pure row deletions in docs/gates/complexity-baseline.json from the fence-surface tier law (task-state FENCE_SURFACE), or key anonymous rows by enclosing function in complexity-gate.mjs. Either needs a protected-tier decision.",
+      "resolvedAt": "2026-09-27T10:12:14.080Z"
+    },
+    {
+      "id": "f13",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "gitOut had no maxBuffer, so a swept diff over Node's 1 MiB default failed with ENOBUFS and prepare refused. It now sets maxBuffer: 512 * 1024 * 1024 (task-coverage's value). gitOut and diffUnderAudit take an {cwd, env} seam, so the self-test drives the real body in a scratch repo with GIT_* scrubbed. No review issue was raised against this item.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.539Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs:124",
+      "resolvedAt": "2026-09-27T11:38:06.571Z"
+    },
+    {
+      "id": "f14",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "(a) loadRegisters reports dirExists:false plus dirError (the read's code), and runIndex refuses with exit 1, rule, 'evidence: <rel> (<code>)' and fix. Checkout/mkdir is offered only for ENOENT; EACCES and ENOTDIR get 'ls -ld <rel>'. (b) flat() maps [\\r\\n]+ to ' / '. trunc = flat + cut. bundleBlock routes task/claim/justification through trunc, and renderIndex routes them through flat. (c) severityFor(i) replaced the nested ternary. That leaves a stale baseline row (orchestrator's).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.602Z",
+      "evidence": [
+        "tools/retrospective.mjs"
+      ],
+      "dedupKey": "tools/retrospective.mjs:171",
+      "resolvedAt": "2026-09-27T11:38:06.634Z"
+    },
+    {
+      "id": "f15",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "The swept file list used git diff --name-only without -z, so C-quoted paths matched no tree. It now uses -z, split on \\0, empties filtered. Review fix: the raw names were joined by newlines, so a path with a newline wrote its own lines (a forged '## The refutation contract' heading) into every lane bundle. listedName now JSON-quotes any name with a control character (C0 or DEL), so each swept name is one bundle line. Printable names stay byte-exact.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:14.225Z",
+      "evidence": [
+        "tools/adversarial-runner.mjs"
+      ],
+      "dedupKey": "tools/adversarial-runner.mjs swept-range listing: git diff --name-only without -z (c-quoted names, raw newline join)",
+      "resolvedAt": "2026-09-27T11:38:14.256Z"
+    }
+  ],
+  "sweptBase": "ee88f6dd7809e3a5f5cc7edc08168dc61e34e404",
+  "sweptHead": "036fc1480f7ec833ca8baa58e8a55b4b661631da",
+  "sweptDiffDigest": "39339ea0cac8"
+}

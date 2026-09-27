@@ -1,0 +1,153 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-lineage-gates",
+  "passStartedAt": "2026-09-27T08:04:25.354Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "vendor-drift --freshness counted a source as moved only on an exact match against `git diff pin..HEAD` and never checked it against the pin's tree. A source naming no file at the pin (./ prefix, trailing space, typo, case variant, stale pre-rename path) or an array-shaped docs map (keys are indices) could never move, and the tool printed FRESH FOR THIS WAVE with exit 0.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.213Z",
+      "proof": "Upstream: tools/x.mjs v1 (pin), then v2. Source 'tools/x.mjs' gives exit 1. Sources './tools/x.mjs', 'tools/X.mjs' and 'tools/old-name.mjs', and docs=[...], each gave exit 0 FRESH FOR THIS WAVE. Now readUpstreamSincePin reads the pin's tree (ls-tree -r --full-tree, quotePath off). freshnessVerdict takes it as upstreamAtPin and refuses, naming every source or doc key the tree does not hold. docsShapeRefusal requires docs to be a non-array object with string targets. This round the CLI phantom case also asserts the refusal text ('name no file upstream at the pin'), so a crash that exits 1 cannot pass it.",
+      "evidence": [
+        "tools/vendor-drift.mjs"
+      ],
+      "dedupKey": "tools/vendor-drift.mjs@691f8e9:187-188",
+      "resolvedAt": "2026-09-27T10:07:13.243Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "vendor-drift --upstream judged whatever tree the caller's cwd named. From outside the repo or from another repo, git failed into a silent catch or swept the wrong tree. The default-path existsSync was cwd-relative, so an untracked default manifest was missed from a subdirectory. The tool then printed 'OK — no vendor manifest anywhere in the tree', despite its 'ANY cwd' docstring.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.278Z",
+      "proof": "Fixed by sweepOwnTree. It runs git -C <the gate's own dir> for rev-parse --show-toplevel and ls-files ':(top)*VENDOR.json', resolves the default path against that root, and keeps --manifest cwd-relative. When git cannot answer for that tree, it refuses with the rule and a fix instead of printing OK. Test-gap follow-up from this round: the OUTSIDE-any-repo case now asserts that the forged manifest is NAMED (out.includes(DEFAULT_MANIFEST)), not only exit 1. A new case plants the gate in a forged repo and runs it from a cwd inside a SEPARATE clean git repo, the exact scenario in #1/#2. It asserts exit 1 and the manifest named. Mutation M6 (sweepOwnTree's git without -C gateDir, i.e. the pre-fix cwd anchoring) now fails 'cli — --upstream run from INSIDE ANOTHER repo…' and the OUTSIDE case. Restored code is green, 12 cli cases.",
+      "evidence": [
+        "tools/vendor-drift.mjs"
+      ],
+      "dedupKey": "tools/vendor-drift.mjs@691f8e9:642-649",
+      "resolvedAt": "2026-09-27T10:07:13.313Z"
+    },
+    {
+      "id": "f3",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "vendor-drift --freshness judged the clone's checked-out HEAD, but its FRESH line told the operator only to 'fetch before trusting recency'. A clone that was fetched but never fast-forwarded read FRESH with exit 0 while upstream had moved a vendored source. This happened on a branch and, as this round's review showed, also on a DETACHED clone, which has no @{upstream} but holds the fetched origin/HEAD.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.344Z",
+      "proof": "Branch case: origin at tools/x.mjs v1, cloned, origin commits v2, the clone fetches. The old code printed 'FRESH — the manifest pin is the upstream HEAD', exit 0. Detached case (review round): the same setup, but the clone runs `checkout --detach` before fetching. The first fix skipped any clone where @{upstream} did not resolve, so it still printed FRESH with exit 0. Now refuseBehindFetched walks FETCHED_TIPS and uses the first tip that resolves: @{upstream} (fix `git -C <clone> pull --ff-only`), else refs/remotes/origin/HEAD (fix `git -C <clone> checkout --detach origin/HEAD`, which works detached). It refuses when rev-list --count HEAD..<tip> is greater than 0 and names the tip it counted. A clone with neither tip has nothing fetched to be behind. Cases: the branch case now asserts the 'behind its own fetched upstream' text. A new detached case was red on the pre-fix code. An over-refusal guard runs a detached clone AT origin/HEAD (after the printed remedy) and must reach the real verdict ('upstream moved 1 vendored source'), not the behind refusal. A mutation that refuses any resolvable tip fails that guard.",
+      "evidence": [
+        "tools/vendor-drift.mjs"
+      ],
+      "dedupKey": "tools/vendor-drift.mjs@691f8e9:682",
+      "resolvedAt": "2026-09-27T10:07:13.384Z"
+    },
+    {
+      "id": "f4",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "debt-gate's row-candidate filter required a leading '|', but GFM makes outer pipes optional. A pipe-less body row that renders in the table was not counted, not parsed and never overdue, despite the comment's promise that no row silently drops out.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.433Z",
+      "proof": "Old code, register rows '| PD-1 | x | next 50 commits | OPEN |' and 'PD-2 | x | next 1 commits | OPEN': parsed as [PD-1] only, and overdueRows(...,10) gave []. Fix: any line that has a pipe and a PD id is a candidate. parseRow strips an optional leading pipe, so the row is read by position, or becomes a GATE_DEFECT if its shape is wrong. PD-2 now goes overdue. Prose with no pipe is still not a row, and the live register still parses (1 row).",
+      "evidence": [
+        "tools/debt-gate.mjs"
+      ],
+      "dedupKey": "tools/debt-gate.mjs@691f8e9:53",
+      "resolvedAt": "2026-09-27T10:07:13.471Z"
+    },
+    {
+      "id": "f5",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "debt-gate's parseRow split cells on every literal '|'. A GFM-escaped '\\|' inside the documented SHIPPED (<date>: <citation>) status moved a fragment into the last cell, so an honest register read as GATE_DEFECT (it failed closed).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.501Z",
+      "proof": "Row '| PD-1 | x | audit | P1 | next 5 commits | SHIPPED (2026-09-20: `a \\| b`) |' gave {defect} on the old code. parseRow now splits on /(?<!\\\\)\\|/ (unescaped pipes only), and the row parses as SHIPPED.",
+      "evidence": [
+        "tools/debt-gate.mjs"
+      ],
+      "dedupKey": "tools/debt-gate.mjs@691f8e9:69",
+      "resolvedAt": "2026-09-27T10:07:13.539Z"
+    },
+    {
+      "id": "f6",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "path-obligations' ONE LAW, THREE TRANSPORTS rule names the authoring gate as a transport, but it armed only on task-state, task-coverage and gate-law. law-source.mjs (the seam that imports the shared law), agreement-check.mjs and hooks/authoring-gate.mjs armed nothing, so a change where the authoring transport stops sharing the law stayed silent.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.581Z",
+      "proof": "On the old code, `node tools/path-obligations.mjs tools/zcode-plugin/lib/law-source.mjs` armed only RED→GREEN PIN. The spec is now the ONE_LAW_PATHS set, which adds law-source, agreement-check and authoring-gate. Positive cases cover all three. The negative case lib/io.mjs was checked by mutation: widening the spec to lib/** fails it.",
+      "evidence": [
+        "tools/path-obligations.mjs"
+      ],
+      "dedupKey": "tools/path-obligations.mjs@691f8e9:47-49",
+      "resolvedAt": "2026-09-27T10:07:13.618Z"
+    },
+    {
+      "id": "f7",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "zz-head-glue-probe imported GLUE_SITE from the working-tree guard-reach.mjs it polices. One edit confined to guard-reach could splice runGuard's streams and loosen the law together, leaving the battery green and the probe printing a false 'HEAD carries the glue law'. The verdict on HEAD's bytes also depended on an uncommitted regex.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.659Z",
+      "proof": "New sandbox case: a copy of the probe sits beside a guard-reach.mjs that exports GLUE_SITE=/./. On the old code, glueVerdict(spliced) returned true (confirmed by hand). The probe now defines and exports the GLUE_SITE literal itself and never imports guard-reach, so the policed file cannot move the verdict. The guard-reach side has landed: tools/guard-reach.mjs:79 now reads `import { GLUE_SITE } from \"./zz-head-glue-probe.mjs\"`, it has no local copy, and its self-test is OK (72 cases). The live probe is green on HEAD.",
+      "evidence": [
+        "tools/zz-head-glue-probe.mjs"
+      ],
+      "dedupKey": "tools/zz-head-glue-probe.mjs@691f8e9:15",
+      "resolvedAt": "2026-09-27T10:07:13.696Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The range added a --self-test dispatch to zz-head-glue-probe but never added it to the package.json battery. At 691f8e9 the doctor refused battery completeness (fail-closed), and the probe's negative GLUE_SITE fixtures ran in no battery. Nothing per-commit flagged it, because path-obligations' BATTERY COMPLETENESS rule armed only on package.json.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.743Z",
+      "proof": "Two parts. (1) 26c1584 added `node tools/zz-head-glue-probe.mjs --self-test` to the selftest battery, and `node tools/task-coverage.mjs --doctor` now passes '✔ the selftest battery runs every self-testing tool in tools/'. (2) The transport gap that #8 names is fixed in path-obligations: BATTERY COMPLETENESS now also arms on any tools/**/*.mjs change, because a tool gaining a dispatch is the change that forgets package.json. Its obligation text names the doctor as the check. A docs/WIRING.md negative case guards against over-arming (checked by mutation).",
+      "evidence": [
+        "package.json",
+        "tools/path-obligations.mjs"
+      ],
+      "dedupKey": "package.json@691f8e9:13",
+      "resolvedAt": "2026-09-27T10:07:13.784Z"
+    },
+    {
+      "id": "f9",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "At 691f8e9 no commit-time transport ran detached-head-guard. Its 'pre-commit: HEAD is DETACHED' refusal and ALLOW_DETACHED_HEAD hatch existed only as prose and tests, and its only live consumer (the battery) misfired on any detached checkout.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.815Z",
+      "proof": "Repaired in 26c1584. .githooks/pre-commit:5 runs `node tools/detached-head-guard.mjs || exit 1`. The gate-registry entry detached-head-guard-live declares transports ['pre-commit'], which gate-registry enforces (HEAD's gate-registry is OK on the current tree), and the live run is out of the battery. No change in the owned tool was needed.",
+      "evidence": [
+        ".githooks/pre-commit",
+        "docs/gates/gate-registry.json"
+      ],
+      "dedupKey": ".githooks/pre-commit@691f8e9:3",
+      "resolvedAt": "2026-09-27T10:07:13.852Z"
+    },
+    {
+      "id": "f10",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "path-obligations (diff --name-only HEAD, ls-files --others, diff --cached --name-only) and vendor-drift (ls-files sweep, diff --no-renames pin..HEAD, ls-tree -r) read newline path lists. git C-quotes non-ASCII paths in these lists, and even under core.quotePath=false it still quotes paths containing a quote, backslash or control character. A quoted path armed no obligation glob and matched no manifest source. path-obligations' diffs also listed only the new side of a rename.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:34:03.617Z",
+      "proof": "RED before the fix: path-obligations printed all 5 path-spelling failures. A staged or working-copy rename of tasks/old.json armed nothing for the old path. tasks/ü-new.json armed nothing when untracked, staged or tracked-changed. vendor-drift failed 2 cli cases: the --upstream refusal named the quoted path \"vendor/h\\303\\241rness/VENDOR.json\", and a manifest source tools/q\"x.mjs was read as a phantom because ls-tree printed \"q\\\"x.mjs\" even with core.quotePath=false. All 4 red-check pins printed 'command pin recorded RED'. GREEN after the fix: both self-tests pass and the expected failure lines are gone. The fixed reads are at tools/path-obligations.mjs:163 (diff -z --name-only --no-renames HEAD), :164 (ls-files -z --others --exclude-standard) and :182 (diff -z --cached --name-only --no-renames), and at tools/vendor-drift.mjs:783 (ls-files -z sweep), :857 (diff -z --name-only --no-renames pin..HEAD) and :858 (ls-tree -z -r --name-only).",
+      "evidence": [
+        "tools/path-obligations.mjs",
+        "tools/vendor-drift.mjs"
+      ],
+      "dedupKey": "tools/path-obligations.mjs:163",
+      "resolvedAt": "2026-09-27T11:34:03.654Z"
+    }
+  ],
+  "sweptBase": "8957fbaaf0c315f0e0ddfa505806226dbe428a36",
+  "sweptHead": "691f8e94467a3dac1cc4a5a2944c8bd1aca485a4",
+  "sweptDiffDigest": "8505c394ca8d"
+}

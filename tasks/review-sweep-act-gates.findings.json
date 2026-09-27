@@ -1,0 +1,169 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-act-gates",
+  "passStartedAt": "2026-09-27T08:04:25.796Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "The bypass and destructive classifiers now follow bash's separator rules on both sides. quoteAwareSplit keeps a continuation, an escaped separator, and a redirect's & or | inside one command. It also records which character a backslash escaped, so `\\>&` and `\\>|` still separate (this was the round-2 regression). Payloads are split by the same law. The rows read each command with its inner separators masked, and the `-f` anchoring is fixed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.724Z",
+      "proof": "Round 1: {tool_input:{command:\"git commit -m wip 2>&1 --no-verify\"}} piped to `sh -c 'node tools/task-gate.mjs --stdin || exit 2'` exited 0 as 'routine'. Round 2 (reviewer): `git push --force-with-lease origin main \\>& rm -rf build/` was one segment, exempt by lease, exit 0 (HEAD refused it). It now splits into [\"git push --force-with-lease origin main \\\\>\",\"rm -rf build/\"] and exits 2 ('recursive forced delete'); `\\>|` and `\\<&` behave the same, and `\\\\>&1 --no-verify` stays one command and refuses. On the destructive side, `git push origin main\\; --force`, `'main;' --force`, `\"a|b\" --amend`, `2>&1 --force` and `find … \\; -exec rm` returned null at HEAD and now classify; `git push origin main\\; --force` over --stdin exits 2. Also closed here, null at HEAD as well: `sh -c 'git commit -m x --no-verify; echo done'` was routine because the unsplit payload read the flag as `--no-verify;` (now exit 2); `bash -c \"git push --force-with-lease origin main; rm -rf build/\"` was lease-exempt as a whole payload (now destructive); `git push -f origin main` and `… main -f` were null because `(?:^|\\s)-f\\s` needed whitespace that `push\\s+` had already consumed (now exit 2). Guards that stay green: `sh -c 'git push origin; echo --force'` is still null, `sh -c 'git commit -m x && git log -n 3'` no longer over-refuses, and nested `bash -c \"sh -c '…'\"` destructive reach is kept and pinned. Mutation: reverting `i - 1 !== literal`, the `[;|&<>]` mask, the payload flatMap, the `-f` lookbehind or the nested payload in commandWords each kills its own case.",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "dedupKey": "tools/task-gate.mjs:222 separatorat(raw, i, literal) + :235 quoteawaresplit + :271 commandsegments + :284 commandwords",
+      "resolvedAt": "2026-09-27T11:11:54.756Z"
+    },
+    {
+      "id": "f2",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "skipsHooks recognized only standalone `-n` / `--no-verify`, and the git pre-filter needed whitespace after `git`. Bundled -n (-nm, -anm, -qn), unique long prefixes (--no-veri), a `)`-closed flag, `(git` / `$(git` / `/usr/bin/git`, a redirect glued to the flag (`--no-verify>/dev/null`, `&>/dev/null`, `>&2`, `--no-veri>/dev/null`), and `git>/dev/null commit` all passed as routine. skipsHooks now tokenizes commandWords, where `< > &` read as spaces, and the pre-filter is `\\bgit[\\s<>&]`.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.790Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "dedupKey": "tools/task-gate.mjs:151 skipshooks + :164 bypassrefusal git pre-filter",
+      "resolvedAt": "2026-09-27T11:11:54.819Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "With --stdin, `Object.assign(args, argsFromHookPayload(...))` copied `session: undefined` over an explicit argv --session when the payload had no session_id. Every such conversation then shared gate-state-default.json, so one session's asks waived another session's fact demands.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.852Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "dedupKey": "tools/task-gate.mjs:751 entry --stdin session merge",
+      "resolvedAt": "2026-09-27T11:11:54.887Z"
+    },
+    {
+      "id": "f4",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Nothing pinned the session_id half of --stdin. The mutant `session: undefined` in argsFromHookPayload survived the self-test, and every conversation would have shared one state file.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.920Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "dedupKey": "tools/task-gate.mjs:livestatecases '--stdin keys the gate state by the payload's session_id'",
+      "resolvedAt": "2026-09-27T11:11:54.951Z"
+    },
+    {
+      "id": "f5",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The narrowed rm row matched only the full `--recursive`. It missed GNU rm's unique-prefix forms (--r, --rec, --recur), which really do delete recursively, so the destructive class silently shrank.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.983Z",
+      "evidence": [
+        "tools/task-gate.mjs"
+      ],
+      "dedupKey": "tools/task-gate.mjs:destructive 'recursive delete' row",
+      "resolvedAt": "2026-09-27T11:11:55.014Z"
+    },
+    {
+      "id": "f6",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "authoring-gate.mjs imported gate-law, law-source and io statically. A module that failed to parse or link killed the process with exit 1, which the runner treats as non-blocking, before main().catch existed. That was a fail-open, while the README promised that 'a crash anywhere in the gate' refuses with exit 2. The imports are now dynamic, inside main().",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.045Z",
+      "evidence": [
+        "tools/zcode-plugin/hooks/authoring-gate.mjs",
+        "tools/zcode-plugin/lib/gate-law.mjs",
+        "tools/zcode-plugin/README.md"
+      ],
+      "dedupKey": "tools/zcode-plugin/hooks/authoring-gate.mjs:main (dynamic imports)",
+      "resolvedAt": "2026-09-27T11:11:55.076Z"
+    },
+    {
+      "id": "f7",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "Only the crash-catch branch of the authoring hook's exit-code contract ran as a process. Flipping the non-JSON, no-file, no-harness, law-not-ok or ordinary-deny exit(2) to 1 or 0 left every battery green. hookExitCases now drives every refusal path as a process.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.110Z",
+      "evidence": [
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/gate-law.mjs:hookexitcases",
+      "resolvedAt": "2026-09-27T11:11:55.141Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The protected-task fix for fence-surface paths goes through the optional `law.state.fenceSurfaceRefusal?.()`, and it was pinned only against a fake law. A rename in task-state would have silently brought back the runtime-code dead-end fix. realTierPin now asserts the real law's export reaches the gate.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.171Z",
+      "evidence": [
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/gate-law.mjs:realtierpin",
+      "resolvedAt": "2026-09-27T11:11:55.202Z"
+    },
+    {
+      "id": "f9",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "law-source LAYOUTS still set `shape: \"stallion\"/\"vendored\"` on every layout. Its only readers, the gate-law ternaries, had been removed, and loadLaw no longer returns it. The field was dead wiring that invited reads of `law.shape`, which is undefined, so it is removed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.236Z",
+      "evidence": [
+        "tools/zcode-plugin/lib/law-source.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/law-source.mjs:layouts",
+      "resolvedAt": "2026-09-27T11:11:55.269Z"
+    },
+    {
+      "id": "f10",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The agreement matrix's 'retired' rows were documented as retirement coverage. Their verdict actually comes from the planned phase underneath, so they pass even against transports that ignore retirement. Lawful retirement is always pre-executing, so it cannot be isolated in this matrix. The docstring now calls these smoke rows and points to the real discriminators.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.300Z",
+      "evidence": [
+        "tools/zcode-plugin/lib/agreement-check.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/agreement-check.mjs:fixture docstring",
+      "resolvedAt": "2026-09-27T11:11:55.332Z"
+    },
+    {
+      "id": "f11",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "At the pinned head, docs/WIRING.md §7 wired task-gate through $CLAUDE_FILE / $CLAUDE_COMMAND, which the runtime never sets. With --stdin added and an empty --bash now refused, the documented hook blocked every command. Commit 952b7b2 (already landed) rewrote §7 to `sh -c 'node tools/task-gate.mjs --stdin || exit 2'`. These keys resolve on that committed doc alone.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.365Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/wiring.md:§7 pretooluse hook command (--stdin)",
+      "resolvedAt": "2026-09-27T11:11:55.396Z"
+    },
+    {
+      "id": "f12",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "No mechanism binds WIRING §7's hook command to task-gate's --stdin CLI, so the doc/code drift that #4/#6/#18 describe can recur with every check green. The binding is the doc-claims row in `requests` (task-gate-reads-the-hook-payload). ORCHESTRATOR: this key resolves ONLY once that row lands. Land the request before recording #7; until then docs/gates/doc-claims.json does not carry it (the reviewer confirmed the row is valid as given: whyHash b427843af9b16e45, doc-reconcile exit 0 with it appended). Both evidence specs still match the current tree: :455 argsFromHookPayload and :751 `if (args.stdin)`.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.429Z",
+      "evidence": [
+        "docs/gates/doc-claims.json"
+      ],
+      "dedupKey": "docs/gates/doc-claims.json:claims[task-gate-reads-the-hook-payload] (requested, not yet landed)",
+      "resolvedAt": "2026-09-27T11:11:55.463Z"
+    }
+  ],
+  "sweptBase": "036fc1480f7ec833ca8baa58e8a55b4b661631da",
+  "sweptHead": "2d5e983d6cd9ddf5f8b4426957298862babdd977",
+  "sweptDiffDigest": "7ed58560731e"
+}

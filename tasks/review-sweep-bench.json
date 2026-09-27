@@ -254,6 +254,32 @@
       "seq": 23,
       "parent_hash": "5e6b77f4aec32d1288574caf9d9cf442816ddd9a97d4e6e1584aa1e527b3e9b4",
       "entry_hash": "05e7ad5e53ae5a344689593e5a42f102bfb63ff5cdef6aeb13dc1606ec9cf682"
+    },
+    {
+      "at": "2026-09-27T11:13:33.458Z",
+      "type": "pin-retire",
+      "command": "node tools/bench/grade.mjs --self-test",
+      "expect": "bench: treatment: the derived battery reaches nested members on a Node without readdir's recursive option",
+      "justification": "recorded at an intermediate seam state the pre-fix traversal bypassed; superseded by the builtin-patch case re-pinned against M7 (digest 99e1154dfcfd)",
+      "seq": 24,
+      "parent_hash": "05e7ad5e53ae5a344689593e5a42f102bfb63ff5cdef6aeb13dc1606ec9cf682",
+      "entry_hash": "d55c0639dde60d7a50acec968c4deaea1f166713b59996276a26d76a273d7ed5"
+    },
+    {
+      "at": "2026-09-27T11:43:38.541Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 25,
+      "parent_hash": "d55c0639dde60d7a50acec968c4deaea1f166713b59996276a26d76a273d7ed5",
+      "entry_hash": "039c65d36f489c69ca20e0270e977bbc964a785224af776a2ee0d4edfa152408"
+    },
+    {
+      "at": "2026-09-27T11:51:07.963Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 26,
+      "parent_hash": "039c65d36f489c69ca20e0270e977bbc964a785224af776a2ee0d4edfa152408",
+      "entry_hash": "4b159d80bc442703c6c21daa5ff8904200ce17cbddc9fd55857a17562e8efc95"
     }
   ]
 }

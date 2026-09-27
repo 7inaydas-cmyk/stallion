@@ -1,0 +1,207 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-meta-gates",
+  "passStartedAt": "2026-09-27T08:04:25.664Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 6,
+      "severity": "HIGH",
+      "claim": "carries() judged liveness with a three-spelling denylist whose scan stopped at the & of `2>&1`, so `2>&1 || true`, `|| echo`, `| tee`, `; true` and `&` all read as carried. Only DECLARED gates were judged, so a swallow after the battery's undeclared --self-test members freed every verdict before it. errexit was read file-wide, and `&&`, `!`, `exit 256` and `|| exit 1 &` were admitted.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.524Z",
+      "proof": "scripts.selftest becomes `... && node tools/zz-head-glue-probe.mjs --self-test 2>&1 || true && node tools/gate-coverage.mjs && ...`. In sh the chain's status then comes after the swallow, so every earlier self-test, gate-registry's and guard-reach's included, stops blocking CI and the verified boundary. The round-1 checker printed OK, as did the doctor. The fixed checker refuses it: `package.json scripts.selftest is not one clean && chain — it breaks at '|| true && node tools/gate-coverage.mjs ...'`, verified in a scratch copy with the proposed registry applied. It also refuses `|| true`, a trailing `; true`, and every reviewer errexit/tail probe. Controls stay green.",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:375 keepsverdict + :453 batterychainerrors (replaces the :143 not_swallowed denylist)",
+      "resolvedAt": "2026-09-27T11:11:55.558Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "liveText() cut every line at the first whitespace-preceded #, even inside a quoted string, so `echo \"wiring #42\" && node tools/rogue-gate.mjs || exit 1` hid an unregistered gate from both shadow loops and `>\"/tmp/ #doctor.log\" || true` hid a swallow. Round 2: quotes were tracked per line, so a quote opened on an earlier line (`echo \"multi\\n #42\" && node tools/rogue.mjs`) still hid the rogue gate.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.591Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:246 shelllines + :274 liveline + :225 openquote(prefix, quote)",
+      "resolvedAt": "2026-09-27T11:11:55.624Z"
+    },
+    {
+      "id": "f3",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "COMMAND_START's tokens (;, &&, then, do, else) matched inside a quoted echo string, so an echoed remedy such as `echo \"fix: stage it, then node tools/task-coverage.mjs --staged\"` read as carrying the gate. Round 2: the quote guard scanned only from the line start, so `echo \"hint\\nnode tools/a.mjs || exit 1\"`, whose whole text is echo, still counted as carried.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.654Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:336 runcarries (quote state from shelllines, not the line start)",
+      "resolvedAt": "2026-09-27T11:11:55.690Z"
+    },
+    {
+      "id": "f4",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "The shadow sweep exempted `node X --self-test...` in every transport (pre-commit, commit-msg, pre-push, ci), although its doc said only the battery's runs are exempt. Its `(?![-\\w])` also accepted `--self-test=off --check`, which the repo's argv.includes tools run in real gating mode. Under that one flag, an unregistered gate, or a declared gate outside its transport, was invisible.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.721Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:498 batteryselftest",
+      "resolvedAt": "2026-09-27T11:11:55.754Z"
+    },
+    {
+      "id": "f5",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "Widening ci to every workflow file also widened direction 1. A ci-declared gate (the selftest-battery row says 'on every push') counted as carried by a workflow_dispatch-only, scheduled, or untracked scratch workflow, so the push/PR workflow could drop it while the checker stayed green. Base refused that tree.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.787Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:167 carriedworkflowstext (+ :172 trackedworkflows, :186 runsonpush)",
+      "resolvedAt": "2026-09-27T11:11:55.820Z"
+    },
+    {
+      "id": "f6",
+      "lane": 5,
+      "severity": "HIGH",
+      "claim": "The battery transport joined every package.json script. A live battery gate (guard-reach-live, gate-coverage-live, doc-reconcile-live, ...) could therefore move from scripts.selftest, the only script CI and task-state's verified boundary run, into an alias nothing runs, and gate-registry still reported every transport in agreement.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.852Z",
+      "proof": "A commit with no task footer (package.json is not code) removes `node tools/guard-reach.mjs`, `node tools/gate-coverage.mjs` and `node tools/doc-reconcile.mjs` from scripts.selftest and re-adds them as aliases. `npm run selftest` exits 0 with none of them run, and the old gate-registry and the doctor both pass. The new checker refuses the move: 'guard-reach-live' is missing from battery, and the alias is an undeclared npm-alias shadow. Verified in a scratch copy.",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:210 packagescripts (was :124 batteryscripts)",
+      "resolvedAt": "2026-09-27T11:11:55.886Z"
+    },
+    {
+      "id": "f7",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "The shadow sweep saw only the literal `node tools/X.mjs` spelling, so `node ./tools/x.mjs`, `node \"$ROOT/tools/x.mjs\"`, `node \"tools/x.mjs\"` and `node --no-warnings tools/x.mjs` hid unregistered or misplaced gates, while the doc said it 'sees EVERY spelling'.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.978Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:408 canonicalspellings",
+      "resolvedAt": "2026-09-27T11:11:56.012Z"
+    },
+    {
+      "id": "f8",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "TRANSPORTS.ci was labelled `.github/workflows/*.yml` while workflowsText reads /\\.ya?ml$/, so a refusal about release.yaml named a glob that excludes it. The header also called every value a path.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.050Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:58 transports.ci label",
+      "resolvedAt": "2026-09-27T11:11:56.085Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "Parts of the repair survived their own removal. Dropping liveText from carries() stayed green, and so did routing transportText('ci') back to selftest.yml only. In round 2, loosening EXIT_NONZERO to accept `exit 0`, or adding `:` as a fallback, also stayed green, because no decoy held `|| exit 0` or `|| :`.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.120Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:534 selftestliveness (+ :665 selftestciatroot)",
+      "resolvedAt": "2026-09-27T11:11:56.157Z"
+    },
+    {
+      "id": "f10",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "gate-registry deadlocked on two lawful wirings. A declared advisory gate whose verdict is deliberately swallowed (WIRING §11's path-obligations --staged) failed carries(), and undeclared it was a shadow. An env-prefixed or exec'd command (`FORCE_COLOR=0 node tools/a.mjs`) failed carries(), while mentions() reported it as a shadow. No registry config could satisfy either line.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.191Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:122 advisoryshapeerror + :441 carryoptions + :284 command_start env/exec",
+      "resolvedAt": "2026-09-27T11:11:56.225Z"
+    },
+    {
+      "id": "f11",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "guard-reach's run lock failed open. An empty lock (a run between the wx create and its pid write) parsed to NaN and was stolen. A holder owned by another user (kill → EPERM) was judged dead, stolen, and its probe residue swept. The exit hook then removed the lock without checking that it still named this run, so the robbed run deleted the thief's lock.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.258Z",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:253 holderalive + :265 releaselock",
+      "resolvedAt": "2026-09-27T11:11:56.291Z"
+    },
+    {
+      "id": "f12",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "guard-reach's call-site pins (both lock entries, sweep scope, ratchet, busy-tree env, read-tree GIT_INDEX_FILE) matched regexes against raw source. Commented-out lockOrExit calls, `if (false) lockOrExit(...)`, `acquireLock(probeDirs); return;`, a block-commented ratchet and `// was:` decoys all left 67/67 green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.331Z",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:606 owncode + :612 lockentrycases",
+      "resolvedAt": "2026-09-27T11:11:56.364Z"
+    },
+    {
+      "id": "f13",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "guard-reach exported GLUE_SITE with the comment 'exported so the committed-bytes probe pins the same shape, defined once', but nothing imported it. The probe kept its own copy, so the law was defined twice, and after the lineage fixer made the probe own GLUE_SITE, guard-reach's export was dead again.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.397Z",
+      "evidence": [
+        "tools/guard-reach.mjs"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:79 import { glue_site } from ./zz-head-glue-probe.mjs",
+      "resolvedAt": "2026-09-27T11:11:56.428Z"
+    },
+    {
+      "id": "f14",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "gate-coverage's trackedSources split plain `git ls-files` output, which C-quotes a non-ASCII path (`\"deploy/na\\303\\257ve-push.sh\"`). isSource rejects the quoted form, so the file silently left the census, its count and its orphan report.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.463Z",
+      "evidence": [
+        "tools/gate-coverage.mjs"
+      ],
+      "dedupKey": "tools/gate-coverage.mjs:193 git ls-files -z",
+      "resolvedAt": "2026-09-27T11:11:56.495Z"
+    },
+    {
+      "id": "f15",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "At the swept head 827abfe, the battery stopped at complexity-gate --self-test (stale baseline rows for task-coverage.mjs and adversarial-runner.mjs from earlier commits). The live guard-reach and gate-coverage runs that exercise this commit's changes therefore never ran in the battery there.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:56.531Z",
+      "evidence": [
+        "docs/gates/complexity-baseline.json"
+      ],
+      "dedupKey": "docs/gates/complexity-baseline.json:1 (repaired in 26c1584)",
+      "resolvedAt": "2026-09-27T11:11:56.571Z"
+    }
+  ],
+  "sweptBase": "2d5e983d6cd9ddf5f8b4426957298862babdd977",
+  "sweptHead": "827abfe4685996c19a19730bcd58f9bfa87f01b8",
+  "sweptDiffDigest": "c7f3ca3c9e56"
+}

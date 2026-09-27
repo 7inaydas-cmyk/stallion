@@ -161,6 +161,22 @@
       "seq": 15,
       "parent_hash": "c5ca9066a1bbecefd8b56d94ccdd428f440da00c6046f267868d96fe703a2eec",
       "entry_hash": "f10bd738538bbaa345f8b3cb7dbc20c32b458d14fcfc57440ad9692f0269b851"
+    },
+    {
+      "at": "2026-09-27T11:43:38.572Z",
+      "type": "transition",
+      "to": "adversarial",
+      "seq": 16,
+      "parent_hash": "f10bd738538bbaa345f8b3cb7dbc20c32b458d14fcfc57440ad9692f0269b851",
+      "entry_hash": "77c8c8dbcd38960e16329b8881f7cf924d9803837f1ae672558dd732b8ed1300"
+    },
+    {
+      "at": "2026-09-27T11:44:51.086Z",
+      "type": "transition",
+      "to": "done",
+      "seq": 17,
+      "parent_hash": "77c8c8dbcd38960e16329b8881f7cf924d9803837f1ae672558dd732b8ed1300",
+      "entry_hash": "c2ae9bfeb7cd1e3bdf4ba8f1455b0071ef6d7d843c045129d950f77d016b4937"
     }
   ]
 }

@@ -1,0 +1,145 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-coverage",
+  "passStartedAt": "2026-09-27T08:04:25.299Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "The merge law (fence filesIntroducedBy, and commit-msg's mergeOwnFiles/mergeParentFileLists) counted any path equal to some parent's copy as incoming. A footerless merge could take a stale side's copy (a fork point or an ancestor from before the range) over the mainline's fix, and it passed the staged gate, commit-msg and the fence. The premise 'incoming content was judged as its own commits' is false for stale copies.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.119Z",
+      "proof": "Scratch repo, plain porcelain: root has apps/gate.mjs v1. Branch side forks at root and adds only a docs commit. main commits the fix (v2), which becomes the base. Then `git merge --no-ff --no-commit side; git checkout side -- apps/gate.mjs; commit 'Merge branch side'` with no footer. Before the fix, commit-msg printed 'no code staged' (exit 0) and `--base <fix>` passed (exit 0). The file equals side's copy, so it was dropped from the every-parent intersection.\n\nRound 2 (reviewer's cherry-pick false refusal, confirmed by hand: commit-msg exit 1 on a merge git wrote untouched): 'differs from parent i AND parent i changed it since the base' was only a stand-in for 'drops a change'. It is now the fallback. A two-parent merge with a resolvable base is judged where its tree (at commit-msg, the index) departs from git's own merge, `git merge-tree --write-tree -z --name-only --no-messages p0 p1`, plus every path git reports conflicted, plus (kept, never weakened) any path differing from every parent. Conflicted paths are needed: on modify/delete git leaves the modifying side's copy in its tree, so restoring a file the mainline deleted would otherwise pass. This is pinned by a transport case that kills the 'conflicted dropped' mutant.\n\nThe fallback law still serves when merge-tree cannot answer (git < 2.38, or any failure). The clean law's refusals are a subset of the fallback's, so a merge-tree failure fails closed. With no base (unrelated histories, a shallow cut), changes are null and every differing path is judged. A new transport case pins that end to end (orphan side, `-s ours` plus checkout of the orphan's copy: commit-msg exits 1 and the fence names the merge). It kills the reviewer's `[]` mutant. An octopus answers for all it brings its first parent (unchanged).\n\nResults: the stale-side revert refuses at commit-msg and the fence, and the cherry-pick-then-merge passes at commit-msg while the fence names only the side commit. Full-history fence output of this repo is byte-identical to HEAD's tool.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:mergeownfiles + cleanmergeof (a two-parent merge is judged against git's own merge of its parents; the since-the-base law is only the fallback)",
+      "resolvedAt": "2026-09-27T11:11:54.151Z"
+    },
+    {
+      "id": "f2",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "commit-msg treated every MERGE_HEAD sha as a parent of the commit being made. It ignored git's reduce_heads (a parent that another parent contains is dropped unless MERGE_MODE is exactly 'no-ff'), so it judged a different file set than the commit git records and passed footerless code that the fence then refused.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.183Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:pendingparents (head + merge_head, reduced via merge-base --independent unless merge_mode === 'no-ff')",
+      "resolvedAt": "2026-09-27T11:11:54.215Z"
+    },
+    {
+      "id": "f3",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "Every gate read git path listings without -z, so git C-quoted any path holding a non-ASCII byte, '\"', '\\\\' or a control character (\"tools/gat\\303\\251.mjs\"). isCodePath matched no code tree or fence-surface root on the quoted spelling. The staged gate, commit-msg and the fence (pre-push and CI) all classified new footerless code, including a new .github/workflows/*.yml, as non-code.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.246Z",
+      "proof": "Scratch repo: stage apps/gaté.mjs and use a footerless message. Before the fix: `--staged` printed 'no code files staged' (exit 0), `--commit-msg` printed 'no code staged — no task footer required' (exit 0), and after the commit `--base <root>` passed (exit 0). All three read '\"apps/gat\\303\\251.mjs\"', which starts with a quote, so isCodePath returned false. Fix: one gitPaths(subcommand, ...args) helper runs `git <sub> -z ...` and splits on NUL. It is used for the fence's diff-tree (root and parent), both staged reads, the merge-parent reads (the new clean-merge diff included), and the doctor's two ls-files reads. All three transports now refuse, naming 'apps/gaté.mjs' unquoted.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:gitpaths (every name listing read nul-separated: diff-tree, diff --cached, ls-files)",
+      "resolvedAt": "2026-09-27T11:11:54.280Z"
+    },
+    {
+      "id": "f4",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "The staged gate and commit-msg read `git diff --cached --name-only`, which detects renames and lists only the destination. The fence's diff-tree lists the deletion. Moving a code file out of the code trees therefore read as 'no code staged' at commit time, and the fence then refused it.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.310Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:stagedpaths (--no-renames on every staged listing)",
+      "resolvedAt": "2026-09-27T11:11:54.341Z"
+    },
+    {
+      "id": "f5",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The doctor's committed and live pre-push checks used invokesMode(..., 'fence'). Any unknown mode fell through to isBareFence, which never looked at --pre-push, so a pre-push hook that never judges pushed refs was certified while the fix text asked for '--pre-push || exit 1'. The only tests were the positive case and a stub-ancestry pure seam, so deleting the dispatch or swapping the ancestry direction survived --self-test.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.374Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:mode_tests 'pre-push' mode (an unknown mode now certifies nothing instead of falling through to isbarefence)",
+      "resolvedAt": "2026-09-27T11:11:54.410Z"
+    },
+    {
+      "id": "f6",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "fenceInvocation rejected only three literal swallow spellings ('|| true', '|| :', '|| exit 0'), so the doctor certified hook and CI lines that throw away the verdict: '; exit 0', '|| echo', a trailing '&', a bare non-final line in a hook without set -e (sh exits with the later line's status), '|| exit 256' (sh folds any multiple of 256 to 0), a non-final `sh -c \"… || exit 1\"` wrapper (its inner exit sets only the wrapper's status), and a bare line after `set -e` that a later `set +e` undid. A refused push then landed while the doctor certified the hook.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.445Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:hookinvocation + errexitbefore (invocation allowlist; `|| exit n` blocks only for n % 256 != 0 and never through an sh -c wrapper; set -e counts only while no later set +e / set +o errexit undid it)",
+      "resolvedAt": "2026-09-27T11:11:54.476Z"
+    },
+    {
+      "id": "f7",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "cleanCommitMessage stripped '#' lines on every commit. For -m/-F commits git's default cleanup is 'whitespace', which keeps them, so commit-msg passed a footer followed by a '#…' paragraph that the fence, reading the committed message, refused. The round-1 boolean fix then read commit.cleanup=scissors raw, which made git's template the last paragraph and refused every editor-written footer that the fence would pass.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.510Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:gitcleanupmode (returns strip | scissors | raw; cleanups applies it; scissors cuts at git's scissors line and keeps '#' lines)",
+      "resolvedAt": "2026-09-27T11:11:54.541Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "gate-registry's carries() and the doctor's invokesMode disagreed on what a verdict that reaches git is. (1) gate-registry counted a hook shebang's `-e` (`#!/bin/sh -e`) as errexit, so it carried a bare hook line that was not the last one; the doctor refuses that line. (2) gate-registry carried a `!`-inverted run (`! node … || exit 1`, or an inverted last line), which turns a refused gate's exit 1 into 0; the doctor refuses these. No self-test tied the two readings together through the production path, and the direction-1 refusal printed no runnable fix.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:34:03.716Z",
+      "proof": "Shebang: `printf '#!/bin/sh -e\\nfalse\\necho ran-past-verdict\\n' > h.sh; sh h.sh; echo $?` prints ran-past-verdict and exits 0. With HEAD's shebang read restored, checkDeclarations([{id:'a',invocation:'node tools/a.mjs',transports:['pre-commit']}], {'pre-commit':'#!/bin/sh -e\\nnode tools/a.mjs\\necho staged'}) returned 0 errors (carried), and the shipped self-test printed 'a verdict that never reaches git was carried — a -e shebang (sh <hook> drops it)', exit 1. Inverted run: `printf '#!/bin/sh\\n! false || exit 1\\necho staged\\n' | sh` prints staged and exits 0. Before the fix, checkDeclarations carried '#!/bin/sh\\n! node tools/a.mjs || exit 1\\necho pushed', the same line under set -e, a final '! node tools/a.mjs', and a ci '- run: ! node tools/a.mjs || exit 1'. The self-test printed 4 'an inverted' FAIL lines, exit 1.",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:377",
+      "resolvedAt": "2026-09-27T11:34:03.750Z"
+    },
+    {
+      "id": "f9",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "invokesMode trimmed lines before reading errexit, so an indented set -e (dead branch/function) certified; a later set +e was recognised only at a narrow command start; `set -- -e` counted. Review follow-ups: set +e after if/elif/while/until/!/case-arm/command/eval/FOO=1 still did not cancel (fail open), and a column-0 set -e inside a multi-line quote or after a trailing backslash certified, while the JSDoc claimed parity with gate-registry. Fixed: any `set` word carrying +e/+o errexit cancels; set -e counts only at column 0 on a line starting outside any quote/continuation (carriedState).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.757Z",
+      "proof": "New cases are in selfTestErrexitCases (tools/task-coverage.mjs:1936). This group was split out of the hook-line cases to keep complexity at 8 or below. The case at :1946 covers nine `set -e` hooks that must not be certified: if, elif, while, until, !, a case arm, command, eval and FOO=1 before `set +e`. A real `sh` prints OFF for each. The case at :1950 covers three more decoys: `set -e` inside a multi-line \"…\", inside '…', and after a trailing `\\`. Its control, `echo \"a\\nb\" # it's closed` followed by set -e, must still certify. Each decoy returned true on the old code, and both cases failed first, then passed. Four mutations each break the self-test: restoring the old SET_COMMAND, ignoring the carried state, dropping the continuation state, and never cutting comments. The earlier indented/`set --`/`|| exit 256` case and the controls still pass. The live doctor still certifies every hook.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:204",
+      "resolvedAt": "2026-09-27T11:38:06.789Z"
+    },
+    {
+      "id": "f10",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "No doc-claims entry binds docs/WIRING.md §8's adoption-base pin flow to pinBaseFix. The code's remedy changed while the prose still taught the bare, refused commit, and doc-reconcile stayed green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:44.260Z",
+      "evidence": [
+        "docs/gates/doc-claims.json",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/gates/doc-claims.json (no claim anchoring wiring §8 to tools/task-coverage.mjs:pinbasefix)",
+      "resolvedAt": "2026-09-27T11:38:44.293Z"
+    }
+  ],
+  "sweptBase": "b5c1d3b7f28211f96e0ab0f71b5bb030dc86ba02",
+  "sweptHead": "ee88f6dd7809e3a5f5cc7edc08168dc61e34e404",
+  "sweptDiffDigest": "cb55e857a589"
+}

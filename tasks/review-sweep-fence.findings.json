@@ -1,0 +1,120 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-fence",
+  "passStartedAt": "2026-09-27T08:04:25.862Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "Once 26c1584 wired detached-head-guard into pre-commit, its IN_PROGRESS_MARKERS exemption let a commit on a detached HEAD through silently whenever MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD or BISECT_LOG was present. merge, cherry-pick and revert never detach HEAD, and `bisect reset` leaves a commit made mid-bisect on no branch. So these commits landed on no branch with guard exit 0, which is the incident class the guard exists for. The self-test pinned 'a detached HEAD mid-merge (MERGE_HEAD) passes' as the intended allow.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T10:07:13.890Z",
+      "proof": "Scenario: a colocated-jj copy (HEAD always detached), or a user on a checked-out sha, runs `git cherry-pick X`, resolves a conflict and runs `git commit`. At 26c1584 the guard returned refuse:false on the marker, and the commit landed on no branch with exit 0. Fix: IN_PROGRESS_MARKERS is cut to rebase-merge and rebase-apply. The new rebaseBranch() reads the rebase state's head-name and exempts only when it names refs/heads/*, because git moves that branch when the rebase finishes. A detached HEAD during a merge, cherry-pick, revert or bisect, or during a rebase/am started detached, now refuses (escape ALLOW_DETACHED_HEAD=1). The self-test turns the MERGE_HEAD pass into a refusal and adds marker and live-rebase cases (8 verdict + 11 live-git, green). Reviewer mutation: making rebaseBranch accept any head-name fails 'a rebase started on a detached HEAD refuses'.",
+      "evidence": [
+        "tools/detached-head-guard.mjs"
+      ],
+      "dedupKey": "tools/detached-head-guard.mjs@26c1584:48-55",
+      "resolvedAt": "2026-09-27T10:07:13.925Z"
+    },
+    {
+      "id": "f2",
+      "lane": 1,
+      "severity": "HIGH",
+      "claim": "unfencedPushTips split each pre-push stdin line on whitespace and read token[1] as the local sha. git hands the hook the refspec's source expression verbatim, spaces included, so `git push origin \"other^{/fix main bug}:refs/heads/main\"` made the fence check the word 'main', which is in HEAD's history, or '0', read as a deletion. The real pushed tip, carrying unjudged code, then fast-forwarded remote main.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.576Z",
+      "proof": "Input (git 2.43 captured line): `other^{/fix main bug} <sha outside HEAD> refs/heads/main <remote sha>`. The old split gave ['other^{/fix','main','bug}',...], so the ancestry fact was asked about 'main'. That rev resolves inside HEAD's history, so the ref was dropped and the push proceeded. With a second word of '0' the line matched the all-zeros deletion branch and was never checked. Fix: parse from the right, where no field can hold spaces: /^(.+) ([0-9a-f]{40}|[0-9a-f]{64}) \\S+ (?:[0-9a-f]{40}|[0-9a-f]{64})$/. Only the matched local sha is judged, and a line that does not parse refuses. The pure case and the zero variant refuse now and failed before. A transport case drives the real CLI over real stdin and the real ancestry fact: an ancestor ref passes and an off-history ref refuses, so deleting the dispatch or swapping the ancestry direction now fails it.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:unfencedpushtips (right-anchored parse; an unparseable line refuses)",
+      "resolvedAt": "2026-09-27T11:11:54.608Z"
+    },
+    {
+      "id": "f3",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "This range made the committed hooks carry two controls: --pre-push in pre-push, and the detached-head guard in pre-commit, which is now the guard's only live run. The doctor, including its checks of the live core.hooksPath hooks, could see neither. It accepted a bare-fence pre-push (fence#2) and a --staged-only pre-commit (fence#3/#6), so a clone pointed at stale hooks was certified 'wired end to end' while both controls were missing.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:54.638Z",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:cmddoctor committed and live hook checks (pre-push mode at :1217/:1233; detached-head guard at :1219/:1235)",
+      "resolvedAt": "2026-09-27T11:11:54.671Z"
+    },
+    {
+      "id": "f4",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "The registry's battery transport counted every package.json script although only `npm run selftest` runs, so any live battery gate could move into an unrun alias with every control green. The _readme recorded 'package.json's scripts as battery' as law.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:55.916Z",
+      "evidence": [
+        "tools/gate-registry.mjs"
+      ],
+      "dedupKey": "tools/gate-registry.mjs:140 transporttext routes battery to scripts.selftest and npm-alias to the rest",
+      "resolvedAt": "2026-09-27T11:11:55.948Z"
+    },
+    {
+      "id": "f5",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The wave's claim that pre-push judges the pushed refs, and that pre-commit runs the detached-head guard, had only text pins (grep of the hook bodies): nothing ran either hook's runtime half, so a hook that carried the text but not the behaviour stayed certified",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:17:12.132Z",
+      "evidence": [
+        ".github/workflows/selftest.yml",
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tasks/review-sweep-fence.json seq 8-9 (grep-only hook pins)",
+      "resolvedAt": "2026-09-27T11:17:12.170Z"
+    },
+    {
+      "id": "f6",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The two hook pins matched hook TEXT, so a commented-out guard line satisfied them; only gate-registry's live-command matcher distinguished it",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:17:12.208Z",
+      "evidence": [
+        ".github/workflows/selftest.yml",
+        "tools/gate-registry.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": ".githooks/pre-commit:5 (a commented guard satisfies the grep pin)",
+      "resolvedAt": "2026-09-27T11:17:12.246Z"
+    },
+    {
+      "id": "f7",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "At the range end docs/WIRING.md, the vendor-facing copy of the hooks, still showed the pre-range bodies: pre-push without --pre-push and pre-commit without the detached-head guard",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:17:12.288Z",
+      "evidence": [
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/wiring.md:87-90@26c1584 (stale hook blocks)",
+      "resolvedAt": "2026-09-27T11:17:12.325Z"
+    },
+    {
+      "id": "f8",
+      "lane": 5,
+      "severity": "HIGH",
+      "claim": "package.json carries the battery but is not fence surface, so a footerless commit could drop or swallow a declared battery gate with nothing outside the battery noticing. Fixed: cmdDoctor runs `node tools/gate-registry.mjs` (execFileSync, cwd ROOT) and fails on nonzero, printing the registry's lines as evidence with a fix naming docs/gates/gate-registry.json and the battery. Doctor runs in pre-push and CI (fence surface). Review follow-up: an absent registry refused with a loader stack trace under a package.json fix, unpinned. Now gateRegistryRefusal returns {evidence, fix}: absent -> one line + vendoring fix.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.692Z",
+      "proof": "doctorRunsGateRegistry (tools/task-coverage.mjs:~2300): the doctor passes while package.json carries the gate and refuses once `|| true` swallows it, showing the registry's evidence line. New doctorRefusesAbsentRegistry (tools/task-coverage.mjs:2320, case at :2344): with the scratch repo's registry removed, the doctor shows ✖, prints `evidence: tools/gate-registry.mjs is absent — the battery (package.json) runs unguarded` on one line, prints `fix: vendor tools/gate-registry.mjs and docs/gates/gate-registry.json`, and never shows 'Cannot find module'. Both cases failed first, then passed. The reviewer's fail-open mutation (`return null` when the registry is absent) now fails the self-test. In a bench treatment sandbox the doctor prints the one-line refusal. The live repo doctor shows ✔ the gate registry holds and all checks pass.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:1257",
+      "resolvedAt": "2026-09-27T11:38:06.723Z"
+    }
+  ],
+  "sweptBase": "c004bb9a942575446b62b1599409f319daad3e40",
+  "sweptHead": "26c158426252f13ff585c766f2ab6934f6a99472",
+  "sweptDiffDigest": "365101a26e2e"
+}

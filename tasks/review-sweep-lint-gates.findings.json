@@ -1,0 +1,208 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "review-sweep-lint-gates",
+  "passStartedAt": "2026-09-27T08:04:25.727Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 6,
+      "severity": "HIGH",
+      "claim": "remote-string-lint's widened CLOSES (`\"` followed by `)`, `;`, `&&`, a pipe or a redirect) let a line that closes one remote string and opens the next (`\" && y --command \"`, `\"; ...`, `\") && B=$(remote_run \"`, and the older `\" | ...` shape) close without being checked as an opener. The second block was read as local, so a backtick or `$(` in it passed with exit 0.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.573Z",
+      "proof": "A deploy script with `gcloud compute ssh vm1 --command \"` / `  sudo systemctl stop app` / `\" && gcloud compute ssh vm2 --command \"` / \"  # `manifest inspect` answers the real question\" / `\"`. At 8957fba, scan() hit CLOSES on line 3, set inside=false and returned without calling opensBlock on that line. Lines 4-5 were read as local, and the CLI printed 'no local expansion' and exited 0 on the founding-incident defect. Fix: the scan loop runs the opener check on every closing line (`if (!inside || CLOSES.test(line)) { inside = opensBlock(...) }`). This round the check reads the line after the closer's own leading quote, because the direct-ssh opener now counts quotes. The new case 'direct-ssh-reopen' pins that: dropping the strip makes it fail. An end-to-end scratch corpus reports deploy/roll.sh:5 as an unescaped backtick and exits 1. Five self-test cases cover the and, semicolon, pipe, subshell-capture and direct-ssh chains.",
+      "evidence": [
+        "tools/remote-string-lint.mjs"
+      ],
+      "dedupKey": "tools/remote-string-lint.mjs:374",
+      "resolvedAt": "2026-09-27T11:11:57.605Z"
+    },
+    {
+      "id": "f2",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "remote-string-lint claimed to cover 'every form bash declares a function with' and 'every opener', but it had four gaps. `deploy::remote() {`, `remote-run() {`, `function on-vm {` and `on_vm() ( ... )` wrappers were never collected. `typeset` and flagged `local`/`readonly` openers were missing. A direct `ssh host \"` block never opened. Each gap exits 0 on a live local expansion.\n\nThe round-2 review found three follow-ups, all now fixed:\n(a) literalName's `-` left boundary broke the transitive closure for `\"${RUNNER:-remote_run}\"` and `${R-remote_run}` wrappers. HEAD's version collected those.\n(b) The direct-ssh arm missed `elif`, `while`, `until`, `timeout 30 ssh` and `sudo -u deploy ssh`, and it opened fake blocks on prose such as `echo \"retry (ssh failed) \"`.\n(c) A subshell body with a `case` arm was cut off at the arm's `a)`.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.637Z",
+      "evidence": [
+        "tools/remote-string-lint.mjs"
+      ],
+      "dedupKey": "tools/remote-string-lint.mjs:214",
+      "resolvedAt": "2026-09-27T11:11:57.670Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The 'dispatching' count was computed in main and printed, but nothing tested main's use of it: the dispatch-count pin checked only that scan() returned .blocks, so reverting main to a narrow regex count stayed green. The readonly and declare opener arms had no case either.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.700Z",
+      "evidence": [
+        "tools/remote-string-lint.mjs"
+      ],
+      "dedupKey": "tools/remote-string-lint.mjs:394",
+      "resolvedAt": "2026-09-27T11:11:57.732Z"
+    },
+    {
+      "id": "f4",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "test-lint regression: strip() blanked template contents, `${...}` included, and findTautologies skipped any blanked-literal operand. `expect(`${r}`).toBe(`${r}`)` and `expect(`abc`).toEqual(`abc`)` stopped blocking (the base tool flagged them), and identical \"...\" operands had never been flagged at all.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.767Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:147",
+      "resolvedAt": "2026-09-27T11:11:57.799Z"
+    },
+    {
+      "id": "f5",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "test-lint's UNSTRIPPED-SOURCE-READ exemption read `stripped`, which keeps regex literals. A test whose own assertion regex names the fix (`expect(src).toMatch(/stripComments\\(readFileSync/)`) therefore exempted its own unstripped read.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.828Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:191",
+      "resolvedAt": "2026-09-27T11:11:57.859Z"
+    },
+    {
+      "id": "f6",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "The TOKENS regex-literal lookbehind anchored on a bare line start, so a line opening with a `/` division (`total\\n  / count; ... `a/b``) was read as a regex. That regex swallowed a backtick and blanked every line up to the next backtick, which hid a tautology the base tool caught. A glob in JSX text opening a fake block comment was a pre-existing misread that the documented ceiling did not name.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.891Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:114",
+      "resolvedAt": "2026-09-27T11:11:57.923Z"
+    },
+    {
+      "id": "f7",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "Two parts of test-lint's repair had no pin: template-literal blanking in mask() and the `\\breturn` arm of the regex-literal lookbehind. Dropping the backtick from the blank set, or removing `|\\breturn`, left all 27 cases and the battery green, and the first mutant reopens the exempt-by-text escape.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:57.955Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:292",
+      "resolvedAt": "2026-09-27T11:11:57.988Z"
+    },
+    {
+      "id": "f8",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "complexity-gate's selfTestOptOut compared the LIVE docs/gates/*.json against a hardcoded NO_COMPILER_FIX string that listed only stallion's own registrations. A vendoring host that registered the gate honestly (a gate-registry entry, or naming it in coverage.json) got a permanently red self-test that only a vendored-file patch could clear.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.024Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:83",
+      "resolvedAt": "2026-09-27T11:11:58.057Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The born-remedy-closed-hatch pin checked only that the old wording 'pin it with a test' was absent. A bornRemedy that ignored hatchOpen and always printed the open-hatch route ('name it in a test under testGlobs') passed the self-test and the battery. The hatchOpen argument at both call sites was also unpinned.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:11:58.091Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:515",
+      "resolvedAt": "2026-09-27T11:11:58.126Z"
+    },
+    {
+      "id": "f10",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The swept commits landed with the battery red: complexity-gate --self-test failed on two stale line-keyed baseline rows, and reader-existence failed. No local transport runs the battery, so nine intermediate commits were red while the doctor certified the wiring.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T11:11:58.160Z",
+      "evidence": "docs/WIRING.md:390",
+      "dedupKey": "docs/wiring.md:390",
+      "justification": "Pre-existing, and not in this fixer's files. The red rows were in docs/gates/complexity-baseline.json (other tools' anonymous functions) and were repaired in 26c1584. HEAD runs complexity-gate --self-test and reader-existence green (verified this pass).\n\nEnforcing per-commit battery greenness is a policy change to .githooks/pre-push (e.g. `npm run selftest || exit 1`), which is fence surface; stating it as a boundary is a docs change. Both are outside this task. A request to state the boundary in docs/WIRING.md §'What is deliberately NOT enforced' is filed.\n\nWIRING already documents that the battery runs at `advance verified`, and that boundary held here: no false verdict resulted.",
+      "resolvedAt": "2026-09-27T11:11:58.193Z"
+    },
+    {
+      "id": "f11",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "At the swept head 8957fba (and at base b9523a6), `node tools/complexity-gate.mjs --self-test` exited 1 on stale baseline rows. The seven complexity-gate REDs (seq 16-21, 25) were therefore told apart only by their --expect text, and their GREEN can be seen only on a tree that contains 26c1584.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T11:11:58.223Z",
+      "evidence": "tasks/review-sweep-lint-gates.json:seq16-25",
+      "dedupKey": "tasks/review-sweep-lint-gates.json:seq16-25",
+      "justification": "No code change is needed. This restates the documented range boundary (docs/TASK-LIFECYCLE.md: the prepared register records the swept range and `verdict` reports it; `done` re-runs every pin on the current tree).\n\nOn the current tree, which includes 26c1584's re-stamped baseline, `node tools/complexity-gate.mjs --self-test` exits 0 and none of the seq 16-21/25 expect lines print, so the done gate sees them GREEN. Seq 21's GREEN is not vacuous: its failure line is printed again by the live fixture check at tools/complexity-gate.mjs:539, and a mutant fails it on its own (see #3).\n\nThe complexity pin from the previous pass (seq 40) was recorded while the rest of the self-test was green, so its exit code discriminates on its own.\n\nRegister note for the orchestrator: the GREEN for seq 16-21/25 is observable only on a tree that includes 26c1584.",
+      "resolvedAt": "2026-09-27T11:11:58.255Z"
+    },
+    {
+      "id": "f12",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "The comment-stripping law exists in two versions that disagree. test-lint's TOKENS has a regex-literal arm; doc-reconcile's CODE_TOKENS does not, and its KNOWN LIMITATION names only the fail-closed `//`/`/*`-in-regex case. When a backtick sits inside a regex in doc-reconcile's corpus, it opens a fake template, and the comments that follow count as code evidence (fail-open, the WS2 class).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:34:03.524Z",
+      "evidence": [
+        "tools/doc-reconcile.mjs"
+      ],
+      "dedupKey": "tools/doc-reconcile.mjs:132",
+      "resolvedAt": "2026-09-27T11:34:03.561Z"
+    },
+    {
+      "id": "f13",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "complexity-gate's trackedFiles and test-lint's discoverTestFiles read `git ls-files` output without -z. Git C-quotes a non-ASCII path (`\"tools/caf\\303\\251.mjs\"`). The quoted name matches no include glob and not TEST_RE, so both sweeps skipped the file without saying so.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.843Z",
+      "proof": "Both listings pass -z and split on \\0 (complexity-gate.mjs:169, test-lint.mjs:61). Each self-test drives a real scratch repo holding a non-ASCII file: untracked tools/café.mjs for complexity-gate, staged café.test.mjs for test-lint. Before the fix both cases failed as pinned. Reviewer LOW (quotePath) is fixed: both fixtures now drop the inherited GIT_* env and then set GIT_CONFIG_COUNT=1 / core.quotePath=true (complexity-gate.mjs:567, test-lint.mjs:264). This forces git's default quoting over a user's `quotepath = false`. I checked it in a scratch copy with the pre-fix listing restored (no -z, split on \\n) and HOME pointing at a .gitconfig with quotepath=false. With the new env, test-lint prints 'self-test FAILED: quoted-test-path-invisible' and complexity-gate prints 'SELF-TEST FAIL: quoted-path-invisible'. With the old env, both cases pass against the bug ('OK (36 cases)'; no quoted-path line), which matches the reviewer's report. Both self-tests are green on the fixed code.",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:169",
+      "resolvedAt": "2026-09-27T11:38:06.877Z"
+    },
+    {
+      "id": "f14",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "complexity-gate keyed its self-references on the literal \"tools/complexity-gate.mjs\": the self-exemption alarm, registrations(), and every '--update-baseline' / 'delete' fix line. A copy vendored anywhere else never matches that literal. Its alarm was dead and green, its opt-out fix missed the host's registrations, and its fixes named a script that is not there.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.910Z",
+      "proof": "SELF_REL = relative(ROOT, this module) with forward slashes (line 68). Every self-reference keys on it: selfExemptionAlarm, registrations(), RESTORE_BASELINE (110), bornRemedy (373), staleBaselineErrors and the --update-baseline note. selfTestSelfAlarm pins the in-tree canary. Reviewer LOW (coverage) is fixed. vendoredHost (624) now builds a scratch host with the copy in vendor/, a host docs/gates/gate-registry.json and a merge-conflicted docs/gates/complexity-baseline.json. The probe now calls noCompilerFix() with its default, so the copy's ROOT derivation is exercised as well. The probe emits both the birth refusal and the stale-row refusal from one judge call. A second child calls readBaseline() on the conflicted baseline and captures its stderr. The check at line 653 requires 'node vendor/complexity-gate.mjs --update-baseline' in each of stale-row, birth and baseline-restore, and keeps the pinned vendored-fix-not-runnable name. I checked it by mutation in a scratch copy. Setting bornRemedy back to the literal prints \"vendored-fix-not-runnable: a vendored copy's birth fix names a script that is not there\". Setting RESTORE_BASELINE back to the literal prints \"...baseline-restore fix names a script that is not there\". Unmutated, none of these lines print. selfTestVendoredSelf and vendoredHost stay at or under threshold 8, and --report lists nothing from complexity-gate.mjs.",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:591",
+      "resolvedAt": "2026-09-27T11:38:06.941Z"
+    },
+    {
+      "id": "f15",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "test-lint's TOKENS matched a template literal from backtick to next backtick, so a template nested in a template's `${}` ended the outer one. The `}/` that closes the `${}` then read as a regex opening (`}` is in the regex-start set). It swallowed the next backtick, and a template ran on over the following `// comment`. stripComments kept that comment as code. This fails open for test-lint's own checks and for doc-reconcile's maskComments, which returns stripComments, so doc-reconcile's --self-test was red.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T11:38:06.971Z",
+      "proof": "The new case at line 347 uses the reviewer's input: die(`pins: ${xs.map((p) => ` /${p}/`).join(\", \")} fix: tools/x`);\\n// onlyInAComment\\nconsole.log(`done`);. It asserts the comment is blanked and console.log(`done`) survives. It printed '  test-lint self-test FAILED: template-brace-opens-regex: ...' and red-check recorded it RED. Fix: TOKENS is now built from template(depth) and code(depth) (lines 130-144). A template's `${}` is matched balanced: strings, brace pairs and further templates, TEMPLATE_DEPTH=3 levels deep. So the `}` that closes a substitution goes back to template context and never starts a regex. A `$` before `{` must open a substitution, so each template has exactly one parse. The old plain span stays as a fallback alternative for anything the balanced form rejects, such as a regex holding a quote inside `${}`, so behaviour there is unchanged. In strip mode the whole template, `${}` included, is still blanked between its delimiters, as before. After the fix, test-lint --self-test is OK (36 cases) and doc-reconcile --self-test is OK (110 cases); its case \"a `}/` in a template's ${} leaves the next comment blanked\" now passes. test-lint tools still reports 30 files, 0 blocking, 2 advisory, in 0.1s. The ponytail note now states the new ceilings: nesting past TEMPLATE_DEPTH, a `${}` holding a regex or comment with a quote, brace or backtick in it, and a template that never closes costing time quadratic in the templates nested in it (measured at 0.5s for an 80KB synthetic unterminated case).",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:141",
+      "resolvedAt": "2026-09-27T11:38:07.001Z"
+    }
+  ],
+  "sweptBase": "b9523a6f62862a84104d100475ffa109936598aa",
+  "sweptHead": "8957fbaaf0c315f0e0ddfa505806226dbe428a36",
+  "sweptDiffDigest": "590b440ebb4a"
+}
