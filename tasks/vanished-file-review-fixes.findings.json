@@ -1,0 +1,690 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "vanished-file-review-fixes",
+  "passStartedAt": "2026-09-27T21:27:17.891Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "(review of 4cd41db..f8b9392) In a colocated-jj repo every deletion is an unstaged rm, because jj keeps git's index at @-. carriedRows treated every intended deletion as an accidental rm and kept its ceilings: the gate and --self-test passed, WIRING's prescribed --update-baseline printed 'baseline written' and changed nothing, and the jj commit carried the deletion with stale rows, so the tip failed once the index caught up (CI). A regression against 4cd41db, and the mirror of f1. Plain git reaches it too: rm, --update-baseline, then git commit -a.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.139Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:195-206 carriedrows and :314 over.push(...carriedrows(skipped)) at f8b9392; jj 0.44 scratch: rm tools/bench/grade.mjs -> 'ok — 39 function(s) over 8', exit 0; after jj commit -> 'still exempts tools/bench/grade.mjs runsuite (9) ... failed (1)'",
+      "resolvedAt": "2026-09-27T20:02:23.973Z"
+    },
+    {
+      "id": "f2",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "(review of 4cd41db..f8b9392) The baseline carry made the printed stale-row remedy useless for any deletion committed from the WORKING TREE: under `git commit -a` with a pre-commit hook running the gate the hook refused, the printed --update-baseline kept the row, and the next commit -a refused again (the fix never converged); under jj the gate was falsely green and a push gate refused; a jj rename wrote rows for BOTH the old and new path. The self-test fixture modelled only an unstaged rm that nobody commits.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.174Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:195 carriedrows docstring premise at f8b9392; scratch: rm tools/bench/grade.mjs; git commit -a under a hook running the gate -> refused; --update-baseline -> grade rows: 1; git commit -a -> refused again (4cd41db: grade rows 0, hook passed)",
+      "resolvedAt": "2026-09-27T20:02:24.006Z"
+    },
+    {
+      "id": "f3",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "(review of 4cd41db..f8b9392, Antitube re-vendor) For a jj-colocated client the carried rows gave the wrong answer at commit time, where the hand-run gate is the only check jj has (jj commit runs no hooks): deleting or mv-ing a baselined file passed the gate and --update-baseline wrote the deleted file's rows back; jj:push then refused, needing a second re-record and a squash. 4cd41db refused correctly and its re-record dropped the rows in one step.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.212Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "re-vendored f8b9392 into a jj-colocated antitube clone: rm apps/api/src/http.ts (baselined structurederrorfilter.catch 16) -> 'ok — 209 function(s) over 8', exit 0; --update-baseline kept the row (grep -c 1); after jj commit the gate run as jj:push runs it -> 'still exempts apps/api/src/http.ts ... failed (1)'",
+      "resolvedAt": "2026-09-27T20:02:24.043Z"
+    },
+    {
+      "id": "f4",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "(review of 4cd41db..f8b9392) carriedRows kept the rows of any skipped path without checking what HEAD holds there, so a baselined source replaced by a committed dangling symlink (or a symlink to a directory), or a committed alias link whose target a later commit deleted, had its rows carried forever, clean clones included: law (3) never fired, --update-baseline wrote the dead rows back, and a later same-named function at that path passed as nothing new born convoluted. A mutant carrying every missing baselined file survived the self-test. Independently raised by three reviewers (lanes 1, 3 and 7 of that review).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.244Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:202-206 filter skipped.includes(row.file) at f8b9392; committed `ln -s nowhere.mjs tools/bench/grade.mjs` -> clean clone 'ok — 39 function(s) over 8' (4cd41db: failed (1)); tools/alias.mjs -> ../examples/real.mjs after git rm examples/real.mjs -> clean clone ok",
+      "resolvedAt": "2026-09-27T20:02:24.713Z"
+    },
+    {
+      "id": "f5",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "(review of 4cd41db..f8b9392) carriedRows also carried rows for skipped paths HEAD never held — an intent-to-add entry removed from disk, an untracked dangling link — against test-lint's own docstring that such a path 'carries nothing'. The placeholder silenced the stale-row refusal (including the battery's live check that names the protected-task re-record), --update-baseline preserved the rows, the ITA entry survives commits so the author's clone stayed green while every clean clone was red, and a new over-threshold function created there later passed. Independently raised by four reviewers.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.280Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/test-lint.mjs listedondisk docstring ('or carries nothing (an intent-to-add entry; an untracked dangling link)') vs tools/complexity-gate.mjs:195 at f8b9392; touch f; git add -n f; rm f -> 'ok — 1 function(s) over 8 (1 baselined)'; clean clone -> 'still exempts ... failed (1)'",
+      "resolvedAt": "2026-09-27T20:02:24.751Z"
+    },
+    {
+      "id": "f6",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "(review of 4cd41db..f8b9392) Carried rows skipped the threshold filter every scanned row passes, so after a threshold change a skipped path's row at or under the threshold was still reported as 'over' and kept by --update-baseline (red once the file is back), and a lowered threshold hid born-convoluted functions until then; a sparse checkout carried such a row indefinitely. Independently raised by three reviewers.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.314Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:311 (fn.complexity > config.threshold) vs :206 (no threshold check) at f8b9392; threshold 8->10, rm tools/bench/grade.mjs, --update-baseline -> 'baseline written — 24 function(s) over 10' incl. runsuite 9",
+      "resolvedAt": "2026-09-27T20:02:24.789Z"
+    },
+    {
+      "id": "f7",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "(review of 4cd41db..f8b9392) test-lint's verdictOf closing line says 'its refusal names the fix', which is false for one of the two refusals its docstring covers: a missing positional path is refused with 'no such file or directory: <arg>' and no fix line. Independently raised by two reviewers.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:01:50.351Z",
+      "evidence": "tools/test-lint.mjs:548-557 verdictOf and :128 at f8b9392; `node tools/test-lint.mjs tools/no-such-dir` -> 'test-lint: FAILED — a path above could not be judged; its refusal names the fix.', exit 2, no fix printed",
+      "dedupKey": "tools/test-lint.mjs:548-557 verdictof and :128 at f8b9392; `node tools/test-lint.mjs tools/no-such-dir` -> 'test-lint: failed — a path above could not be judged; its refusal names the fix.', exit 2, no fix printed",
+      "justification": "Registered, not fixed: the dispatch that opened this task scoped LOW findings of the reviewed range to register-only, and this one is outside the carry defect the task repairs. The overclaim is one clause of a summary line printed after a refusal that names the missing path verbatim; the run still exits 2, so nothing passes on it. The repair is one line in tools/test-lint.mjs (a fix: line on the missing-path refusal, or drop 'its refusal names the fix' from verdictOf) and belongs to the next test-lint wave.",
+      "resolvedAt": "2026-09-27T20:02:34.655Z"
+    },
+    {
+      "id": "f8",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "(review of 4cd41db..f8b9392) The carried-rows pin checked that a skipped path's rows were kept, never that ONLY those were: a mutant carrying the rows of every baselined file missing from disk passed the complexity-gate self-test, guard-reach's self-test and guard-reach, and hid the stale row of a genuine staged git rm whenever some other path was skipped.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.385Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:206 filter unpinned at f8b9392; mutant `skipped.includes(row.file) || !existssync(...)` -> 'complexity-gate self-test: ok (threshold 8)'; git rm src/a.mjs && rm src/b.mjs -> mutant 'ok — 2 function(s) over 8'",
+      "resolvedAt": "2026-09-27T20:02:24.826Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "The refusal keyed on HEAD holding a REGULAR file (100644/100755), so a committed symlink (120000) whose target HEAD holds — scanned under the link's name on a clean checkout, since listedOnDisk follows links — was treated as 'no source any commit keeps': an unstaged rm of the link or of its target read as stale rows whose printed fix, --update-baseline, dropped ceilings HEAD still needed, and a plain git commit then shipped a tip red on a clean clone. The same red tip the change set out to close; WIRING and the docstring stated the false premise; the self-test pinned only a link dangling in HEAD. Independently raised by lanes 1, 2, 5, 6 and 8.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.421Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:224 /^100(644|755) blob / at 2014759; lib/real.mjs + tools/alias.mjs -> ../lib/real.mjs, rm lib/real.mjs -> 'still exempts tools/alias.mjs big (9) ... fix: --update-baseline'; re-record exit 0; clean clone -> 'tools/alias.mjs:1 big — cyclomatic complexity 9 exceeds 8', exit 1",
+      "resolvedAt": "2026-09-27T20:02:24.859Z"
+    },
+    {
+      "id": "f10",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "The refusal never checked the index's skip-worktree bit, so in a sparse checkout every baselined source outside the sparse set made the gate, --report, --update-baseline and the battery's live --self-test exit 1 on a tree git status calls clean. Its premise was false (git commit -a keeps skip-worktree entries), both printed exits fail there (checkout: pathspec did not match; git rm: outside the sparse-checkout definition), and git's own --sparse hint deletes a source nobody removed. f8b9392 carried the rows and passed. Independently raised by lanes 1, 2, 6, 7 and 8.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.457Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:206-227 refuseunstageddeletions/headregularfiles at 2014759; git sparse-checkout set --no-cone '/*' '!/tools/bench/' -> 'tools/bench/grade.mjs is missing from disk with its deletion unstaged', exit 1; git checkout -- ... -> pathspec did not match; git rm -- ... -> outside of your sparse-checkout definition",
+      "resolvedAt": "2026-09-27T20:02:24.896Z"
+    },
+    {
+      "id": "f11",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The same refusal fires for an assume-unchanged entry deleted from disk, where its premise is also false (git commit -a keeps it); unlike skip-worktree, its restore exit runs.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:01:50.496Z",
+      "evidence": "lane 7 at 2014759: git update-index --assume-unchanged tools/big.mjs; rm -> gate exit 1; git commit -a -> 'nothing to commit'; HEAD still holds tools/big.mjs",
+      "dedupKey": "lane 7 at 2014759: git update-index --assume-unchanged tools/big.mjs; rm -> gate exit 1; git commit -a -> 'nothing to commit'; head still holds tools/big.mjs",
+      "justification": "A boundary, kept fail-closed on purpose. assume-unchanged is git's 'the user promises not to change this file' performance hint (git-update-index(1)); deleting such a file breaks that promise, and git itself then misreports it (status and commit -a see no change). The gate cannot tell a broken promise from an unstaged deletion without a second index read, so it refuses — and unlike the skip-worktree case (f10, now carried) the refusal's first exit runs: git checkout HEAD -- <path> restores the file and the gate goes green (replayed at f6f9018 on tools/bench/grade.mjs). Nothing escapes: the state is red, never green, and it converges.",
+      "resolvedAt": "2026-09-27T20:02:34.695Z"
+    },
+    {
+      "id": "f12",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "namedExitConverges had a dead step: git rm had already staged the deletion, so its `git commit -a` fed no assertion (deleting the line left the self-test green) and the loop carrying caused — an unstaged rm followed by commit -a — was never driven, while its docstring and failure text claimed commit -a convergence.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.532Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:797-803 at 2014759; sed -i '/host.git(\"commit\", \"-q\", \"-a\", \"-m\", \"delete\");/d' -> 'complexity-gate self-test: ok (threshold 8)'",
+      "resolvedAt": "2026-09-27T20:02:24.932Z"
+    },
+    {
+      "id": "f13",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "Under a pre-commit hook running the gate, `git commit -a` after a plain rm is refused on a stale row whose printed fix is --update-baseline; run from the shell (the real index, rm unstaged) that fix is itself refused by the new refusal, and only its exit (git rm + re-record) converges — two steps, the first printed fix refused. The self-test drove commit -a with hooks off.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:01:50.564Z",
+      "evidence": "tools/complexity-gate.mjs:742 core.hooksPath=/dev/null and :798-801 at 2014759; hook `node tools/complexity-gate.mjs || exit 1`, rm tools/bench/grade.mjs, git commit -a -> 'still exempts ... fix: --update-baseline'; that fix in the shell -> 'missing from disk with its deletion unstaged', exit 1",
+      "dedupKey": "tools/complexity-gate.mjs:742 core.hookspath=/dev/null and :798-801 at 2014759; hook `node tools/complexity-gate.mjs || exit 1`, rm tools/bench/grade.mjs, git commit -a -> 'still exempts ... fix: --update-baseline'; that fix in the shell -> 'missing from disk with its deletion unstaged', exit 1",
+      "justification": "Accepted: it converges, and each printed fix is true for the index it judged. Inside the hook git points GIT_INDEX_FILE at a temporary index that stages the rm, so the stale-row refusal and its --update-baseline are right there; the shell runs against the real index, where the rm is unstaged, and the new refusal names the exit that works in both (git rm --ignore-unmatch, re-record). The flow is now pinned for real — commitAllConverges drives commit -a through a pre-commit hook running the gate: refused, then git rm + re-record, then the same hooked commit -a lands and the gate is green. Making the stale-row fix itself path-aware would teach the stale check to stat the disk, a second reader of the same state for a one-step saving.",
+      "resolvedAt": "2026-09-27T20:02:34.732Z"
+    },
+    {
+      "id": "f14",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "The `ceilinged` filter — the only thing keeping WIRING's promise that an unstaged rm of a source with no baseline rows is skipped with the exit unchanged — was unpinned: `const ceilinged = skipped;` left the self-test green while the live gate refused every such rm with a false 'holds its ceilings'. Independently raised by lanes 4 and 7.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.600Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:210 at 2014759; mutant `const ceilinged = skipped;` -> 'complexity-gate self-test: ok (threshold 8)'; rm tools/detached-head-guard.mjs (0 rows) -> mutant exit 1, shipped exit 0",
+      "resolvedAt": "2026-09-27T20:02:24.969Z"
+    },
+    {
+      "id": "f15",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "headRegularFiles' unborn-HEAD guard ran in no self-test (every scratch host committed first); without it a fresh repo with a baseline row for a removed intent-to-add entry crashes on 'Not a valid object name HEAD' instead of reporting stale rows.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.638Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:221 at 2014759; mutant dropping the rev-parse clause -> self-test ok; unborn host with git add -n then rm -> 'error: command failed: git --literal-pathspecs ls-tree -z head -- tools/ita.mjs'",
+      "resolvedAt": "2026-09-27T20:02:25.004Z"
+    },
+    {
+      "id": "f16",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "Under guard-reach's HEAD-index copy a STAGED git rm of a baselined source, before its re-record, is skipped and refused with 'deletion unstaged' and exits that both fail in the real repo (git checkout -- p: pathspec did not match; git rm -- p: exit 128, so the && re-record never runs); WIRING's guard-reach paragraph still said complexity-gate skips such a path and test-lint's docstring said it is skipped rather than refused.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:01:50.673Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md",
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "docs/wiring.md:361-367 and tools/test-lint.mjs:82-83 at 2014759; git_index_file=<read-tree head copy> node tools/complexity-gate.mjs after git rm -q tools/zz-big.mjs -> refusal; its fixes -> 'did not match any file(s)' / exit 128; guard-reach -> inconclusive complexity-gate-new-file",
+      "resolvedAt": "2026-09-27T20:02:25.040Z"
+    },
+    {
+      "id": "f17",
+      "lane": 1,
+      "severity": "MEDIUM",
+      "claim": "(pass 2, over f8b9392..f6f9018) skippedRows carried a skip-worktree entry's rows on git's skip-worktree bit alone, treating it as proof every commit keeps HEAD's copy — but the change's own law names the colocated-jj commit as one that takes the working tree, and jj ignores the bit. One `git update-index --skip-worktree <path>` (or a git sparse checkout later colocated with jj) turned the refusal into a green carry; --update-baseline kept the row; `jj commit` recorded the deletion with the dead ceiling. The false green the change said it closed. Independently raised by lanes 1, 2, 5 and 7.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:46.921Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:214-218 at f6f9018 (the 's ' tag from ls-files -t alone decides carry vs refuse); scratch jjsparse: rm tools/bench/grade.mjs -> refused exit 1; git update-index --skip-worktree tools/bench/grade.mjs -> 'ok — 39 function(s) over 8', exit 0; jj commit deletes it with the row kept",
+      "resolvedAt": "2026-09-27T20:20:02.773Z"
+    },
+    {
+      "id": "f18",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "(pass 2) The sparse carry read the skip-worktree bit from whatever index the gate runs against, and guard-reach runs every guard against a fresh `git read-tree HEAD` copy that carries no bits. In any git sparse clone leaving a baselined source out, the direct gate read OK while guard-reach — a battery member — reported complexity-gate INCONCLUSIVE with an exit code only, so npm run selftest (and advance verified) was red with nothing an operator could fix: git checkout HEAD -- p errors and git rm --ignore-unmatch exits 0 doing nothing. A regression against f8b9392. Independently raised by lanes 2, 4, 7 and 8.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:46.970Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/guard-reach.mjs:389 (read-tree head into git_index_file) with tools/complexity-gate.mjs:212-218 at f6f9018; sparse clone '!/tools/bench/': direct gate 'ok — 39 function(s) over 8' exit 0; guard-reach 'inconclusive complexity-gate-new-file ... already failing before any probe was planted (exit 1)'",
+      "resolvedAt": "2026-09-27T20:20:02.816Z"
+    },
+    {
+      "id": "f19",
+      "lane": 4,
+      "severity": "HIGH",
+      "claim": "(pass 2) Under jj's own sparse checkout the refusal stated `jj commit` deletes a file jj keeps, and its printed delete exit dropped that file's ceilings — a red tip the local gate then never saw again. Independently raised by lanes 4 and 7 (HIGH) and 5 and 6 (MEDIUM).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:47.014Z",
+      "proof": "State: a colocated-jj repo whose own sparse patterns (`jj sparse set`) leave out a baselined source. jj's sparse mode sets no skip-worktree bit, so git's index shows a plain 'H' entry: listedOnDisk skips the path, skippedRows finds no 'S' tag, headBlobs holds it, and the gate refuses claiming '`jj commit` delete[s] it' — false, `jj st` reports no changes. AGENTS.md says run the printed fix; its second exit (git rm --ignore-unmatch && --update-baseline) drops the ceilings of a file every jj commit keeps. jj commit lands the tree with the file and no row; jj then resets git's index to @-, the path is skipped again with no rows, so the local gate reads green for good while a clean clone of the tip fails 'born convoluted'. Guards miss it: the self-test models sparse only with git update-index --skip-worktree and never runs jj.",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:214-222 at f6f9018; jj 0.44 colocated, `jj sparse set --clear --add docs --add vendor --add .gitignore` -> git ls-files -t 'h tools/big.mjs'; gate '... `jj commit` delete[s] it ... fix: ... git rm --ignore-unmatch -- tools/big.mjs && ... --update-baseline'; following it then jj commit -> clean clone 'tools/big.mjs:1 big — cyclomatic complexity 9 exceeds 8', exit 1",
+      "resolvedAt": "2026-09-27T20:20:02.851Z"
+    },
+    {
+      "id": "f20",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "(pass 2) selfTestNoHeadFile — and the no-head-file-carried/-kept pins — ran only on an unborn HEAD, where headBlobs returns [] at its rev-parse guard; the branch every real repo runs (HEAD exists, ls-tree has no entry for an intent-to-add entry or an untracked link) was never exercised: mutating its return to `return paths;` left the self-test and the whole battery green while a seeded repo refused rows that should read stale.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:47.059Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:226-228 at f6f9018; mutant `return paths;` -> 'complexity-gate self-test: ok (threshold 8)', npm run selftest exit 0; seeded host with tools/ita.mjs (git add -n, rm) and an untracked tools/loose.mjs link -> mutant refuses, original reports both rows stale",
+      "resolvedAt": "2026-09-27T20:20:02.886Z"
+    },
+    {
+      "id": "f21",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "(pass 2) headBlobs accepts 100644, 100755 and 120000, but only 100644 and 120000 were exercised (every fixture is written 0644); dropping 100755 from the regex re-opened the dropped-ceilings red tip for executable sources with the battery green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:47.111Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:227 at f6f9018; mutant /^(100644|120000) blob / -> self-test ok, battery exit 0; tools/run.mjs committed 100755 and baselined, removed from disk only -> mutant --update-baseline 'baseline written — 0 function(s) over 8', exit 0",
+      "resolvedAt": "2026-09-27T20:20:02.925Z"
+    },
+    {
+      "id": "f22",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "(pass 2) The range corrected scan's JSDoc from 'at or over the threshold' to 'over the threshold' (matching fn.complexity > config.threshold) but left the file header's usage line '--report # every function at or over the threshold', so one file stated two thresholds for one filter. Independently raised by lane 8.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:47.158Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:51 at f6f9018 ('# every function at or over the threshold') vs :330 and :336 (`if (fn.complexity > config.threshold)`)",
+      "resolvedAt": "2026-09-27T20:20:03.037Z"
+    },
+    {
+      "id": "f23",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "(pass 2) The refusal decides whether a skipped path holds ceilings from the working-tree baseline, not HEAD's: after the documented exit (git rm + --update-baseline) the deletion can be unstaged again (git restore --staged p) with the file still gone, and then the path is skipped with a note only, a hooked plain git commit of the re-recorded baseline passes, and the tip keeps HEAD's source with no row — red on a clean clone. The mechanism of the accepted vanished-file-enumeration f2; f8b9392 behaves the same.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:19:47.205Z",
+      "evidence": "tools/complexity-gate.mjs:212-213 at f6f9018 (ceilings read from loadBaseline(), the disk); git rm -q tools/big.mjs && --update-baseline; git restore --staged tools/big.mjs -> 'skipped 1 ... OK — 0 function(s)'; hooked git commit of the baseline -> exit 0; clean clone red",
+      "dedupKey": "tools/complexity-gate.mjs:212-213 at f6f9018 (ceilings read from loadbaseline(), the disk); git rm -q tools/big.mjs && --update-baseline; git restore --staged tools/big.mjs -> 'skipped 1 ... ok — 0 function(s)'; hooked git commit of the baseline -> exit 0; clean clone red",
+      "justification": "Accepted as the class vanished-file-enumeration f2 already accepted, which predates this range (f8b9392 behaves the same). Reaching it takes three deliberate steps against the refusal's own exits — git rm, re-record, then git restore --staged to un-stage the deletion while the file stays gone — and the gate's verdict is then honest for the state it can see: no row and no readable source. Closing it means judging against HEAD's baseline as well as the disk's (a second baseline reader with its own unreadable/absent/conflicted refusals), the same working-tree-versus-commit design decision f2 deferred; CI on the pushed tip still refuses the red tip. Not this repair.",
+      "resolvedAt": "2026-09-27T20:20:03.075Z"
+    },
+    {
+      "id": "f24",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "(pass 2) The link refusal said `git commit -a` and `jj commit` delete 'it' when a committed link's TARGET was removed from disk; commit -a in fact keeps the link and deletes the target, after which the first printed exit ('restore it ... for a link, its target too') cannot run.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:47.251Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:222 at f6f9018; tools/alias.mjs -> ../lib/real.mjs baselined, rm lib/real.mjs, git commit -qa -> head keeps tools/alias.mjs, drops lib/real.mjs; git checkout head -- lib/real.mjs -> pathspec did not match",
+      "resolvedAt": "2026-09-27T20:20:02.962Z"
+    },
+    {
+      "id": "f25",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "(pass 2) commitAllConverges (failure label unstaged-deletion-no-exit) passed against the pre-fix carriedRows code: it ran a hard-coded git rm, re-record, commit -a instead of the fix the hook prints, and checked the hook's refusal only by a non-zero status, so the loop 2014759 names ('the commit -a hook's printed fix looped') was caught only indirectly.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:19:47.293Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:823-832 at f6f9018; f8b9392 carriedrows grafted into skippedrows -> fails=[unstaged-deletion-guessed, unstaged-deletion-rerecorded, linked-source-dropped, sparse-row-under-threshold, no-head-file-carried, no-head-file-kept], unstaged-deletion-no-exit absent",
+      "resolvedAt": "2026-09-27T20:20:02.999Z"
+    },
+    {
+      "id": "f26",
+      "lane": 6,
+      "severity": "MEDIUM",
+      "claim": "(pass 3, over f8b9392..8b1892b) The refusal's delete exit `git rm --ignore-unmatch -- p && ... --update-baseline` is a silent no-op for a skip-worktree entry: git refuses to update an entry outside the sparse definition (needs --sparse), --ignore-unmatch turns that refusal into exit 0, and the chained re-record prints the same refusal again — a loop an agent obeying 'Run the fix' cannot leave. selfTestSparseEntry only string-matched the fix text and never ran an exit. Independently raised by lanes 4, 7 and 8 (lane 8: the retired sparse-entry-refused pin's justification covered carry-versus-refuse and not the unworkable exits it had pinned).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:34:29.642Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:218 and :870-879 at 8b1892b; git sparse-checkout set --no-cone '/*' '!/tools/far.mjs'; (git rm --ignore-unmatch -- tools/far.mjs && node vendor/complexity-gate.mjs --update-baseline) -> git rm exit 0 with empty output, the identical refusal again, chain exit 1, `git ls-files -v` still 's tools/far.mjs'",
+      "resolvedAt": "2026-09-27T20:35:24.588Z"
+    },
+    {
+      "id": "f27",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "(pass 3) Under jj's own sparse patterns the refusal still printed the delete exit unconditionally and WIRING still said the procedure works 'under jj too — `jj commit` then records it': a git rm there deletes nothing jj commits, so following the exit re-records a baseline without rows for a source jj keeps — the red tip, with the local gate green afterwards. 8b1892b's message claimed the jj sparse defect fixed; only its first-line wording changed. Independently raised by lane 8.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:34:29.679Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/wiring.md:455-458 and tools/complexity-gate.mjs:218 at 8b1892b; jj 0.44 colocated, jj sparse set --clear --add <all but tools/zcode-plugin> -> git ls-files -v 'h'; git rm -q --ignore-unmatch -- <both> && --update-baseline -> 'baseline written — 36 function(s)'; jj commit dae36b3c keeps both sources with 0 rows; clean clone refuses",
+      "resolvedAt": "2026-09-27T20:35:24.622Z"
+    },
+    {
+      "id": "f28",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "(pass 3) commitAllConverges claimed the delete exit 'lands the deletion and the dropped ceilings together ... and the tip is green', but the scratch host never tracked the gate's config or baseline, so the landed commit carried no ceilings at all and the final green check read the untracked working-tree baseline, not the tip. Independently raised by lane 6.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:34:29.716Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:785 (only the sources are added), :827-828, :840-841 at 8b1892b; instrumented run: tip tree lists only the three deletions, `git show head:docs/gates/complexity-baseline.json` exit 128, status '?? docs/ ?? hooks/ ?? vendor/'",
+      "resolvedAt": "2026-09-27T20:35:24.697Z"
+    },
+    {
+      "id": "f29",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "(pass 3) headBlobs' comment gave `--literal-pathspecs` a false reason ('a `*` in a file name is not a glob'): git ls-tree does no globbing either way; the flag only stops a name starting with ':' reading as pathspec magic, and nothing tests it.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:34:29.753Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:221 at 8b1892b; git ls-tree -z head -- 'tools/*.mjs' lists nothing without the flag; ':(top)z.mjs' lists nothing and ':!y.mjs' fails 'pathspec magic not supported' without it, both listed with it",
+      "resolvedAt": "2026-09-27T20:35:24.732Z"
+    },
+    {
+      "id": "f30",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "(pass 3) test-lint's rewritten listedOnDisk docstring said git commit -a and a colocated-jj commit 'take the working tree' for a sparse checkout (false: commit -a keeps skip-worktree entries, and it contradicted WIRING and the refusal), and that complexity-gate 'refuses the skips its baseline holds rows for' (it refuses only those HEAD holds as a file or link; the self-test pins the others as stale).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:34:29.788Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:78-84 at 8b1892b vs docs/wiring.md:441-443 and tools/complexity-gate.mjs:905 (no-head-file-carried: 'never carried or refused')",
+      "resolvedAt": "2026-09-27T20:35:24.768Z"
+    },
+    {
+      "id": "f31",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "(pass 3) WIRING said a committed link that dangles in HEAD 'clears only by `git rm`', but the refusal re-checks the disk each run, so it also clears when the link's target is back on disk or committed — the exit the refusal itself prints; an operator following the doc deletes a link and its ceilings when committing the target was valid.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:34:29.825Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "docs/wiring.md:450-451 at 8b1892b; committed link tools/zz-alias.mjs -> ../lib/real.mjs with the target never committed: clean clone refused; cp tools/bench/grade.mjs lib/real.mjs (no git rm) -> 'ok — 40 function(s) over 8', exit 0",
+      "resolvedAt": "2026-09-27T20:35:24.659Z"
+    },
+    {
+      "id": "f32",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "(pass 3) missingSourceRefusal prints a repo path raw in its rule line and single-quoted (newlines kept) in its fix commands, so a committed path with a newline in its name — e.g. a dangling link baselined under that name — forges its own '  fix:' line inside the refusal. The class predates the range: the stale-row refusal already prints a baseline-supplied row.file raw.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:34:29.864Z",
+      "evidence": "tools/complexity-gate.mjs:218 at 8b1892b; committed symlink named $'tools/a\\n  fix: touch PWNED #.mjs' with a baseline row -> the gate prints a line '  fix: touch PWNED #.mjs has no regular file on disk ...'; f8b9392 on the same repo: OK",
+      "dedupKey": "tools/complexity-gate.mjs:218 at 8b1892b; committed symlink named $'tools/a\\n fix: touch pwned #.mjs' with a baseline row -> the gate prints a line ' fix: touch pwned #.mjs has no regular file on disk ...'; f8b9392 on the same repo: ok",
+      "justification": "A class that predates this range, and one this refusal does not widen in kind: the stale-row refusal already prints a baseline-supplied row.file raw, and the staged-missing refusal and the skip note print index paths the same way, so the reviewer's own conclusion stands — the fix belongs in one shared place (escape or refuse control characters in any path before refusal text prints it), across complexity-gate, test-lint and the other guards, which is its own task, not a patch to one message. It also fails closed: the forged line appears only inside a refusal (exit 1), and producing it takes a committed path with a newline in its name plus a baseline row naming it — both visible in the diff that introduces them.",
+      "resolvedAt": "2026-09-27T20:35:24.803Z"
+    },
+    {
+      "id": "f33",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "(pass 3) On a checkout with core.symlinks=false (Git for Windows' default) a committed 120000 link is written as a plain file holding its target path, so the link's baseline row reads stale and the printed --update-baseline drops a ceiling a POSIX clean clone still needs. The mechanism is the stale-row path, which predates the range; the link pin runs only on POSIX hosts.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:34:29.896Z",
+      "evidence": "scratch: lib/real.mjs + committed tools/alias.mjs -> ../lib/real.mjs baselined; git clone -c core.symlinks=false -> tools/alias.mjs a 15-byte regular file, 'still exempts tools/alias.mjs big (9) ... fix: --update-baseline'; after it and commit -a, a POSIX clone -> 'tools/alias.mjs:1 big — cyclomatic complexity 9 exceeds 8'",
+      "dedupKey": "scratch: lib/real.mjs + committed tools/alias.mjs -> ../lib/real.mjs baselined; git clone -c core.symlinks=false -> tools/alias.mjs a 15-byte regular file, 'still exempts tools/alias.mjs big (9) ... fix: --update-baseline'; after it and commit -a, a posix clone -> 'tools/alias.mjs:1 big — cyclomatic complexity 9 exceeds 8'",
+      "justification": "Predates the range and sits on the stale-row path, not on refuseMissingSources: with core.symlinks=false git writes a committed link as a regular file holding its target path, so the path is present (not skipped) and the gate honestly scans what that checkout holds — the link's function is not there, so its row reads stale. Every gate that reads the working tree sees that checkout's content; judging the link's target instead would mean resolving 120000 blobs against HEAD's tree, a design change to what the ratchet reads. Stallion and its known vendor track no symlinks (git ls-files -s shows no 120000 entry), CI on the pushed tip (POSIX) refuses the red result, and the refusal the reviewer followed is the pre-existing stale-row fix.",
+      "resolvedAt": "2026-09-27T20:35:24.840Z"
+    },
+    {
+      "id": "f34",
+      "lane": 4,
+      "severity": "MEDIUM",
+      "claim": "(pass 4, over f8b9392..5a38d01) The rule that a skipped path HEAD holds nothing at 'has no source any commit keeps' is false under colocated jj: jj 0.44 writes every file ADDED in its working-copy commit into git's index as an intent-to-add entry (empty blob, status ' A'), and `jj commit` keeps that file even when jj's sparse patterns take it off disk. The gate read such a baselined source as stale rows, its printed --update-baseline stripped the ceiling, the local gate stayed green through `jj commit`, and the landed tip was red on a clean clone. Only a `git add -N` double pinned the rule; f8b9392's carry had kept this ceiling.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:54:32.833Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:206 refusemissingsources -> headblobs :214-230 and docs/wiring.md:453 at 5a38d01; jj 0.44: cp tools/big.mjs lib/newb.mjs; --update-baseline; jj st -> git ls-files -s 'e69de29... lib/newb.mjs', ' a'; jj sparse set leaving it out -> 'still exempts lib/newb.mjs big (9) ... fix: --update-baseline'",
+      "resolvedAt": "2026-09-27T20:55:32.237Z"
+    },
+    {
+      "id": "f35",
+      "lane": 5,
+      "severity": "MEDIUM",
+      "claim": "(pass 4) The third pass's jj-sparse finding was answered in wording only: 'the delete exit is only for a full checkout' lives in the refusal text, the docstring, WIRING and the commit message, but no code enforces it — the gate has no jj or sparse detection, so in a jj-sparse checkout it still offers `git rm && --update-baseline`, following which leaves every local check green while `jj commit` keeps the source without its ceilings.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:54:32.874Z",
+      "evidence": "tools/complexity-gate.mjs:205 and :219-220 at 5a38d01 (grep finds 'jj' only in comments and strings); jj sparse set --clear --add vendor --add docs --add tools/small.mjs --add .gitignore -> 'H tools/big.mjs'; the printed delete exit -> 'baseline written — 0 function(s)', gate OK; jj commit keeps tools/big.mjs",
+      "dedupKey": "tools/complexity-gate.mjs:205 and :219-220 at 5a38d01 (grep finds 'jj' only in comments and strings); jj sparse set --clear --add vendor --add docs --add tools/small.mjs --add .gitignore -> 'h tools/big.mjs'; the printed delete exit -> 'baseline written — 0 function(s)', gate ok; jj commit keeps tools/big.mjs",
+      "justification": "Accepted: the gate reads git, and git cannot see jj's sparse patterns (jj sets no skip-worktree bit; the patterns live in jj's own working-copy state), so the only enforcement would be running jj from a git gate — a second VCS dependency for one exit. What the gate CAN guarantee holds: it refuses (fail closed) in exactly that state, it no longer claims jj deletes the file, and its first exit (widen the checkout, git's or jj's) is correct there; the delete exit states its condition (a file you deleted for good, in a full checkout). The escape needs an operator to take the exit whose stated condition they do not meet. f37's sibling refusal now carries the same condition, and WIRING states that a sparse checkout must hold every baselined source.",
+      "resolvedAt": "2026-09-27T20:55:32.391Z"
+    },
+    {
+      "id": "f36",
+      "lane": 1,
+      "severity": "LOW",
+      "claim": "(pass 4) The printed restore `git checkout HEAD -- ${shq(p)}` (and the delete exit) passes a committer-chosen name to git without --literal-pathspecs, while headBlobs guards its own query with it: a baselined source named with glob characters resets sibling index entries when the restore runs (staged work lost), and one named `:!keep.mjs` becomes 'every file except keep.mjs', so the restore resets every tracked file and discards unrelated uncommitted work. test-lint's older stagedMissingRefusal has the same shape. Independently raised by lane 2.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:54:32.916Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:219-220 vs :226 at 5a38d01; a committed baselined 'tools/*.mjs' rm'd with other files staged -> the printed `git checkout head -- 'tools/*.mjs'` turns 'mm tools/task-state.mjs' into ' m'; ':!keep.mjs' under includes ['**/*.mjs'] -> the printed restore empties `git status`, discarding edits to other.mjs and src/work.mjs",
+      "resolvedAt": "2026-09-27T20:55:32.278Z"
+    },
+    {
+      "id": "f37",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "(pass 4) The range's jj model 'jj keeps git's index at @-' is also wrong for a merge working copy (HEAD is the first parent, the index the merged tree), so a baselined source only a later parent adds, left off disk by jj's sparse patterns, reaches the older staged-then-deleted refusal, whose unconditioned 'stage the deletion (git rm -- p)' exit then leads --update-baseline to strip a ceiling the merge commit keeps. The path predates the range; the range added the jj model and conditioned only one of the two delete exits. Independently raised by lane 6.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:54:32.959Z",
+      "evidence": [
+        "tools/test-lint.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "jj new sidea sideb with lib/onlyb.mjs (complexity 9) only in sideb, jj sparse leaving it out -> git diff --cached 'a lib/onlyb.mjs'; gate 'lib/onlyb.mjs is staged but missing from disk ... fix: restore it (git checkout -- lib/onlyb.mjs) or stage the deletion (git rm -- lib/onlyb.mjs)'; following it and --update-baseline -> gate ok; jj commit keeps lib/onlyb.mjs",
+      "resolvedAt": "2026-09-27T20:55:32.316Z"
+    },
+    {
+      "id": "f38",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "(pass 4) The repair's guards were unpinned: removing `--literal-pathspecs` from headBlobs, or shq from either printed exit, left the self-test green — and without the flag a baselined source whose path starts with ':' falls back into the defect the task closes (not refused, row read stale, --update-baseline strips it). The flag's reason was argued twice (a false glob reason, then an untested ':' reason) with no probe.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T20:54:33.002Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:146 and :220 at 5a38d01; mutants m4 (no --literal-pathspecs), m9 and m10 (${shq(p)} -> ${p}) -> 'complexity-gate self-test: ok (threshold 8)'; `git ls-tree -z head -- ':x.mjs'` prints 'x.mjs' (the wrong file)",
+      "resolvedAt": "2026-09-27T20:55:32.356Z"
+    },
+    {
+      "id": "f39",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "(pass 4) 2014759 deleted selfTestCarriedRows — the only printer of 'complexity-gate SELF-TEST FAIL: carried-rows-dropped' — and reversed the behaviour it guarded, but the finished record tasks/vanished-file-enumeration.json still holds that expect as a live command pin that now passes against any gate, and neither record says so: a done record accepts no retire event, and this task's two pin-retires cover only its own sparse pins.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T20:54:33.045Z",
+      "evidence": "tasks/vanished-file-enumeration.json:75 ('complexity-gate SELF-TEST FAIL: carried-rows-dropped', red-check seq 7, no pin-retire); `grep -c carried-rows-dropped tools/complexity-gate.mjs` 2 at f8b9392, 0 at 5a38d01",
+      "dedupKey": "tasks/vanished-file-enumeration.json:75 ('complexity-gate self-test fail: carried-rows-dropped', red-check seq 7, no pin-retire); `grep -c carried-rows-dropped tools/complexity-gate.mjs` 2 at f8b9392, 0 at 5a38d01",
+      "justification": "Accurate, and not repairable by any lawful command: vanished-file-enumeration is done, and task-state refuses every append to a done record (the append law), so its carried-rows-dropped pin cannot be retired there. This register is the record of the takeover instead: 2014759 reversed that behaviour on the review's findings (f1-f3 here), and the reversed behaviour is re-pinned under this task's own labels (unstaged-deletion-guessed, unstaged-deletion-rerecorded, unstaged-deletion-looped), which the done gate re-runs. The orphaned pin only ever runs in that finished task's own done gate, which never runs again, so no live gate reads it.",
+      "resolvedAt": "2026-09-27T20:55:32.427Z"
+    },
+    {
+      "id": "f40",
+      "lane": 7,
+      "severity": "MEDIUM",
+      "claim": "(pass 5, over f8b9392..1c12223) The quoting of the refusal's delete exit was unpinned: selfTestLiteralName ran only the restore exit, and every other check of the delete exit used names needing no quotes, so dropping shq() from `git --literal-pathspecs rm --ignore-unmatch -- ${shq(p)}` left the battery green while the printed command, run as told, stages the deletion of a DIFFERENT committed file.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:12:20.731Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:220-221 and :946-957 at 1c12223; mutant 'rm --ignore-unmatch -- ${p}' -> '[refusal-rm-no-shq] exit 0 survived'; host with committed baselined 'tools/[ab].mjs' and 'tools/a.mjs': the mutant's printed delete exit, run verbatim, removes the wrong file",
+      "resolvedAt": "2026-09-27T21:13:14.063Z"
+    },
+    {
+      "id": "f41",
+      "lane": 8,
+      "severity": "LOW",
+      "claim": "(pass 5) The refusal's first exit, `git --literal-pathspecs checkout HEAD -- <p>`, is wrong for two shapes it refuses: an intent-to-add entry (refused since 1c12223) has no HEAD copy, so the restore fails and the rule line's 'git commit keeps HEAD's copy' is false for it; for a committed link whose target was removed the restore exits 0, changes nothing, and never names the target. selfTestIntentToAdd asserted that text without running it; WIRING repeated 'restore it from HEAD'. Independently raised by lanes 5 and 7.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:12:20.768Z",
+      "evidence": [
+        "tools/complexity-gate.mjs",
+        "docs/WIRING.md"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:220 and :933 at 1c12223; git add -n tools/x/ita.mjs; rm -> the printed restore -> 'error: pathspec ... did not match any file(s) known to git', exit 1; committed link to a removed target -> the printed restore exit 0, gate still refuses",
+      "resolvedAt": "2026-09-27T21:13:14.104Z"
+    },
+    {
+      "id": "f42",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "(pass 5) The staged-then-deleted refusal (complexity-gate and test-lint discovery) calls a staged dangling link 'missing from disk' and prints `git --literal-pathspecs checkout -- <p>` as its restore, which rewrites the same dangling link, exits 0 and changes nothing; the real fix — restore the target — is never named, while the sibling refusal gained 'and a link's target' in f6f9018. Predates the range (f8b9392 printed the same no-op restore).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:12:20.804Z",
+      "evidence": [
+        "tools/test-lint.mjs"
+      ],
+      "dedupKey": "tools/test-lint.mjs:92 (statsync follows links) and :104-105 at 1c12223; ln -s ../lib/real.mjs tools/alias.mjs; git add; rm lib/real.mjs -> 'tools/alias.mjs is staged but missing from disk ... fix: restore it (git --literal-pathspecs checkout -- tools/alias.mjs)'; that restore exits 0 and the gate refuses again",
+      "resolvedAt": "2026-09-27T21:13:14.152Z"
+    },
+    {
+      "id": "f43",
+      "lane": 4,
+      "severity": "LOW",
+      "claim": "(pass 5) The index query and every printed exit carry the global `--literal-pathspecs`, which git refuses beside GIT_ICASE_PATHSPECS, GIT_GLOB_PATHSPECS or GIT_NOGLOB_PATHSPECS: with any of them exported the gate and --update-baseline died on a Node stack trace instead of printing the refusal, and the printed exits exit 128. The self-test hosts strip every GIT_* variable, so no case ran with that environment. New in the range; fails closed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:12:20.843Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:227 at 1c12223; rm tools/bench/grade.mjs; git_icase_pathspecs=1 node tools/complexity-gate.mjs -> 'fatal: global 'literal' pathspec setting is incompatible with all other global pathspec settings' then 'error: command failed: git --literal-pathspecs ls-files ...', exit 1",
+      "resolvedAt": "2026-09-27T21:13:14.196Z"
+    },
+    {
+      "id": "f44",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "(pass 5) Two fixtures and one live pin still guarded code 1c12223 deleted: the chmod-0o755 tools/run.mjs fixture and pin seq 16 ('unstaged-deletion-guessed: .*unrefused: tools/run\\.mjs') pinned headBlobs' mode filter, and the unborn-HEAD loop's docstring named headBlobs' early branch — indexListed reads no mode and needs no HEAD, so both looked load-bearing and proved nothing; the record retired seq 10 and 12 when their code went, but not seq 16.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:12:20.879Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "git show 1c12223 -- tools/complexity-gate.mjs deletes headblobs (the rev-parse guard and /^(100644|100755|120000) blob /); tools/complexity-gate.mjs:274 chmodsync(... run.mjs, 0o755), :287-288 baselined, pin seq 16 in tasks/vanished-file-review-fixes.json",
+      "resolvedAt": "2026-09-27T21:13:14.242Z"
+    },
+    {
+      "id": "f45",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "(pass 5) The missing-source refusal's delete exit ends at `--update-baseline)` with no authorization clause, although it writes docs/gates/complexity-baseline.json (fence surface, landable only under a protected task) and both sibling refusals that print the same command say so; a runtime-code task following it meets a chain of refusals before one names the protected route. Fails closed.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:12:20.917Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:220-221 vs :455 ('it writes fence surface: land it under a protected task') and :431 at 1c12223; rm tools/zcode-plugin/lib/agreement-check.mjs -> the fix line ends '... && node tools/complexity-gate.mjs --update-baseline)'",
+      "resolvedAt": "2026-09-27T21:13:14.307Z"
+    },
+    {
+      "id": "f46",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "(pass 5) Claimed: in this repo's wiring the new refusal fires where nobody reads it — no transport runs the live gate (the battery runs only --self-test, gate-registry declares no bare invocation), and guard-reach's baseline drops the gate's stderr — so an unstaged rm of a baselined source turns npm run selftest red with only 'INCONCLUSIVE ... fix that first', no path and no fix command.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T21:12:20.954Z",
+      "evidence": "package.json selftest (complexity-gate.mjs --self-test only); `grep -o '\"invocation\": *\"[^\"]*\"' docs/gates/gate-registry.json` lists no bare `node tools/complexity-gate.mjs`; rm tools/bench/grade.mjs; node tools/guard-reach.mjs -> '✖ INCONCLUSIVE complexity-gate-new-file ... ALREADY failing ... fix that first', no path",
+      "dedupKey": "package.json selftest (complexity-gate.mjs --self-test only); `grep -o '\"invocation\": *\"[^\"]*\"' docs/gates/gate-registry.json` lists no bare `node tools/complexity-gate.mjs`; rm tools/bench/grade.mjs; node tools/guard-reach.mjs -> '✖ inconclusive complexity-gate-new-file ... already failing ... fix that first', no path",
+      "justification": "Not reproducible: the premise that no transport runs the live gate is false. The battery's 'node tools/complexity-gate.mjs --self-test' ends with a live check — judge(scan(config), ...) over this repo's own tree — and scan runs refuseMissingSources, so the refusal is printed in full by the battery itself. Demonstrated in a clone at 1c12223: rm tools/bench/grade.mjs; node tools/complexity-gate.mjs --self-test printed the skip note, 'tools/bench/grade.mjs has no regular file on disk and no staged change, and docs/gates/complexity-baseline.json holds its ceilings ...' and its full 'fix:' line, exit 1 — before guard-reach runs. guard-reach's INCONCLUSIVE is a second, terser report of the same state, not the only one.",
+      "resolvedAt": "2026-09-27T21:13:14.367Z"
+    },
+    {
+      "id": "f47",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "(pass 6, over f8b9392..efb21b5) efb21b5 moved the index query from the global --literal-pathspecs flag to a per-path `:(literal)` spelling, and under an inherited GIT_LITERAL_PATHSPECS=1 git parses no magic, so the query looked for a file literally named ':(literal)tools/x.mjs', matched nothing, and refuseMissingSources refused nothing: the baselined source's rows read stale, the printed --update-baseline stripped the ceiling of a file HEAD still tracks, and a plain git commit landed a red tip — the defect the task was opened to close. git exports the variable to every child of `git --literal-pathspecs` (hooks, aliases, Magit). The docstring named ICASE/GLOB/NOGLOB and missed LITERAL; the self-test hosts strip every GIT_* variable. Independently raised by all eight lanes (1, 2, 4, 5, 6, 7 and 8 as MEDIUM).",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:26:15.194Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:227-231 at efb21b5 (`...paths.map((p) => `:(literal)${p}`)`, no env override); rm tools/bench/grade.mjs; git_literal_pathspecs=1 node tools/complexity-gate.mjs -> 'still exempts tools/bench/grade.mjs runsuite (9) ... fix: --update-baseline'; git_literal_pathspecs=1 git ls-files -z --cached -- ':(literal)tools/task-gate.mjs' prints nothing",
+      "resolvedAt": "2026-09-27T21:27:08.965Z"
+    },
+    {
+      "id": "f48",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "(pass 6) Every printed exit — both of the missing-source refusal and both of test-lint's staged-missing refusal — uses the global `git --literal-pathspecs`, which git refuses beside an exported GIT_ICASE_PATHSPECS or GIT_GLOB_PATHSPECS (fatal, exit 128), the very environment efb21b5 hardened the query against; and efb21b5's message and literalDeleteExit's docstring claimed the exits run verbatim 'under GIT_ICASE_PATHSPECS' while only the gate ran under it (host.sh strips every GIT_* variable). Independently raised by lanes 1, 2, 4, 6, 7 and 8.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T21:26:15.228Z",
+      "evidence": "tools/complexity-gate.mjs:221, :759, :968-970 and tools/test-lint.mjs:105 at efb21b5; GIT_ICASE_PATHSPECS=1 git --literal-pathspecs checkout HEAD -- tools/big.mjs -> 'fatal: global 'literal' pathspec setting is incompatible with all other global pathspec settings', exit 128",
+      "dedupKey": "tools/complexity-gate.mjs:221, :759, :968-970 and tools/test-lint.mjs:105 at efb21b5; git_icase_pathspecs=1 git --literal-pathspecs checkout head -- tools/big.mjs -> 'fatal: global 'literal' pathspec setting is incompatible with all other global pathspec settings', exit 128",
+      "justification": "The overclaim is corrected (84110a7: literalDeleteExit and selfTestLiteralName now say the exits run in the host's clean environment, and indexListed's docstring states that the printed exits die beside an exported ICASE/GLOB); the exits themselves keep the global flag on purpose. Beside those variables they fail loudly with git's own message and exit 128 — they never act on the wrong file, which is the property the flag buys (a name starting with ':' or carrying glob characters) — and unsetting the variable is the fix. The alternatives all degrade the common case: per-path ':(literal)' fails silently under GIT_LITERAL_PATHSPECS (the sixth pass's MEDIUM, in the rm exit's --ignore-unmatch), and an 'env -u GIT_ICASE_PATHSPECS -u GIT_GLOB_PATHSPECS ...' prefix on every printed fix line is noise for an exotic environment. The refusal itself now fires under every one of the four variables (pinned).",
+      "resolvedAt": "2026-09-27T21:27:09.036Z"
+    },
+    {
+      "id": "f49",
+      "lane": 3,
+      "severity": "LOW",
+      "claim": "(pass 6) The seeded-HEAD half of selfTestNoHeadFile, and the live pin on it ('no-head-file-carried: under a seeded HEAD', record seq 15), guarded headBlobs' ls-tree HEAD branch, which 1c12223 deleted: indexListed reads no HEAD, and an --allow-empty seed over an empty index sends the unborn run's input down the same code; the fifth pass retired the sibling 100755 pin for the same cause but not this one.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T21:26:15.266Z",
+      "evidence": [
+        "tools/complexity-gate.mjs"
+      ],
+      "dedupKey": "tools/complexity-gate.mjs:908-909 (for seeded of [false, true]) and :227-231 at efb21b5; tasks/vanished-file-review-fixes.json seq 15 (active) vs seq 26 (pin-retire)",
+      "resolvedAt": "2026-09-27T21:27:09.000Z"
+    },
+    {
+      "id": "f50",
+      "lane": 5,
+      "severity": "LOW",
+      "claim": "(pass 7, over f8b9392..84110a7) The comment above PATHSPEC_ENV says it lists 'the pathspec modes git refuses beside --literal-pathspecs', but git accepts GIT_NOGLOB_PATHSPECS beside the flag (noglob implies literal); only GLOB and ICASE are refused. Dropping NOGLOB from the query's env is harmless, so nothing misbehaves, but the stated reason is false and no test can tell.",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T21:39:49.499Z",
+      "evidence": "tools/complexity-gate.mjs:220-221 and :231 at 84110a7; GIT_NOGLOB_PATHSPECS=1 git --literal-pathspecs ls-files --cached -- ':big one.mjs' -> ':big one.mjs', exit 0; the same with checkout HEAD restores the file, exit 0",
+      "dedupKey": "tools/complexity-gate.mjs:220-221 and :231 at 84110a7; git_noglob_pathspecs=1 git --literal-pathspecs ls-files --cached -- ':big one.mjs' -> ':big one.mjs', exit 0; the same with checkout head restores the file, exit 0",
+      "justification": "Registered, not changed, so the swept range stays the landed code: this seventh pass over f8b9392..84110a7 is the last one run, six of its eight lanes returned no findings, and a code edit after it would land unswept — the exact way the vanished-file fix round shipped the carry regression this task repairs. The inaccuracy is comment-only and harmless in behaviour: NOGLOB beside --literal-pathspecs is accepted, so dropping it from the query's env changes nothing (both the refusal and its exits work with it exported, as the reviewer measured). The one-line comment correction (GLOB and ICASE are refused; NOGLOB is dropped only so no mode but literal applies) belongs to the next wave that touches complexity-gate, under its own pass.",
+      "resolvedAt": "2026-09-27T21:39:49.575Z"
+    },
+    {
+      "id": "f51",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "(pass 7) Two printed delete exits fail for a symlink shape they now cover: the staged-then-deleted refusal's `git --literal-pathspecs rm -- <p>` for a staged link whose target is missing (the link is on disk and its index entry differs from HEAD, so git rm wants -f or --cached), and the missing-source refusal's `git --literal-pathspecs rm --ignore-unmatch -- <p> && ... --update-baseline` for a committed link re-pointed on disk to a missing target (a local modification; the && skips the re-record). The self-test runs the exits verbatim only for a regular file. Nothing is released: every refusal stands and git's own error names -f / --cached; the pre-range `git rm -- <p>` failed the same way on (1).",
+      "status": "WONT-FIX",
+      "recordedAt": "2026-09-27T21:39:49.535Z",
+      "evidence": "tools/test-lint.mjs:104 and tools/complexity-gate.mjs:223 at 84110a7; ln -s ../lib/gone.mjs tools/new.mjs && git add tools/new.mjs -> printed 'git --literal-pathspecs rm -- tools/new.mjs' -> 'error: the following file has changes staged in the index ... (use --cached to keep the file, or -f to force removal)', exit 1",
+      "dedupKey": "tools/test-lint.mjs:104 and tools/complexity-gate.mjs:223 at 84110a7; ln -s ../lib/gone.mjs tools/new.mjs && git add tools/new.mjs -> printed 'git --literal-pathspecs rm -- tools/new.mjs' -> 'error: the following file has changes staged in the index ... (use --cached to keep the file, or -f to force removal)', exit 1",
+      "justification": "Registered, not changed, for the same reason as f50: a fix now would land after the last pass and unswept. It fails closed — every refusal stays in force, nothing is released, and git's own error names the next step (-f, or --cached) — for two link shapes neither stallion nor its known vendor holds (git ls-files -s shows no 120000 entry in either); (1) predates the range (the pre-range 'git rm -- <p>' fails identically). The honest repair is shape-aware exits (a link: git rm --cached, or -f, of the link itself), with a self-test that runs each printed exit verbatim on a link, as selfTestLiteralName does for a file — the next complexity-gate/test-lint wave.",
+      "resolvedAt": "2026-09-27T21:39:49.610Z"
+    }
+  ],
+  "sweptBase": "f8b9392cbe96af9f3c562652af98df779882e2ab",
+  "sweptHead": "84110a7d38921a44ab0408aea257639660649607",
+  "sweptDiffDigest": "85d7b5b90094"
+}
