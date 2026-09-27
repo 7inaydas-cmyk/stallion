@@ -1,0 +1,139 @@
+{
+  "schema": "stallion/task-findings@1",
+  "task": "vendor-feedback-wave4",
+  "passStartedAt": "2026-09-27T14:05:51.981Z",
+  "findings": [
+    {
+      "id": "f1",
+      "lane": 2,
+      "severity": "MEDIUM",
+      "claim": "The plugin's record reader (gate-law readRecords, used by the PreToolUse authoring gate, the banner and the sitrep facts) did not apply the record-identity law. A copied record, whose id is not the task its file names, authorized edits and showed in the banner as in flight, while the staged gate, the commit-msg gate, the fence and task-state all refused it. Nothing in the battery compared the plugin's reader with the fence's, so the transports could disagree without any case failing.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.360Z",
+      "proof": "Behaviour: the case at tools/zcode-plugin/lib/gate-law.mjs:354 runs BOTH real hooks as processes over a fake harness where every record is executing and in scope. With the record filed as copy.json, the authoring gate exits 2 and the banner does not name 'orig'. The control, filed as orig.json, exits 0 and is named. The case was RED before the one-line identity guard in readRecords and passes after it. Drift: realReaderPin loads the real harness beside the plugin through law-source's own layoutAt/loadLaw, the same path realTierPin uses. It writes one state dir holding a lawful record, a copy, torn JSON, a JSON null, a *.findings.json, an id-less calibration register and a non-kebab id ('Upper'). It then requires that readRecords and task-coverage's now-exported readTaskRecords keep the same ids, and that 't' is among them so an empty match cannot pass. Mutations were run on a scratch copy, each restored after. M-a: the fence tightens with a TASK_ID check on the id (the tightening the reviewer named, which task-state's listing already applies) and gate-law is left alone. The new row FAILS. M-b: gate-law loosens so an id-less register counts. ONLY the new row fails. M-c: gate-law's guard is removed. The new row and the hook case fail. The restored copy is OK (46 cases).",
+      "evidence": [
+        "tools/zcode-plugin/lib/gate-law.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/zcode-plugin/lib/gate-law.mjs:80",
+      "resolvedAt": "2026-09-27T14:48:25.390Z"
+    },
+    {
+      "id": "f2",
+      "lane": 2,
+      "severity": "LOW",
+      "claim": "task-workspace loadTask checked only the schema, so a copied record opened (or forgot) a drafting workspace under another task's phase and scope.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.424Z",
+      "proof": "readTask(id, dir) was extracted without changing behaviour; add and forget both reach it through loadTask. Copy: the case at tools/task-workspace.mjs:403 builds a temp dir where t.json reads as a record and copy.json (same content) yields no record, with an error carrying 'rm tasks/copy.json && node tools/task-state.mjs new copy'. It was RED, then readTask was routed through task-coverage's exported loadRecord. Reviewer follow-up: going through loadRecord gave a missing id the fence's footer remedy (new, then advance to planned, then to executing) with no alternative. That told a typo, or a forget that was only cleaning up, to mint a phantom task in flight. The case at :414 asserts that a missing id refuses with 'fix: node tools/task-state.mjs status' and never 'advance nope executing'. It was RED (digest 699c91ca6d5f). readTask now checks that the file exists before loadRecord and prints task-state's own 'no such task' text with 'fix: node tools/task-state.mjs status   — lists every recorded task (or correct the id)'. Live check: `add nonexistent-x` and `forget nonexistent-x` both exit 1 with that text. The copy and torn-JSON branches still take loadRecord's law.",
+      "evidence": [
+        "tools/task-workspace.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:147",
+      "resolvedAt": "2026-09-27T14:48:25.456Z"
+    },
+    {
+      "id": "f3",
+      "lane": 3,
+      "severity": "MEDIUM",
+      "claim": "The host-hook isolation pin threw away the verdict rows of its hook-env run. It checked only that two nonexistent host paths stayed absent, and it simulated only the linked-worktree hook shape. So a leak past `git init` (add, commit, rev-parse), or a crash under the hook env, passed as clean, contrary to its own docstring.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.490Z",
+      "proof": "Mutations were run on a scratch copy of tools/ with jj 0.44 on PATH. Each one makes the new code FAIL, while the verifiers showed the pre-fix pin stayed OK. M2: the fixture's `git add -A`, spawned with process.env, gives the linked shape 'fatal: not a git repository' and commit -a's shape 'host gained index'. M3: throwing only when GIT_DIR is set gives the linked shape 'fixture crashed only under the hook env'. M4: a leaked `git commit --no-verify` (not an init) is caught in both shapes. Baseline: OK with '6 live jj landing cases, re-run inside 2 git-hook shapes'.",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:258",
+      "resolvedAt": "2026-09-27T14:48:25.522Z"
+    },
+    {
+      "id": "f4",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "The OK line said 'count derived' but left out the judged host-hook row. A regression that silently dropped the host-hook pin while jj was present printed the same OK line.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.557Z",
+      "proof": "Mutation M5: hostHookCases returns [] while jj is present. Result: 'FAILED — jj is on PATH, so the live cases re-ran inside every git-hook shape', exit 1. The baseline OK line is now '23 guard cases, 6 live jj landing cases, re-run inside 2 git-hook shapes — count derived'. Without jj it prints 'live jj landing cases and their git-hook re-runs SKIPPED — jj is not on PATH'.",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:351",
+      "resolvedAt": "2026-09-27T14:48:25.590Z"
+    },
+    {
+      "id": "f5",
+      "lane": 8,
+      "severity": "MEDIUM",
+      "claim": "The only pin on the GIT_* scrub ran only where jj was on PATH, and CI installs no jj. Reverting the whole Antitube host-leak fix therefore passed CI green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.620Z",
+      "proof": "Mutation M1 reverts the filter to `{ ...env }`. With jj removed from PATH (the CI state), the self-test FAILS: 'the fixture env drops every inherited GIT_* — inside a git hook they name the HOST repo (pure, so a run without jj pins it too)'. With jj present, the guard case and both hook-shape rows also fail. The restored code passes in both states.",
+      "evidence": [
+        "tools/task-workspace.mjs"
+      ],
+      "dedupKey": "tools/task-workspace.mjs:423",
+      "resolvedAt": "2026-09-27T14:48:25.655Z"
+    },
+    {
+      "id": "f6",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The copied-record refusal at commit-msg and at the fence printed two fixes that cannot run. `task-state new <id>` refuses because the file already exists, and `git log -p` prints nothing for an untracked copy. The refusal also re-typed task-state's copy remedy instead of mirroring it.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.689Z",
+      "proof": "loadRecord now owns the fix for each error. For a copy it prints task-state's own text: 'if it is a copy of task X (whose own file keeps its history): rm tasks/<id>.json && node tools/task-state.mjs new <id> --risk-class <class> — otherwise: git log -p -- tasks/<id>.json'. A missing record gets the new/advance chain, and torn JSON gets restoreRemedy. checkRange and commitMsgVerdict print `fix` as given, so neither baselined function gained complexity. The pure case drives commitMsgVerdict over a temp dir holding a copy. The transport case checks that the real output of the fence and of commit-msg carries the rm-then-new exit.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:838",
+      "resolvedAt": "2026-09-27T14:48:25.722Z"
+    },
+    {
+      "id": "f7",
+      "lane": 6,
+      "severity": "LOW",
+      "claim": "readTaskRecords threw away loadRecord's error. A staged refusal with only a copied or torn in-flight record on disk said 'no record is executing, verified, or adversarial' and prescribed `new`, naming neither the dropped file nor its real fix.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.753Z",
+      "proof": "readTaskRecords (tools/task-coverage.mjs:813) now returns { records, dropped }. cmdStaged prints one 'evidence: not counted — <error>' line for each dropped file, with that file's fix. Transport case: in a scratch repo with tasks/copy.json holding executing 'orig', `--staged` exits 1 and names \"task record 'orig' is not the task its file names (copy)\" with the rm-then-new exit. The control, the same record filed as tasks/orig.json, passes (exit 0). Reviewer follow-up: the `&& !l.foreign` exclusion had no test. Without it, every staged refusal in this repo would print harness-merge-wave1.calibration.json as 'not counted', with a fix that rms the register. withCopiedRecord now also writes t-orig.calibration.json ({ schema: 'stallion/calibration@1' }, no id), and copiedRecordRefused requires that dropped names only the copy: dropped.length === 1 && dropped[0].error.includes('(t-copy)'). Mutation on a scratch copy, removing ` && !l.foreign`, gives 'task-coverage self-test: FAILED' with only 'a copied record (id not the task its file names) authorizes nothing at the fence, and the staged refusal names the copy, never a register of another schema'. The restored copy is OK. The case name keeps its earlier pin's prefix.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:1008",
+      "resolvedAt": "2026-09-27T14:48:25.786Z"
+    },
+    {
+      "id": "f8",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The staged-gate half of the copied-record repair was pinned only at the helpers. Reverting cmdStaged to its pre-fix inline JSON.parse loop, or bypassing loadRecord at checkRange or at commit-msg's `load:`, left the battery green.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.817Z",
+      "proof": "Three mutations, each restored afterwards. (1) cmdStaged goes back to the exact pre-fix loop, guarded by existsSync: 'task-coverage self-test: FAILED' with ONLY the new transport case failing. (2) checkRange's loadRecord is swapped for a loader that parses by file name: the new case fails. (3) cmdCommitMsg's `load: loadRecord` is swapped the same way: the new case fails. The restored file passes with 15 transport cases.",
+      "evidence": [
+        "tools/task-coverage.mjs"
+      ],
+      "dedupKey": "tools/task-coverage.mjs:2387",
+      "resolvedAt": "2026-09-27T14:48:25.851Z"
+    },
+    {
+      "id": "f9",
+      "lane": 7,
+      "severity": "LOW",
+      "claim": "The bench kit leaked a git hook's GIT_DIR/GIT_INDEX_FILE into its sandboxes, the same leak class the wave fixed in task-workspace. setup.mjs's git() and grade.mjs's capture() both passed on the caller's env, so `grade.mjs --self-test` or a direct setup.mjs run from a hook inited, configured, staged and committed into the HOST repo.",
+      "status": "RESOLVED",
+      "recordedAt": "2026-09-27T14:48:25.884Z",
+      "proof": "All proofs ran in a scratch copy (scratchpad/r2-bench) with a fake real host R holding commit host-root and user.email=host@x. Both live files are byte-identical to the verified versions (cmp). (1) With setup.mjs git()'s env reverted, `GIT_DIR=$R/.git grade.mjs --self-test` on the fixed grade.mjs failed only the pinned row, and R was untouched (log still host-root, email host@x). With the old process.env base restored, the same run put `9793057 chore: seed the task` onto R and set user.email=bench@localhost. (2) With only capture()'s env reverted, the failure printed 4 rows, all prefixed `under a git hook's env (capture() drops its GIT_*):`. (3) With a crash injected into selfTestSandboxes under the hook env, the fixed code printed `...no crash): a crash: probe crash line one`, where the old bare catch printed the row with no message. Earlier proofs still hold: RED on the old code, then green after the fix; with only setup.mjs reverted the host-hook row fails; the commit -a shape alone also discriminates.",
+      "evidence": [
+        "tools/bench/setup.mjs",
+        "tools/bench/grade.mjs"
+      ],
+      "dedupKey": "tools/bench/setup.mjs:61-64 fixtureenv() + git() env; tools/bench/grade.mjs:137 capture() env: fixtureenv(); tools/bench/grade.mjs:268-299 underhookenv + selftestsandboxesinhosthook",
+      "resolvedAt": "2026-09-27T14:48:25.918Z"
+    }
+  ],
+  "sweptBase": "b757d50b30d5091db5887b8617e4b81a35c4dd10",
+  "sweptHead": "60a071bcf13c87dc0e4a5ac20d8545fefb7866b1",
+  "sweptDiffDigest": "2b25a24b2ddc"
+}
