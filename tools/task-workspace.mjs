@@ -19,7 +19,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { IMPLEMENTATION_FORBIDDEN as DRAFT_FORBIDDEN, derivePhase, PHASES, TASK_ID } from "./task-state.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -200,7 +200,15 @@ export function selfTest() {
   return failures.length === 0;
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

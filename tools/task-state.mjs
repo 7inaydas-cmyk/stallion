@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { aggregateFindings, atomicWriteJson, chainError, chainStampEvents, loadFindings, missingResolveEvidence, mutateJson, STRICT_UTC_STAMP } from "./task-findings.mjs";
 import { lessonsIndex, loadRegisters, summaryLine } from "./retrospective.mjs";
 import { matches } from "./pathspec.mjs";
@@ -1454,7 +1454,15 @@ function greenPinCaseFamily() {
   ];
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

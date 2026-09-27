@@ -70,7 +70,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { stripComments } from "./test-lint.mjs";
@@ -952,7 +952,15 @@ function main() {
  * CLI, guarded by an entry-module check (tools/pathspec.mjs's law): a bare argv test fires on
  * IMPORT and exits before an importing tool's own --self-test can run.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 if (isEntry) {
   if (process.argv.includes("--self-test")) {
     // The registry only scopes the residue sweep; the self-test's verdicts never read live config.

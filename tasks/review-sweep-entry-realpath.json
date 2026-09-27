@@ -61,6 +61,45 @@
       "seq": 4,
       "parent_hash": "97d9c2a78d0b2c161cc1f3e45817678fb5a0844db52efcec63a234f60d6f1758",
       "entry_hash": "b1144835b49361bc0ef4f6161c1812978ce6e7838d9ee6b6fb48637338eb15b1"
+    },
+    {
+      "at": "2026-09-27T08:02:10.886Z",
+      "type": "transition",
+      "to": "verified",
+      "seq": 5,
+      "parent_hash": "b1144835b49361bc0ef4f6161c1812978ce6e7838d9ee6b6fb48637338eb15b1",
+      "entry_hash": "144a1f658cbf9226592e5452032f04baac825582e62148b6a4625931f9d45152"
+    },
+    {
+      "at": "2026-09-27T09:37:39.473Z",
+      "type": "scope",
+      "patterns": [
+        "tools/adversarial-runner.mjs",
+        "tools/bench/grade.mjs",
+        "tools/bench/setup.mjs",
+        "tools/retrospective.mjs",
+        "tools/task-coverage.mjs",
+        "tools/task-findings.mjs",
+        "tools/task-gate.mjs",
+        "tools/task-state.mjs",
+        "tools/task-workspace.mjs",
+        "tools/zcode-plugin/lib/agreement-check.mjs",
+        "tools/zcode-plugin/lib/gate-law.mjs"
+      ],
+      "seq": 6,
+      "parent_hash": "144a1f658cbf9226592e5452032f04baac825582e62148b6a4625931f9d45152",
+      "entry_hash": "8b03e609ec22de72d379fa36c218eafc3476223234ab397357f6030498a9582c"
+    },
+    {
+      "at": "2026-09-27T09:37:40.910Z",
+      "type": "red-check",
+      "expect": "SILENT SYMLINKED ENTRY \\(preserve\\)",
+      "command": "d=$(mktemp -d) && ln -s \"$PWD/tools\" \"$d/t\" && rc=0; for f in $(node -e 'for (const m of require(\"./package.json\").scripts.selftest.matchAll(/node tools\\/(\\S+\\.mjs) --self-test/g)) console.log(m[1])'); do for mode in plain preserve; do if [ $mode = preserve ]; then out=$(NODE_OPTIONS=--preserve-symlinks-main node \"$d/t/$f\" --self-test 2>&1); else out=$(node \"$d/t/$f\" --self-test 2>&1); fi; [ -n \"$out\" ] || { echo \"SILENT SYMLINKED ENTRY ($mode): $f\"; rc=1; }; done; done; rm -rf \"$d\"; exit $rc",
+      "exitCode": 1,
+      "outputDigest": "d16c1b023c03",
+      "seq": 7,
+      "parent_hash": "8b03e609ec22de72d379fa36c218eafc3476223234ab397357f6030498a9582c",
+      "entry_hash": "465abfc820d3354046c451f9ae05afbcfe53c71598ce2f79b2a2ae66fa8dcb54"
     }
   ]
 }

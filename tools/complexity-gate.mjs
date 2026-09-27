@@ -57,7 +57,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 // The compiler is the OPTIONAL peer dependency (see package.json): a missing typescript must
 // refuse with a fix line naming the two honest exits, not crash the battery with a bare
 // ERR_MODULE_NOT_FOUND (an adversarial finding: the static import made the battery unrunnable
@@ -548,7 +548,15 @@ export function selfTest() {
   return ok;
 }
 
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 if (isEntry) {
   const argv = process.argv.slice(2);
   if (argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);

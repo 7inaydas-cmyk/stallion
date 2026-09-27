@@ -37,7 +37,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { firstMatch, matches } from "./pathspec.mjs";
 import { isCodePath } from "./task-coverage.mjs";
 
@@ -358,5 +358,13 @@ function main(argv) {
  * process.exit — on import, disabling the importer's own --self-test. Importers call
  * selfTest()/census()/loadConfig() directly.
  */
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 if (isEntry) process.exit(main(process.argv.slice(2)));

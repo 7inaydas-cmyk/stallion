@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { explain, matches } from "./pathspec.mjs";
 import { fenceSurfaceRefusal } from "./task-state.mjs";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 /** The tier law's own question asked of one path: would a runtime-code self-serve scope over it
  *  refuse? DERIVED from task-state, never re-typed — the hand-typed roots drifted twice (blind to
@@ -302,7 +302,15 @@ function selfTestChangeSetCases(fail) {
   return 1;
 }
 
-const isEntry = process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 // The WHOLE CLI is entry-guarded (the pathspec lesson, paid for once already): an importer that
 // pulls in selectContext or changedPaths must not have obligations printed at it or its process
 // exited from under it (an adversarial pass proved the unguarded tail did exactly that).

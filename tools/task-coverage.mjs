@@ -36,7 +36,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { lanesFromChecklist } from "./adversarial-runner.mjs";
 import { RISK_CLASSES, IMPLEMENTATION_FORBIDDEN, APPROVAL_REQUIRED, PHASES as PHASE_ORDER, derivePhase, hasValidPin, hasPinExemption, PIN_LAW_CUTOVER, scopeOf, recordCreatedAt, globRefusal, SCOPE_LAW_CUTOVER, recordMustChain, CHAIN_CUTOVER, fenceSurfaceRefusal, FENCE_SURFACE, decisionHeadingExists } from "./task-state.mjs";
 import { chainError, chainStampEvents, STRICT_UTC_STAMP } from "./task-findings.mjs";
@@ -1762,7 +1762,15 @@ function selfTestRetirementShapeCases(fail) {
   return cases.length;
 }
 
-const isEntry = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+// Both sides canonical: Node realpaths the main module unless --preserve-symlinks-main, and
+// argv[1] may be a symlink or name no file at all (node -e) — then this module is not the entry.
+const isEntry = (() => {
+  try {
+    return process.argv[1] !== undefined && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
 if (isEntry) {
   const flags = parseFlags(process.argv.slice(2));
   if (flags["self-test"]) process.exit(selfTest() ? 0 : 1);
