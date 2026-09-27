@@ -1,0 +1,230 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-coverage",
+  "title": "2026-09-27 code-review sweep: the coverage group's verified findings",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T05:54:08.825Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "0560b4af93ad722aca00009db509fdba19ecf9dcdf4277387beabaf31761cbe1"
+    },
+    {
+      "at": "2026-09-27T05:54:08.857Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "0560b4af93ad722aca00009db509fdba19ecf9dcdf4277387beabaf31761cbe1",
+      "entry_hash": "24d2aba307725b19fff7c63f2b5da1ba7243c7d712a7ce3a9f5a26c6468eb1d6"
+    },
+    {
+      "at": "2026-09-27T05:54:08.890Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-coverage.mjs",
+        "tools/pathspec.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "24d2aba307725b19fff7c63f2b5da1ba7243c7d712a7ce3a9f5a26c6468eb1d6",
+      "entry_hash": "b313a38c18b02fdd9966c8de9f3703e23f3b204482368843836f88c8fa970a11"
+    },
+    {
+      "at": "2026-09-27T05:54:08.922Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "b313a38c18b02fdd9966c8de9f3703e23f3b204482368843836f88c8fa970a11",
+      "entry_hash": "cf784e4292f4f392a5e3e4591f838d173947c856e60eff7dc83febe2ec984fe7"
+    },
+    {
+      "at": "2026-09-27T06:20:32.361Z",
+      "type": "red-check",
+      "expect": "task-coverage: a self-test-only hook or CI step does not certify the fence",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 4,
+      "parent_hash": "cf784e4292f4f392a5e3e4591f838d173947c856e60eff7dc83febe2ec984fe7",
+      "entry_hash": "2a59df417623e2dfb8e5aac78f540072513f65627b69c8e1f25fa70c21e92b4f"
+    },
+    {
+      "at": "2026-09-27T06:20:32.436Z",
+      "type": "red-check",
+      "expect": "task-coverage: the printed adoption-base pin names a protected task and footers the pin commit",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 5,
+      "parent_hash": "2a59df417623e2dfb8e5aac78f540072513f65627b69c8e1f25fa70c21e92b4f",
+      "entry_hash": "4bb9cead04cb81492d35266d8f392a05e044095d09e9df10841313487c8f4b12"
+    },
+    {
+      "at": "2026-09-27T06:20:32.513Z",
+      "type": "red-check",
+      "expect": "task-coverage: commit-msg scans a footerless no-code commit for secrets",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 6,
+      "parent_hash": "4bb9cead04cb81492d35266d8f392a05e044095d09e9df10841313487c8f4b12",
+      "entry_hash": "43d44a2be6dcd37e532b30d9736f14426bffbac7f8aa0dd9f28e596228649073"
+    },
+    {
+      "at": "2026-09-27T06:20:32.587Z",
+      "type": "red-check",
+      "expect": "task-coverage: commit-msg refusals re-run the refused commit and never print --amend",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 7,
+      "parent_hash": "43d44a2be6dcd37e532b30d9736f14426bffbac7f8aa0dd9f28e596228649073",
+      "entry_hash": "0a008c54eeaff8f64832df3f93ef66f69bcfd9450ea7ea2871d26084130b2592"
+    },
+    {
+      "at": "2026-09-27T06:20:32.660Z",
+      "type": "red-check",
+      "expect": "task-coverage: a merge staging only incoming code needs no footer while merge-own code still refuses",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 8,
+      "parent_hash": "0a008c54eeaff8f64832df3f93ef66f69bcfd9450ea7ea2871d26084130b2592",
+      "entry_hash": "bbb05913035d9f041fedc4a2e61364f6faa628a5d2398b816433dc025dcb8b0f"
+    },
+    {
+      "at": "2026-09-27T06:20:32.735Z",
+      "type": "red-check",
+      "expect": "task-coverage: an editor-composed footer survives git's comment block and the scissors tail",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 9,
+      "parent_hash": "bbb05913035d9f041fedc4a2e61364f6faa628a5d2398b816433dc025dcb8b0f",
+      "entry_hash": "d449ceb68a2eb3deef93bed5c824168489c69f122e0b7b3d73bb6c39d568e912"
+    },
+    {
+      "at": "2026-09-27T06:20:32.812Z",
+      "type": "red-check",
+      "expect": "task-coverage: a docs-only task cites its own no-code commit while code under it still refuses",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 10,
+      "parent_hash": "d449ceb68a2eb3deef93bed5c824168489c69f122e0b7b3d73bb6c39d568e912",
+      "entry_hash": "2a4b5de8d9570f7b555a59bfc84eebc44dd974641402707bdee241fa8ec37a5b"
+    },
+    {
+      "at": "2026-09-27T06:20:32.886Z",
+      "type": "red-check",
+      "expect": "task-coverage: a pushed ref outside HEAD's history is refused while HEAD's own history and deletions pass",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "067ec3d7603c",
+      "seq": 11,
+      "parent_hash": "2a4b5de8d9570f7b555a59bfc84eebc44dd974641402707bdee241fa8ec37a5b",
+      "entry_hash": "fc3110118d8a53d77e6037db7be5a52eb758a20c2c5954a5420cc4e27e571570"
+    },
+    {
+      "at": "2026-09-27T06:40:35.360Z",
+      "type": "red-check",
+      "expect": "task-coverage: a self-test flag touching a shell operator or quote does not certify the fence",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "3e6ecf3071e6",
+      "seq": 12,
+      "parent_hash": "fc3110118d8a53d77e6037db7be5a52eb758a20c2c5954a5420cc4e27e571570",
+      "entry_hash": "38aaf112038dbfb66a98c3435d6ae218359f3da060bedf538e4a515b4677cca4"
+    },
+    {
+      "at": "2026-09-27T06:40:35.559Z",
+      "type": "red-check",
+      "expect": "task-coverage: a planned docs-only task cited on a no-code commit is told to advance, not to open a code task",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "3e6ecf3071e6",
+      "seq": 13,
+      "parent_hash": "38aaf112038dbfb66a98c3435d6ae218359f3da060bedf538e4a515b4677cca4",
+      "entry_hash": "5da958daa346cf5297f3e697bc3bf5f66a1ee4b0a61bee0f41285a9b0e633978"
+    },
+    {
+      "at": "2026-09-27T06:46:57.003Z",
+      "type": "red-check",
+      "expect": "an in-flight task the record law refuses is named with its reason",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "3c25fcea42d8",
+      "seq": 14,
+      "parent_hash": "5da958daa346cf5297f3e697bc3bf5f66a1ee4b0a61bee0f41285a9b0e633978",
+      "entry_hash": "b051e9fe1c65e32895dcf4994111da44a16d3f90e81e4cc651e1c96c59a586b7"
+    },
+    {
+      "at": "2026-09-27T07:17:23.397Z",
+      "type": "red-check",
+      "expect": "task-coverage: a malformed record beside an executing task is simply not in flight, never a stack trace",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2af39a614aba",
+      "seq": 15,
+      "parent_hash": "b051e9fe1c65e32895dcf4994111da44a16d3f90e81e4cc651e1c96c59a586b7",
+      "entry_hash": "4dfa7b7c14f3846c8e4277683447b56ca11edc527c649d04594011fa0265d00f"
+    },
+    {
+      "at": "2026-09-27T07:17:23.663Z",
+      "type": "red-check",
+      "expect": "task-coverage: malformed records alone still refuse staged code with its evidence",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2af39a614aba",
+      "seq": 16,
+      "parent_hash": "4dfa7b7c14f3846c8e4277683447b56ca11edc527c649d04594011fa0265d00f",
+      "entry_hash": "5d17b35c0b4098f94dd443fdd1231c743bc227fdb70fa50fcff31978902cfb1f"
+    },
+    {
+      "at": "2026-09-27T07:17:23.924Z",
+      "type": "red-check",
+      "expect": "task-coverage: the re-run of a verbose editor's refused commit cuts the scissors tail",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2af39a614aba",
+      "seq": 17,
+      "parent_hash": "5d17b35c0b4098f94dd443fdd1231c743bc227fdb70fa50fcff31978902cfb1f",
+      "entry_hash": "5e4bca6d7d794a58a9a28e6f979d925cf515d685e480b691a5747e6fe747af07"
+    },
+    {
+      "at": "2026-09-27T07:17:24.192Z",
+      "type": "red-check",
+      "expect": "task-coverage: the commit-msg transport reads a staged diff past Node's 1 MiB default buffer",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "2af39a614aba",
+      "seq": 18,
+      "parent_hash": "5e4bca6d7d794a58a9a28e6f979d925cf515d685e480b691a5747e6fe747af07",
+      "entry_hash": "58ff029520bc43589739c7a886bd94988af24d3f07f9fdeb0c9e3c0afa06bd79"
+    },
+    {
+      "at": "2026-09-27T07:22:42.436Z",
+      "type": "red-check",
+      "expect": "task-coverage: the narrowing refusal's advance route prints the pin flow",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d2ad5f6ffe4e",
+      "seq": 19,
+      "parent_hash": "58ff029520bc43589739c7a886bd94988af24d3f07f9fdeb0c9e3c0afa06bd79",
+      "entry_hash": "d63751317ad94dd8cae48d6a285d04e81ca0ec2450183b558cfdfc8069220bc5"
+    },
+    {
+      "at": "2026-09-27T07:22:42.709Z",
+      "type": "red-check",
+      "expect": "task-coverage: the narrowing refusal's local override matches the committed base",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d2ad5f6ffe4e",
+      "seq": 20,
+      "parent_hash": "d63751317ad94dd8cae48d6a285d04e81ca0ec2450183b558cfdfc8069220bc5",
+      "entry_hash": "054d1b1e18a8cc6ed4a356a6621596dd3ad38e9d9a5171443322749b6b316601"
+    }
+  ]
+}

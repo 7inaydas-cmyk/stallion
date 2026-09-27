@@ -24,6 +24,8 @@
  *   "a/b/c.ts"     exact path
  *   "a/b/**"       that directory and everything beneath it
  *   "a/**\/*.ts"   glob segments; `**` spans zero or more path segments, `*` spans one
+ *   "a?c"          `?` spans exactly one character, never a separator (the scope dialect's
+ *                  tier law matches `.githook?/**` through it — a dropped `?` fails that law OPEN)
  *   /^regex$/      a RegExp, tested against the path as-is
  *   (p) => bool    a predicate, for the handful of rules that genuinely need one
  *
@@ -139,6 +141,11 @@ export function selfTest() {
     ["apps/api/x.config.ts", "apps/*/x.config.ts", true, "* spans one segment"],
     ["apps/api/sub/x.config.ts", "apps/*/x.config.ts", false, "* must NOT cross a separator"],
 
+    // ? spans exactly one character — never zero (a live regex quantifier), never a separator
+    [".githooks", ".githook?", true, "? matches one char"],
+    [".githook", ".githook?", false, "? must match exactly one char, not zero (never a live regex quantifier)"],
+    ["a/b", "a?b", false, "? must NOT cross a separator"],
+
     // extension discipline
     ["apps/web/test/a.tsx", "apps/**/test/**/*.ts", false, "*.ts must not match .tsx"],
     ["apps/web/test/a.ts", "apps/**/test/**/*.ts", true, ".ts matches"],
@@ -173,27 +180,39 @@ export function selfTest() {
     }
   }
 
-  // explain/firstMatch semantics, since guards depend on the difference
+  // explain/firstMatch semantics, since guards depend on the difference — and the module's one
+  // refusal: a spec of no known kind throws, it never quietly matches or misses
   const entries = [
     { spec: "packages/**", tag: "broad" },
     { spec: "packages/db/src/schema.ts", tag: "narrow" },
   ];
   const all = explain("packages/db/src/schema.ts", entries).map((e) => e.tag);
-  if (all.join(",") !== "broad,narrow") {
-    console.error(`pathspec SELF-TEST FAIL: explain must return ALL matches in order, got ${all}`);
-    ok = false;
-  }
-  if (firstMatch("packages/db/src/schema.ts", entries)?.tag !== "broad") {
-    console.error("pathspec SELF-TEST FAIL: firstMatch must return the first declared match");
-    ok = false;
-  }
-  if (firstMatch("README.md", entries) !== null) {
-    console.error("pathspec SELF-TEST FAIL: firstMatch must return null on no match");
-    ok = false;
+  const semantics = [
+    [all.join(",") === "broad,narrow", `explain must return ALL matches in order, got ${all}`],
+    [firstMatch("packages/db/src/schema.ts", entries)?.tag === "broad", "firstMatch must return the first declared match"],
+    [firstMatch("README.md", entries) === null, "firstMatch must return null on no match"],
+    [refusesUnsupported(() => matches("x", 42)), "an unsupported spec must throw pathspec's own TypeError, never match or miss"],
+  ];
+  for (const [passes, why] of semantics) {
+    if (!passes) {
+      console.error(`pathspec SELF-TEST FAIL: ${why}`);
+      ok = false;
+    }
   }
 
-  console.log(ok ? `pathspec self-test: OK (${cases.length} cases + 3 semantics)` : "pathspec self-test: FAILED");
+  console.log(ok ? `pathspec self-test: OK (${cases.length} cases + ${semantics.length} semantics)` : "pathspec self-test: FAILED");
   return ok;
+}
+
+/** Did `run` throw the unsupported-spec refusal? Its own message, not any TypeError: a number
+ *  spec also crashes natively on `.endsWith`, which would witness a refusal that never ran. */
+function refusesUnsupported(run) {
+  try {
+    run();
+    return false;
+  } catch (error) {
+    return error instanceof TypeError && error.message.startsWith("pathspec: unsupported spec");
+  }
 }
 
 /**
