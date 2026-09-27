@@ -83,11 +83,6 @@
       "complexity": 14
     },
     {
-      "file": "tools/task-coverage.mjs",
-      "name": "<anonymous>:152",
-      "complexity": 14
-    },
-    {
       "file": "tools/task-findings.mjs",
       "name": "selfTestDedup",
       "complexity": 14
@@ -111,11 +106,6 @@
       "file": "tools/zcode-plugin/lib/gate-law.mjs",
       "name": "authoringDecision",
       "complexity": 13
-    },
-    {
-      "file": "tools/adversarial-runner.mjs",
-      "name": "<anonymous>:247",
-      "complexity": 12
     },
     {
       "file": "tools/adversarial-runner.mjs",

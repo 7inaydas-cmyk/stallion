@@ -1,3 +1,5 @@
 #!/bin/sh
 # The inner gate: refuse at stage time, within one action of the mistake.
 node tools/task-coverage.mjs --staged || exit 1
+# A bare commit on a detached HEAD lands on no branch: refuse it at the commit it judges.
+node tools/detached-head-guard.mjs || exit 1

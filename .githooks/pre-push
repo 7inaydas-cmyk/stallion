@@ -1,6 +1,7 @@
 #!/bin/sh
 # The push fence. Base resolution lives in the tool: --base > stallion.push-base >
-# .stallion-base > origin/<branch> (local clones); unresolvable REFUSES.
-node tools/task-coverage.mjs || exit 1
+# .stallion-base > origin/<branch> (local clones); unresolvable REFUSES. --pre-push also
+# judges the refs git hands this hook on stdin: a pushed tip outside HEAD's history refuses.
+node tools/task-coverage.mjs --pre-push || exit 1
 # The gate for the gate: an unwired clone refuses to push until it is wired.
 node tools/task-coverage.mjs --doctor || exit 1

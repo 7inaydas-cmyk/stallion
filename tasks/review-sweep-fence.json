@@ -1,0 +1,126 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "review-sweep-fence",
+  "title": "2026-09-27 code-review sweep: the verified fence-surface repairs (hooks, gate configs)",
+  "riskClass": "protected",
+  "events": [
+    {
+      "at": "2026-09-27T06:50:33.629Z",
+      "type": "created",
+      "riskClass": "protected",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "32789ead68558565cfa9ffd1e2d1ff20ad46a15aa95bece1f06e303ed489eb50"
+    },
+    {
+      "at": "2026-09-27T06:50:33.660Z",
+      "type": "approval",
+      "decision": "2026-09-27 — CODE-REVIEW SWEEP: the fence-surface repairs the review verified",
+      "seq": 1,
+      "parent_hash": "32789ead68558565cfa9ffd1e2d1ff20ad46a15aa95bece1f06e303ed489eb50",
+      "entry_hash": "3a0dabafdb7abbf6a1751367100086d0f806aad34c3566a67494496e914c323a"
+    },
+    {
+      "at": "2026-09-27T06:50:33.690Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 2,
+      "parent_hash": "3a0dabafdb7abbf6a1751367100086d0f806aad34c3566a67494496e914c323a",
+      "entry_hash": "d7238530abef5b66cf2f43fb572404f73e3e7411d1d9e3dcda80a37824ed0443"
+    },
+    {
+      "at": "2026-09-27T06:50:33.721Z",
+      "type": "scope",
+      "patterns": [
+        ".githooks/**",
+        "docs/gates/**"
+      ],
+      "seq": 3,
+      "parent_hash": "d7238530abef5b66cf2f43fb572404f73e3e7411d1d9e3dcda80a37824ed0443",
+      "entry_hash": "6f5d3e03cf330abd11810553d3cf474f438a97b502aa50f3a23d8a17628bbf86"
+    },
+    {
+      "at": "2026-09-27T06:50:33.753Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 4,
+      "parent_hash": "6f5d3e03cf330abd11810553d3cf474f438a97b502aa50f3a23d8a17628bbf86",
+      "entry_hash": "10cf26b4a3dc1fbfeeabf62e2e820545056c9377c7e000d055f801aba729d70d"
+    },
+    {
+      "at": "2026-09-27T06:50:33.779Z",
+      "type": "red-check",
+      "expect": "NEW dead wiring: SEVERITIES",
+      "command": "node tools/reader-existence.mjs",
+      "exitCode": 1,
+      "outputDigest": "3ef07df7760b",
+      "seq": 5,
+      "parent_hash": "10cf26b4a3dc1fbfeeabf62e2e820545056c9377c7e000d055f801aba729d70d",
+      "entry_hash": "534c43fc571bf2776e20ce7a4042fa47f64fd9a006d22ccb51569ce8316585e5"
+    },
+    {
+      "at": "2026-09-27T06:50:33.902Z",
+      "type": "red-check",
+      "expect": "still exempts tools/[a-z-]+\\.mjs <anonymous>",
+      "command": "node tools/complexity-gate.mjs",
+      "exitCode": 1,
+      "outputDigest": "cc31707fa766",
+      "seq": 6,
+      "parent_hash": "534c43fc571bf2776e20ce7a4042fa47f64fd9a006d22ccb51569ce8316585e5",
+      "entry_hash": "c220942e94e3537dbf101a09627bdf03c6024505eafedb98640710960ce7e915"
+    },
+    {
+      "at": "2026-09-27T06:50:34.387Z",
+      "type": "red-check",
+      "expect": "the selftest battery runs every self-testing tool",
+      "command": "node tools/task-coverage.mjs --doctor",
+      "exitCode": 1,
+      "outputDigest": "13e8c755d5d0",
+      "seq": 7,
+      "parent_hash": "c220942e94e3537dbf101a09627bdf03c6024505eafedb98640710960ce7e915",
+      "entry_hash": "e347d955b51c55300ec3617c36192cb2db6794422f796d931aa2b055020e642e"
+    },
+    {
+      "at": "2026-09-27T06:50:34.517Z",
+      "type": "red-check",
+      "expect": "PRE-PUSH HOOK DOES NOT HAND THE PUSHED REFS",
+      "command": "grep -q -- '--pre-push || exit 1' .githooks/pre-push || { echo 'PRE-PUSH HOOK DOES NOT HAND THE PUSHED REFS TO THE FENCE'; exit 1; }",
+      "exitCode": 1,
+      "outputDigest": "77849341124a",
+      "seq": 8,
+      "parent_hash": "e347d955b51c55300ec3617c36192cb2db6794422f796d931aa2b055020e642e",
+      "entry_hash": "afa1020f2e94b77b7b126bd0ac2761da98bb6d3b6ccdfad8567f4132ca79f550"
+    },
+    {
+      "at": "2026-09-27T06:50:34.550Z",
+      "type": "red-check",
+      "expect": "PRE-COMMIT DOES NOT RUN THE DETACHED-HEAD GUARD",
+      "command": "grep -q 'node tools/detached-head-guard.mjs || exit 1' .githooks/pre-commit || { echo 'PRE-COMMIT DOES NOT RUN THE DETACHED-HEAD GUARD'; exit 1; }",
+      "exitCode": 1,
+      "outputDigest": "a770c274e356",
+      "seq": 9,
+      "parent_hash": "afa1020f2e94b77b7b126bd0ac2761da98bb6d3b6ccdfad8567f4132ca79f550",
+      "entry_hash": "af642c1b2442da494d4d856f82208f32c30b85e41f7ddf6126e2fb4d235becb8"
+    },
+    {
+      "at": "2026-09-27T06:50:45.210Z",
+      "type": "pin-retire",
+      "command": "node tools/task-coverage.mjs --doctor",
+      "justification": "its --expect names the check title, which the doctor also prints on a PASS (with a check mark), so a green run would still show the RED signature; re-recorded anchored on the failure mark",
+      "seq": 10,
+      "parent_hash": "af642c1b2442da494d4d856f82208f32c30b85e41f7ddf6126e2fb4d235becb8",
+      "entry_hash": "34601c24a84d21069b5fe4f0697688f1bc0e44f9b4067d1c4e55edd1dd1460af"
+    },
+    {
+      "at": "2026-09-27T06:50:45.236Z",
+      "type": "red-check",
+      "expect": "✖ the selftest battery runs every self-testing tool",
+      "command": "node tools/task-coverage.mjs --doctor 2>&1",
+      "exitCode": 1,
+      "outputDigest": "7f83934abde2",
+      "seq": 11,
+      "parent_hash": "34601c24a84d21069b5fe4f0697688f1bc0e44f9b4067d1c4e55edd1dd1460af",
+      "entry_hash": "15f384d5f9e5f29af2b941c6ca077a63f0db03256e99f0ab7e7553fd978af7ab"
+    }
+  ]
+}

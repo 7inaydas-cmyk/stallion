@@ -151,7 +151,7 @@
     },
     {
       "name": "gate-registry",
-      "reason": "the registry is itself the declaration this gate checks; a probe would stage a registry it is not declared in \u2014 self-referential, and its OWN invocation is drift-checked by every run it makes"
+      "reason": "the registry is itself the declaration this gate checks; a probe would stage a registry it is not declared in \u2014 self-referential; its own battery spelling (--self-test) is exempt from its shadow sweep and is held in the battery by the doctor's missingSelfTests check"
     },
     {
       "name": "guard-reach",

@@ -58,7 +58,7 @@
       },
       {
         "glob": "examples/**",
-        "why": "fixture registers consumed by the tools' self-tests, never executed"
+        "why": "synthetic sample task record and findings register shipped for readers \u2014 no tool or self-test reads them, never executed; their JSON would only pad a repo-count"
       },
       {
         "glob": "package-lock.json",

@@ -72,3 +72,17 @@ battery step's display name alongside adding npm ci — beyond the "no other wor
 entry scoped. The rename is hereby acknowledged rather than rewritten out of history; the step
 name now carries no hand-maintained count (the battery's membership is derived by law, and a
 "Five tool" count in a 20-member battery was the register's own rule violated).
+
+## 2026-09-27 — CODE-REVIEW SWEEP: the fence-surface repairs the review verified
+
+Founder-directed (session 2026-09-27, verbatim: "evaluate the harness stallion /code-review and
+fix all issues that you encounter."). Recorded by the agent from that directive; the founder
+reviews it in the diff before anything lands. Authorized, and nothing else on the fence surface:
+the pre-push hook passes `--pre-push` so the pushed refs are judged (coverage:spec:5); the
+pre-commit hook runs the detached-head guard, whose live run leaves the battery
+(lineage-gates:spec:0); gate-registry.json follows both moves and states its transport law
+truly; reader-existence.json accepts the SEVERITIES rows the reachability cut surfaced, with
+reasons, and names the two literal producers the sweep added to the RISK_CLASSES.runtime-code
+row (gate-law newTaskFix, path-obligations SELF_SERVE); doc-claims.json and guard-reach.json
+correct two false reasons; the complexity baseline drops the two line-keyed anonymous rows
+whose functions were split under the threshold.

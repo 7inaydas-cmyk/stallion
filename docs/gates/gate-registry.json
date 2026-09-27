@@ -1,5 +1,5 @@
 {
-  "_readme": "Stallion's gate invocations, declared ONCE. Each gate names the invocation text and the transports that must carry it; tools/gate-registry.mjs greps the real transport files for both directions of drift \u2014 a declared gate missing from a transport, and a transport carrying an invocation the registry does not declare (a shadow gate). Vendors: this is the stallion seed; add your own gates and transports honestly.",
+  "_readme": "Stallion's gate invocations, declared ONCE. Each gate names the invocation text and the transports that must carry it; tools/gate-registry.mjs greps the real transport files for both directions of drift \u2014 a declared gate missing from a transport, and a transport carrying an invocation the registry does not declare (a shadow gate). Vendors: this is the stallion seed; add your own gates honestly. The transport set (the three git hooks, every workflow under .github/workflows as ci, package.json's scripts as battery) is TRANSPORTS in tools/gate-registry.mjs; a new transport kind is a graft recorded at vendor time, not a config edit.",
   "gates": [
     {
       "id": "staged-gate",
@@ -22,11 +22,18 @@
       "id": "push-fence",
       "invocation": "node tools/task-coverage.mjs",
       "transports": [
-        "pre-push",
         "ci",
         "battery"
       ],
       "why": "every code commit in the push range carries an authorizing task record \u2014 the control clones cannot opt out of; the battery transport is the package.json `task-coverage` alias, a bare runnable spelling of the same command"
+    },
+    {
+      "id": "push-fence-pre-push",
+      "invocation": "node tools/task-coverage.mjs --pre-push",
+      "transports": [
+        "pre-push"
+      ],
+      "why": "the push fence as the hook runs it: judges base..HEAD and refuses any pushed ref (git's stdin ref lines) outside HEAD's history \u2014 `git push origin other-branch` and `--all` no longer land unjudged"
     },
     {
       "id": "wiring-doctor",
@@ -97,9 +104,9 @@
       "id": "detached-head-guard-live",
       "invocation": "node tools/detached-head-guard.mjs",
       "transports": [
-        "battery"
+        "pre-commit"
       ],
-      "why": "a bare commit on a detached HEAD refuses loudly"
+      "why": "a bare commit on a detached HEAD refuses loudly \u2014 at the commit it judges, not in the battery, where every detached checkout (pull_request CI, colocated jj) reddened it with no commit in sight"
     },
     {
       "id": "vendor-drift-live",
