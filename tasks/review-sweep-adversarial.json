@@ -267,6 +267,193 @@
       "seq": 24,
       "parent_hash": "b02e4eb183e36f907c13836757040633d1304044391d9c557aef1fbf1fc78ca9",
       "entry_hash": "1e4daa6af4cc98f7a223fdda130ca7cd871c918b4a7abcb09edc4916f3ad1fc5"
+    },
+    {
+      "at": "2026-09-27T11:20:03.315Z",
+      "type": "red-check",
+      "expect": "prepare refuses a DONE task's register",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 25,
+      "parent_hash": "1e4daa6af4cc98f7a223fdda130ca7cd871c918b4a7abcb09edc4916f3ad1fc5",
+      "entry_hash": "08a073854ff813f24b1d82fb1780a4df3d901197fe1724a70965c764ab2d65da"
+    },
+    {
+      "at": "2026-09-27T11:20:03.480Z",
+      "type": "red-check",
+      "expect": "record refuses a DONE task's register",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 26,
+      "parent_hash": "08a073854ff813f24b1d82fb1780a4df3d901197fe1724a70965c764ab2d65da",
+      "entry_hash": "d679034f0dbf90248411e6596c723a4e3316c34d3cda0d854d8ab2eefa29a934"
+    },
+    {
+      "at": "2026-09-27T11:20:03.629Z",
+      "type": "red-check",
+      "expect": "resolve refuses a DONE task's register",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 27,
+      "parent_hash": "d679034f0dbf90248411e6596c723a4e3316c34d3cda0d854d8ab2eefa29a934",
+      "entry_hash": "79376389c1cd2402897e3cddfcd697d812d4472210414d3e561127e0efa0604f"
+    },
+    {
+      "at": "2026-09-27T11:20:03.767Z",
+      "type": "red-check",
+      "expect": "wont-fix refuses a RETIRED task's register",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 28,
+      "parent_hash": "79376389c1cd2402897e3cddfcd697d812d4472210414d3e561127e0efa0604f",
+      "entry_hash": "b9e12f1f5b9ea43a932c797ecaddfecfad352e017b238374297c1e1f0af4d569"
+    },
+    {
+      "at": "2026-09-27T11:20:03.904Z",
+      "type": "red-check",
+      "expect": "a terminal refusal prints its rule, the record as evidence",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 29,
+      "parent_hash": "b9e12f1f5b9ea43a932c797ecaddfecfad352e017b238374297c1e1f0af4d569",
+      "entry_hash": "e8207ef60ca2ff7932d3041f2868c2cdaa48c7e1c13a66f46966b3b053edb823"
+    },
+    {
+      "at": "2026-09-27T11:20:04.041Z",
+      "type": "red-check",
+      "expect": "a malformed task record refuses naming its path",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 30,
+      "parent_hash": "e8207ef60ca2ff7932d3041f2868c2cdaa48c7e1c13a66f46966b3b053edb823",
+      "entry_hash": "056f4c978092e7e0e2e423bc5ce3d2fb4c5ea0c3e140a869f983dcaf5a3d55e6"
+    },
+    {
+      "at": "2026-09-27T11:20:04.185Z",
+      "type": "red-check",
+      "expect": "the swept file list names a path git C-quotes",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 31,
+      "parent_hash": "056f4c978092e7e0e2e423bc5ce3d2fb4c5ea0c3e140a869f983dcaf5a3d55e6",
+      "entry_hash": "9e18a2de8a6a1a354b36e7b2c550458055507e240cef1f1ba86790c5341399eb"
+    },
+    {
+      "at": "2026-09-27T11:20:04.325Z",
+      "type": "red-check",
+      "expect": "a swept diff past Node's 1 MiB default buffer is read whole",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "ee6ac2dc9940",
+      "seq": 32,
+      "parent_hash": "9e18a2de8a6a1a354b36e7b2c550458055507e240cef1f1ba86790c5341399eb",
+      "entry_hash": "75b3957047c5d62401ceaded4d4926c55360091b86722b4f63b4492c73d2e8f4"
+    },
+    {
+      "at": "2026-09-27T11:21:33.604Z",
+      "type": "red-check",
+      "expect": "the loader reports a MISSING registers directory",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "676e1d5d1fb6",
+      "seq": 33,
+      "parent_hash": "75b3957047c5d62401ceaded4d4926c55360091b86722b4f63b4492c73d2e8f4",
+      "entry_hash": "644ecafda95a85fb21af629255c8a64c00f4999521b0c18558cffe3aabd5bb00"
+    },
+    {
+      "at": "2026-09-27T11:21:33.704Z",
+      "type": "red-check",
+      "expect": "the CLI refuses a missing registers directory",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "676e1d5d1fb6",
+      "seq": 34,
+      "parent_hash": "644ecafda95a85fb21af629255c8a64c00f4999521b0c18558cffe3aabd5bb00",
+      "entry_hash": "361c21e2c8fbe4307866f9345a95eb3d4c10bd7195e09c8e7931130960186a67"
+    },
+    {
+      "at": "2026-09-27T11:21:33.808Z",
+      "type": "red-check",
+      "expect": "trunc flattens newlines",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "676e1d5d1fb6",
+      "seq": 35,
+      "parent_hash": "361c21e2c8fbe4307866f9345a95eb3d4c10bd7195e09c8e7931130960186a67",
+      "entry_hash": "0b61dde5b5ea517ee6375e5df0bf176274a51a70e3faa6380afdd22699b4a185"
+    },
+    {
+      "at": "2026-09-27T11:21:33.908Z",
+      "type": "red-check",
+      "expect": "a newline in a task, claim or justification never forges a machine-voiced bundle row",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "676e1d5d1fb6",
+      "seq": 36,
+      "parent_hash": "0b61dde5b5ea517ee6375e5df0bf176274a51a70e3faa6380afdd22699b4a185",
+      "entry_hash": "5d908469b7e880902e616dde22435c29b0560d088c6b1632deebc9b4ab5e6cf7"
+    },
+    {
+      "at": "2026-09-27T11:33:07.293Z",
+      "type": "red-check",
+      "expect": "a malformed task record's fix names its own history",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5a2bc861933f",
+      "seq": 37,
+      "parent_hash": "5d908469b7e880902e616dde22435c29b0560d088c6b1632deebc9b4ab5e6cf7",
+      "entry_hash": "81afb23db18c6f3539ce6406ce9cf2bc729479d1735d6d1d9925199ebcb52d15"
+    },
+    {
+      "at": "2026-09-27T11:33:07.491Z",
+      "type": "red-check",
+      "expect": "a verdict on a DONE task whose resolve evidence vanished prints the terminal remedy",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5a2bc861933f",
+      "seq": 38,
+      "parent_hash": "81afb23db18c6f3539ce6406ce9cf2bc729479d1735d6d1d9925199ebcb52d15",
+      "entry_hash": "fe6f8aaa327059cd47556d350136e4ea99a042f00e5e6468dcc906895754dd1a"
+    },
+    {
+      "at": "2026-09-27T11:33:07.675Z",
+      "type": "red-check",
+      "expect": "a swept path carrying a newline lists as ONE line",
+      "command": "node tools/adversarial-runner.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "5a2bc861933f",
+      "seq": 39,
+      "parent_hash": "fe6f8aaa327059cd47556d350136e4ea99a042f00e5e6468dcc906895754dd1a",
+      "entry_hash": "a971dfe5734c2a45e5909f0c948ca0b42ac6220b08d790a5fe3af48a86c0daa1"
+    },
+    {
+      "at": "2026-09-27T11:34:00.294Z",
+      "type": "red-check",
+      "expect": "the directory refusal names its read error as evidence",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d5dfc0a1c429",
+      "seq": 40,
+      "parent_hash": "a971dfe5734c2a45e5909f0c948ca0b42ac6220b08d790a5fe3af48a86c0daa1",
+      "entry_hash": "4a3abe5109c4bd78173469d81130c897013be2be8b56cd5eab060f41153de6e6"
+    },
+    {
+      "at": "2026-09-27T11:34:00.396Z",
+      "type": "red-check",
+      "expect": "never forges a row in the human report",
+      "command": "node tools/retrospective.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "d5dfc0a1c429",
+      "seq": 41,
+      "parent_hash": "4a3abe5109c4bd78173469d81130c897013be2be8b56cd5eab060f41153de6e6",
+      "entry_hash": "42f0dc8c7488870cc51c9abc0e744ef6b386758bb278e9520b080a1b4acff148"
     }
   ]
 }

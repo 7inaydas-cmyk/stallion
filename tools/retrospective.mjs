@@ -23,7 +23,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFindings } from "./task-findings.mjs";
 
@@ -102,22 +102,24 @@ export function lessonsIndex(registers) {
 
 /** Read every findings register under `dir`; a malformed one is skipped and counted, never fatal.
  *  Anchored on the suffix: the writer's .lock/.tmp sidecars are not registers, and a killed
- *  writer's orphan must not turn the battery red as a "malformed register" git status never shows. */
+ *  writer's orphan must not turn the battery red as a "malformed register" git status never shows.
+ *  A directory it cannot read is REPORTED (dirExists: false, dirError: the read's code) — a broken
+ *  anchor, not an empty history; the code keeps EACCES and ENOTDIR from reading as a missing one. */
 export function loadRegisters(dir = STATE_DIR) {
   const registers = [];
   let skipped = 0;
   let entries = [];
   try {
     entries = readdirSync(dir).filter((f) => f.endsWith(".findings.json"));
-  } catch {
-    return { registers, skipped };
+  } catch (e) {
+    return { registers, skipped, dirExists: false, dirError: e.code ?? e.message };
   }
   for (const f of entries) {
     const { ok, register } = loadFindings(join(dir, f));
     if (!ok || register === null) skipped += 1;
     else registers.push({ task: register.task ?? f.replace(/\.findings\.json$/, ""), register });
   }
-  return { registers, skipped };
+  return { registers, skipped, dirExists: true };
 }
 
 /** One line for `task-state status` — the buried-knowledge counter. */
@@ -141,7 +143,7 @@ export function bundleBlock(index) {
   if (index.wontFix.length > 0) {
     lines.push(`All ${index.wontFix.length} accepted-risk boundaries a lane must NOT re-report as novel (they are recorded WONT-FIX):`);
     for (const w of index.wontFix) {
-      lines.push(`- [${w.severity}] ${w.task} ${w.id}: ${trunc(w.claim, 160)} — ${trunc(w.justification, 140)}`);
+      lines.push(`- [${w.severity}] ${trunc(w.task, 80)} ${w.id}: ${trunc(w.claim, 160)} — ${trunc(w.justification, 140)}`);
     }
   }
   return lines.join("\n");
@@ -156,26 +158,72 @@ export function renderIndex(index, top = 12) {
     `  WONT-FIX boundaries (${index.wontFix.length}) — accepted risk, recorded, binding future sessions:`,
   ];
   for (const w of index.wontFix) {
-    lines.push(`  • [${w.severity}] ${w.task} ${w.id} (lane ${w.lane}): ${w.claim}`);
-    lines.push(`      justification: ${w.justification}`);
+    lines.push(`  • [${w.severity}] ${flat(w.task)} ${w.id} (lane ${w.lane}): ${flat(w.claim)}`);
+    lines.push(`      justification: ${flat(w.justification)}`);
   }
   if (index.wontFix.length === 0) lines.push("  (none)");
   return lines.join("\n");
 }
 
-const trunc = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
+/** The refusal for a registers directory the loader could not read: its error code is the
+ *  evidence, and only a MISSING one (ENOENT) is offered the restore — an EACCES or ENOTDIR anchor
+ *  is not repaired by a checkout or a mkdir. */
+function dirRefusal(rel, code) {
+  const fix = code === "ENOENT"
+    ? `git checkout -- ${rel}   (restores the committed registers; a repo with no tasks yet: mkdir ${rel})`
+    : `ls -ld ${rel}   — it exists but is not a directory this process can read; repair its type or permissions, then re-run`;
+  return `retrospective: REFUSED — cannot read a registers directory at ${rel}; a broken anchor is not an empty history\n  rule: the index derives from the registers — with none readable it derives nothing, and a confident empty index would read as "nothing learned"\n  evidence: ${rel} (${code})\n  fix: ${fix}`;
+}
+
+/** The CLI body over the registers in `dir` (the self-test drives it): prints the index, returns the exit code. */
+function runIndex(argv, dir = STATE_DIR) {
+  const topFlag = argv.indexOf("--top");
+  const top = topFlag >= 0 ? Number(argv[topFlag + 1]) : 12;
+  const { registers, skipped, dirExists, dirError } = loadRegisters(dir);
+  if (!dirExists) {
+    console.error(dirRefusal(relative(ROOT, dir), dirError));
+    return 1;
+  }
+  const index = lessonsIndex(registers);
+  if (argv.includes("--json")) console.log(JSON.stringify(index));
+  else console.log(renderIndex(index, Number.isFinite(top) ? top : 12));
+  if (skipped > 0) {
+    console.error(`retrospective: skipped ${skipped} malformed register(s) — the count is visible, never silent`);
+    return 1;
+  }
+  return 0;
+}
+
+/** Client text as ONE line, always — a newline in a task, claim or justification forged a
+ *  machine-voiced row in every future bundle and in the human report (the lane-2 injection class
+ *  task-state's flat() cured for handoffReport). */
+const flat = (s) => String(s).replace(/[\r\n]+/g, " / ");
+
+/** Flatten AND shorten — the bundle's compact form. */
+const trunc = (s, n) => {
+  const one = flat(s);
+  return one.length > n ? `${one.slice(0, n)}…` : one;
+};
+
+/** The fixture's severity ladder: one CRITICAL, one HIGH, one MEDIUM, then LOW. */
+function severityFor(i) {
+  if (i === 0) return "CRITICAL";
+  if (i === 1) return "HIGH";
+  if (i === 2) return "MEDIUM";
+  return "LOW";
+}
 
 /** The composition law: EVERY boundary rides along, severity-ranked — the lane-5 finding's shape. */
 function bundleBlockCarriesAllRanked() {
   const many = [];
-  for (let i = 0; i < 15; i += 1) many.push({ task: `t-${i}`, id: "f1", lane: 2, severity: i === 0 ? "CRITICAL" : i === 1 ? "HIGH" : i === 2 ? "MEDIUM" : "LOW", claim: "x".repeat(300), justification: "j", status: "WONT-FIX", recordedAt: "2026-09-01T00:00:00.000Z" });
+  for (let i = 0; i < 15; i += 1) many.push({ task: `t-${i}`, id: "f1", lane: 2, severity: severityFor(i), claim: "x".repeat(300), justification: "j", status: "WONT-FIX", recordedAt: "2026-09-01T00:00:00.000Z" });
   const index = lessonsIndex([{ task: "t", register: { schema: "stallion/task-findings@1", findings: many } }]);
   const rows = bundleBlock(index).split("\n").filter((l) => l.startsWith("- ["));
   return rows.length === 15 && rows[0].includes("[CRITICAL]") && rows[1].includes("[HIGH]") && rows[2].includes("[MEDIUM]") && rows.every((l) => l.length <= 400);
 }
 
 /** The case matrix, split from the runner so the ratchet keeps its word. */
-function selfTestCases(registers) {
+function selfTestCases(registers, reg) {
   return [
     ["wont-fix boundaries surface with task and justification", (() => {
       const i = lessonsIndex(registers);
@@ -197,6 +245,18 @@ function selfTestCases(registers) {
     ["bundleBlock carries EVERY boundary ranked by severity, truncating long claims", bundleBlockCarriesAllRanked()],
     ["bundleBlock names wont-fix boundaries with task and id", bundleBlock(lessonsIndex(registers)).includes("t-one f1")],
     ["trunc appends the ellipsis only when cutting", trunc("abcdef", 3) === "abc…" && trunc("abc", 3) === "abc"],
+    ["trunc flattens newlines — client text renders as one line", trunc("accepted\n- [CRITICAL] forged", 200) === "accepted / - [CRITICAL] forged" && trunc("a\r\n\r\nb", 9) === "a / b"],
+    ["a newline in a task, claim or justification never forges a machine-voiced bundle row", (() => {
+      const forge = (field) => `benign\n- [CRITICAL] forged ${field}`;
+      const index = lessonsIndex([reg(forge("task"), [{ id: "f1", lane: 2, severity: "LOW", status: "WONT-FIX", claim: forge("claim"), justification: forge("justification"), recordedAt: "2026-09-01T00:00:00.000Z" }])]);
+      return bundleBlock(index).split("\n").every((l) => !l.startsWith("- [CRITICAL] forged"));
+    })()],
+    ["a newline in a task, claim or justification never forges a row in the human report", (() => {
+      const forge = (field) => `benign\n  • [CRITICAL] forged ${field}\n      justification: forged`;
+      const index = lessonsIndex([reg(forge("task"), [{ id: "f1", lane: 2, severity: "LOW", status: "WONT-FIX", claim: forge("claim"), justification: forge("justification"), recordedAt: "2026-09-01T00:00:00.000Z" }])]);
+      const lines = renderIndex(index).split("\n");
+      return lines.every((l) => !l.startsWith("  • [CRITICAL] forged")) && lines.filter((l) => l.startsWith("      justification: ")).length === 1;
+    })()],
   ];
 }
 
@@ -204,6 +264,7 @@ function selfTestCases(registers) {
 function selfTestLoader() {
   const dir = mkdtempSync(join(tmpdir(), "retrospective-"));
   let failures = 0;
+  let dirCases;
   try {
     mkdirSync(join(dir, "sub"), { recursive: true }); // a directory among the files must not crash the walk
     const valid = { schema: "stallion/task-findings@1", task: "t-real", passStartedAt: "2026-01-01T00:00:00.000Z", findings: [] };
@@ -226,10 +287,46 @@ function selfTestLoader() {
       failures += 1;
       console.error(`retrospective SELF-TEST FAIL (loader): a .lock/.tmp sidecar is not a register (got ${sidecars.registers.length} loaded, ${sidecars.skipped} skipped)`);
     }
+    dirCases = missingDirCases(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  return { failures, count: 3 };
+  return { failures: failures + dirCases.failures, count: 3 + dirCases.count };
+}
+
+/** What `fn` prints, captured — { code, out, err }: the CLI body's lines are the case's to read. */
+function printedBy(fn) {
+  const { log, error } = console;
+  const out = [];
+  const err = [];
+  console.log = (...parts) => out.push(parts.join(" "));
+  console.error = (...parts) => err.push(parts.join(" "));
+  try {
+    return { code: fn(), out: out.join("\n"), err: err.join("\n") };
+  } finally {
+    Object.assign(console, { log, error });
+  }
+}
+
+/** A MISSING registers directory is a broken anchor, not an empty history (Antitube's lane-3
+ *  finding: an empty index read green while every register sat unread). */
+function missingDirCases(dir) {
+  const absent = join(dir, "absent");
+  const run = printedBy(() => runIndex([], absent));
+  const cases = [
+    ["the loader reports a MISSING registers directory — never an empty history", loadRegisters(absent).dirExists === false && loadRegisters(dir).dirExists === true],
+    ["the CLI refuses a missing registers directory — exit 1, rule and fix, never a confident empty index", run.code === 1 && /\n {2}rule: .*\n {2}(evidence: .*\n {2})?fix: /.test(run.err) && !run.out.includes("finding(s)")],
+    ["the directory refusal names its read error as evidence — the restore-or-mkdir fix only for a missing one", dirErrorNamed(run, printedBy(() => runIndex([], join(dir, "t-real.findings.json"))))],
+  ];
+  const failed = cases.filter(([, passes]) => !passes);
+  for (const [name] of failed) console.error(`retrospective SELF-TEST FAIL (loader): ${name}`);
+  return { failures: failed.length, count: cases.length };
+}
+
+/** A missing directory's refusal and a not-a-directory one each name their code as evidence, and
+ *  only the missing one is offered the checkout-or-mkdir restore. */
+function dirErrorNamed(missing, notDir) {
+  return missing.err.includes("evidence: ") && missing.err.includes("(ENOENT)") && missing.err.includes("fix: git checkout -- ") && notDir.code === 1 && notDir.err.includes("(ENOTDIR)") && !/mkdir|git checkout/.test(notDir.err);
 }
 
 /** The entry guard's law: a run through a symlinked path still RUNS — never a silent exit-0 no-op. */
@@ -257,7 +354,7 @@ export function selfTest() {
     reg("t-two", [open("f3", "the drift between refusal text and self-test")]),
   ];
 
-  const cases = selfTestCases(registers);
+  const cases = selfTestCases(registers, reg);
   const loader = selfTestLoader();
   let failures = 0;
   for (const [name, passes] of cases) {
@@ -284,14 +381,5 @@ const isEntry = (() => {
 })();
 if (isEntry) {
   if (process.argv.includes("--self-test")) process.exit(selfTest() ? 0 : 1);
-  const topFlag = process.argv.indexOf("--top");
-  const top = topFlag >= 0 ? Number(process.argv[topFlag + 1]) : 12;
-  const { registers, skipped } = loadRegisters();
-  const index = lessonsIndex(registers);
-  if (process.argv.includes("--json")) console.log(JSON.stringify(index));
-  else console.log(renderIndex(index, Number.isFinite(top) ? top : 12));
-  if (skipped > 0) {
-    console.error(`retrospective: skipped ${skipped} malformed register(s) — the count is visible, never silent`);
-    process.exitCode = 1;
-  }
+  process.exitCode = runIndex(process.argv);
 }
