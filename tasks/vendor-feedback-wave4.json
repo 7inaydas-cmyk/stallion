@@ -1,0 +1,65 @@
+{
+  "schema": "stallion/task-state@1",
+  "id": "vendor-feedback-wave4",
+  "title": "the Antitube wave-4 pass's upstream findings: hook-env fixture isolation and record identity at the fences",
+  "riskClass": "runtime-code",
+  "events": [
+    {
+      "at": "2026-09-27T14:02:57.833Z",
+      "type": "created",
+      "riskClass": "runtime-code",
+      "seq": 0,
+      "parent_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "6e4d56a9ee3d0dbd59f75c2d507fa22cdcd9424da26b4b2f21a354bacc29b61b"
+    },
+    {
+      "at": "2026-09-27T14:02:57.866Z",
+      "type": "transition",
+      "to": "planned",
+      "seq": 1,
+      "parent_hash": "6e4d56a9ee3d0dbd59f75c2d507fa22cdcd9424da26b4b2f21a354bacc29b61b",
+      "entry_hash": "1c37c7e2a37209aec7e918b9a95448b721f73dfed78ccfa7f0dc51b0b29d9c30"
+    },
+    {
+      "at": "2026-09-27T14:02:57.901Z",
+      "type": "scope",
+      "patterns": [
+        "tools/task-workspace.mjs",
+        "tools/task-coverage.mjs"
+      ],
+      "seq": 2,
+      "parent_hash": "1c37c7e2a37209aec7e918b9a95448b721f73dfed78ccfa7f0dc51b0b29d9c30",
+      "entry_hash": "7f5dd790473d8426f7ab8039f0a427a5f6869e4705ff896a4a4b10005a80cac0"
+    },
+    {
+      "at": "2026-09-27T14:02:57.937Z",
+      "type": "transition",
+      "to": "executing",
+      "seq": 3,
+      "parent_hash": "7f5dd790473d8426f7ab8039f0a427a5f6869e4705ff896a4a4b10005a80cac0",
+      "entry_hash": "5a2a39c844c556e4a320edc0222330fb391a5649ae8ec1d6758e1f61ed9d6777"
+    },
+    {
+      "at": "2026-09-27T14:03:26.168Z",
+      "type": "red-check",
+      "expect": "a live landing case run inside a git hook wrote into the HOST repo",
+      "command": "node tools/task-workspace.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "9a71282c2808",
+      "seq": 4,
+      "parent_hash": "5a2a39c844c556e4a320edc0222330fb391a5649ae8ec1d6758e1f61ed9d6777",
+      "entry_hash": "ca4ddfbf614912d97a05750f7fb36fe26fa4ee260cd4d20b6009c8fc75c4f488"
+    },
+    {
+      "at": "2026-09-27T14:04:21.748Z",
+      "type": "red-check",
+      "expect": "a copied record \\(id not the task its file names\\) authorizes nothing",
+      "command": "node tools/task-coverage.mjs --self-test",
+      "exitCode": 1,
+      "outputDigest": "8c638a750615",
+      "seq": 5,
+      "parent_hash": "ca4ddfbf614912d97a05750f7fb36fe26fa4ee260cd4d20b6009c8fc75c4f488",
+      "entry_hash": "40893960fe574b4dc67ba41f2f3079a4288e616c5173db2dd984f388f80e4b6c"
+    }
+  ]
+}

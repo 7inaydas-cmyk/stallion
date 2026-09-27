@@ -804,14 +804,28 @@ function committedBase() {
   return value;
 }
 
-function loadRecord(id) {
-  const path = `${STATE_DIR}/${id}.json`;
+/** Every task record the staged gate may count, read through loadRecord's one law: a malformed
+ *  or copied record (its id not the task its file names) cannot authorize anything — it simply
+ *  is not an active task. */
+function readTaskRecords(dir = STATE_DIR) {
+  if (!existsSync(dir)) return [];
+  const ids = readdirSync(dir).filter((x) => x.endsWith(".json") && !x.includes(".findings.")).map((x) => x.slice(0, -5));
+  return ids.map((id) => loadRecord(id, dir).record).filter(Boolean);
+}
+
+function loadRecord(id, dir = STATE_DIR) {
+  const path = `${dir}/${id}.json`;
   if (!existsSync(path)) return { error: `no task record for '${id}' (expected ${path})` };
+  let record;
   try {
-    return { record: JSON.parse(readFileSync(path, "utf8")) };
+    record = JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     return { error: `task record '${id}' is not valid JSON: ${e.message}` };
   }
+  // A copied record carries another task's scope, approval and phase; task-state refuses it at
+  // every command (parseTaskRecord), and so must the seam that authorizes code.
+  if (record?.id !== id) return { error: `task record '${String(record?.id)}' is not the task its file names (${id}) — a copied record authorizes nothing (restore it: git log -p -- ${path})` };
+  return { record };
 }
 
 /**
@@ -965,17 +979,7 @@ function cmdStaged() {
   } catch (e) {
     die(`cannot read the staged file list — git diff --cached failed (${String(e.message).split("\n")[0]})\n  rule: a gate that cannot read state must not pass — this seam fails closed like every other\n  fix: make git work in this environment (PATH, safe.directory, readable index), then retry the commit`);
   }
-  const records = [];
-  if (existsSync(STATE_DIR)) {
-    for (const f of readdirSync(STATE_DIR).filter((x) => x.endsWith(".json") && !x.includes(".findings."))) {
-      try {
-        records.push(JSON.parse(readFileSync(`${STATE_DIR}/${f}`, "utf8")));
-      } catch {
-        // a malformed record cannot authorize anything — it simply is not an active task
-      }
-    }
-  }
-  const refusal = stagedRefusal(files, records);
+  const refusal = stagedRefusal(files, readTaskRecords());
   if (!refusal) {
     const stagedCode = files.filter(isCodePath).length;
     return console.log(stagedCode === 0
@@ -1564,6 +1568,21 @@ function gitOutCarriesLargeOutput() {
   }
 }
 
+/** Self-test helper: a byte-identical copy of a record under another task's file name must load
+ *  as an error, never as that task's authority (the Antitube wave-4 finding: the copy carried a
+ *  done or approved task's scope and phase to a footer that was never created). */
+function copiedRecordRefused() {
+  const dir = mkdtempSync(`${tmpdir()}/task-coverage-copy-`);
+  try {
+    writeFileSync(`${dir}/t-copy.json`, JSON.stringify({ schema: "stallion/task-state@1", id: "t-orig", riskClass: "runtime-code", events: [] }));
+    writeFileSync(`${dir}/t-orig.json`, JSON.stringify({ schema: "stallion/task-state@1", id: "t-orig", riskClass: "runtime-code", events: [] }));
+    const counted = readTaskRecords(dir).map((r) => r.id);
+    return String(loadRecord("t-copy", dir).error ?? "").includes("is not the task its file names") && counted.join() === "t-orig";
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** Self-test: the refusals ARE the feature — every guard proven both directions. */
 export function selfTest() {
   const failures = [];
@@ -1801,6 +1820,7 @@ export function selfTest() {
     ["a new commit citing an in-flight scoped task passes the seam", citationRefusal(scopedPost, ["tools/a.mjs"], false) === null && citationRefusal({ ...scopedPost, events: [...scopedPost.events, { type: "transition", to: "executing" }] }, ["tools/a.mjs"], true) === null],
     ["a malformed doneAt stamp does not grandfather the pin law", recordRefusal({ schema: "stallion/task-state@1", id: "t", riskClass: "runtime-code", events: [{ type: "created", at: "2026-09-17T00:00:00.000Z" }, { type: "transition", to: "planned" }, { type: "transition", to: "executing" }, { type: "transition", to: "verified" }, { type: "transition", to: "adversarial" }, { type: "transition", to: "done", at: "not-a-date" }] }) !== null],
   ];
+  citationCases.push(["a copied record (id not the task its file names) authorizes nothing at the fence", copiedRecordRefused()]);
   for (const [name, passes] of citationCases) if (!passes) fail(`task-coverage: ${name}`);
 
   const anchorCases = [

@@ -216,6 +216,36 @@ function parseArgs(argv) {
   return args;
 }
 
+/** The host-hook isolation case as a case row; none when jj is absent (the live cases skip). */
+function hostHookCases() {
+  const clean = liveCasesInHostHook();
+  return clean === null ? [] : [["a live landing case run inside a git hook wrote into the HOST repo (GIT_DIR/GIT_INDEX_FILE leaked into the fixture)", clean]];
+}
+
+/** The live cases run inside a simulated git hook — GIT_DIR and GIT_INDEX_FILE name a throwaway
+ *  HOST repo, as git exports them to a pre-commit hook in a linked worktree or under commit -a —
+ *  and must leave that host untouched: a fixture inheriting them inits, stages and commits into
+ *  the host (the Antitube wave-4 finding, where a vendor's pre-commit runs this self-test). A crash
+ *  under the hook env counts as a leak. null when jj is absent. */
+function liveCasesInHostHook() {
+  const host = mkdtempSync(join(tmpdir(), "task-workspace-host-"));
+  const hookEnv = { GIT_DIR: join(host, "git"), GIT_INDEX_FILE: join(host, "index") };
+  const saved = Object.keys(hookEnv).map((k) => [k, process.env[k]]);
+  Object.assign(process.env, hookEnv);
+  try {
+    if (liveLandingCases() === null) return null;
+    return !existsSync(hookEnv.GIT_DIR) && !existsSync(hookEnv.GIT_INDEX_FILE);
+  } catch {
+    return false;
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(host, { recursive: true, force: true });
+  }
+}
+
 /**
  * The landing check against REAL jj and git — the refusal text alone was pinned as a string, and
  * its promise was false in three ordinary workflows. A two-commit draft landed tip-only, an
@@ -234,7 +264,10 @@ function liveLandingCases() {
   const primary = join(base, "primary");
   const ws = join(base, "primary-task-t1");
   const who = { GIT_AUTHOR_NAME: "self-test", GIT_AUTHOR_EMAIL: "self-test@example.invalid", GIT_COMMITTER_NAME: "self-test", GIT_COMMITTER_EMAIL: "self-test@example.invalid", JJ_USER: "self-test", JJ_EMAIL: "self-test@example.invalid" };
-  const env = { ...process.env, ...who, JJ_CONFIG: join(base, "jj.toml"), GIT_CONFIG_GLOBAL: join(base, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
+  // Never the caller's GIT_* — inside a git hook GIT_DIR/GIT_INDEX_FILE name the HOST repo, and a
+  // fixture inheriting them inits, stages and commits into it (the Antitube wave-4 finding).
+  const hostless = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+  const env = { ...hostless, ...who, JJ_CONFIG: join(base, "jj.toml"), GIT_CONFIG_GLOBAL: join(base, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
   const sh = (dir, cmd, ...args) => execFileSync(cmd, args, { cwd: dir, env, stdio: "pipe" });
   const put = (path, text) => writeFileSync(path, text);
   try {
@@ -329,7 +362,7 @@ export function selfTest() {
     ["forged transition to an unknown phase is ignored (no fake-phase workspace)", canAddWorkspace({ ...mk("planned"), events: [...mk("planned").events, { type: "transition", to: "shipped" }] }, false).ok],
   ];
   const live = liveLandingCases();
-  for (const [name, passes] of [...cases, ...(live ?? [])]) if (!passes) fail(`task-workspace: ${name}`);
+  for (const [name, passes] of [...cases, ...(live ?? []), ...hostHookCases()]) if (!passes) fail(`task-workspace: ${name}`);
   const liveNote = live === null ? "live jj landing cases SKIPPED — jj is not on PATH" : `${live.length} live jj landing cases`;
   console.log(failures.length === 0 ? `task-workspace self-test: OK (${cases.length} guard cases, ${liveNote} — count derived)` : `task-workspace self-test: FAILED\n  ${failures.join("\n  ")}`);
   return failures.length === 0;
